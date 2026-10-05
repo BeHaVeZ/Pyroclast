@@ -53,13 +53,18 @@ It is not affiliated with Bohemia Interactive, Arma, Enfusion, or Blastcore, and
 
 ## Current milestone
 
-**Phase 2 — First rendering workload**
+**Phase 4 — Shared HLSL build pipeline**
 
 Phase 0 is implemented: reproducible builds, the SDL application shell, basic
 logging, and tested startup argument parsing. Phase 1 adds a D3D12 clear-screen
 loop with adapter selection, swapchain resizing, and explicit frame fences.
 Phase 2 adds a colored triangle using build-time HLSL compilation and a GPU
 vertex buffer.
+Phase 3 moves triangle ownership to the application and exposes only device,
+vertex-buffer, pipeline, and single-draw operations through API-independent
+interfaces. Native GPU objects and synchronization remain inside D3D12.
+Phase 4 compiles the same triangle HLSL to DXIL and SPIR-V, with shader include
+dependencies and separate Debug/Release artifacts. Vulkan rendering comes next.
 
 See `docs/ROADMAP.md`.
 
@@ -68,9 +73,21 @@ See `docs/ROADMAP.md`.
 The initial build targets Windows x64 with Visual Studio 2026 and CMake 4.2 or
 newer. Install the **Desktop development with C++** workload, including the
 Windows SDK and C++ CMake tools for Windows. Shader compilation requires DXC
-(`dxc.exe`), supplied by recent Windows SDKs. CMake searches PATH and the selected
-SDK's x64 tools directory. If needed, set `PYROCLAST_DXC` to its full path using
-your local `CMakeUserPresets.json` or `-DPYROCLAST_DXC=...` at configuration.
+(`dxc.exe`) with both DXIL and SPIR-V support. Download the Windows archive from
+[Microsoft's DXC releases](https://github.com/microsoft/DirectXShaderCompiler/releases),
+extract it, and keep its supplied DLLs beside `bin/x64/dxc.exe`. Windows SDK DXC
+builds can lack SPIR-V support; CMake checks the actual compiler capability.
+The pipeline was validated with standalone DXC v1.9.2609.
+CMake searches PATH, `VULKAN_SDK/Bin`, and the selected Windows SDK tools directory.
+Override `PYROCLAST_DXC` with the standalone compiler's full path using your local
+`CMakeUserPresets.json` or at configuration:
+
+```powershell
+cmake --preset windows-x64 -DPYROCLAST_DXC="C:/path/to/dxc/bin/x64/dxc.exe"
+```
+
+CMake retains this path in the build cache. Set it again if you delete the cache.
+A Vulkan SDK installation is not required for this phase.
 
 Run these commands from the repository root in **Developer PowerShell for
 Visual Studio 2026**, where `cmake` is available on PATH:
@@ -133,18 +150,28 @@ the debug layer is unavailable, startup fails with an installation hint rather
 than running without validation. Debug-layer warnings/errors are logged to the
 console and Visual Studio debugger, with a validation summary at shutdown.
 
-To check Phase 2 in Visual Studio, use `--renderer=d3d12` (or no arguments) and
+To check the current triangle in Visual Studio, use `--renderer=d3d12` (or no arguments) and
 press **F5**. Verify the colored triangle remains after resizing and after
 minimize/restore, then close the window. A clean Debug run should log
 `D3D12 validation summary: 0 warnings, 0 errors` and exit code 0. Breakpoints on
 validation errors are enabled when a debugger is attached.
 
-`shaders/triangle.hlsl` is compiled to configuration-specific DXIL and generated
-C++ bytecode headers under the build directory. Bytecode is embedded in the
-executable, so running from Visual Studio or another working directory requires
-no shader file copying. Editing HLSL rebuilds both shader stages and the executable.
+`cmake/Shaders.cmake` compiles both entry points in `shaders/triangle.hlsl`:
 
-See `docs/PHASE1.md` and `docs/PHASE2.md` for ownership, synchronization,
+- DXIL and bytecode headers: `out/build/windows-x64/generated/shaders/d3d12/<configuration>/`
+- SPIR-V and bytecode headers: `out/build/windows-x64/generated/shaders/vulkan/<configuration>/`
+
+Debug disables shader optimization and includes debug information; Release uses
+`-O3`. SPIR-V targets Vulkan 1.1 and is validated by DXC. Shader warnings fail
+the build, and errors report source filenames and line numbers. DXC dependency
+files track includes, so source or include changes rebuild the affected outputs
+for the configuration being built. Unchanged shaders are left alone.
+
+The executable currently embeds DXIL, so Visual Studio and other working
+directories require no shader file copying. SPIR-V artifacts are built and ready
+for Phase 5; `--renderer=vulkan` still opens only the window shell.
+
+See `docs/PHASE1.md`, `docs/PHASE2.md`, `docs/PHASE3.md`, and `docs/PHASE4.md` for ownership, synchronization,
 validation results, and current limitations.
 
 Build output stays under `out/`. Machine-specific overrides can go in the ignored

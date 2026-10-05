@@ -1,4 +1,5 @@
 #include "d3d12_renderer.hpp"
+#include "d3d12_resources.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -100,9 +101,16 @@ bool D3D12Renderer::wait_idle()
         wait_for_fence(value) && check_validation();
 }
 
-bool D3D12Renderer::render()
+bool D3D12Renderer::render(const DrawCommand& draw)
 {
     assert(swapchain_ && command_list_);
+    const auto* vertices = dynamic_cast<const D3D12VertexBuffer*>(&draw.vertices);
+    const auto* pipeline = dynamic_cast<const D3D12GraphicsPipeline*>(&draw.pipeline);
+    if (!vertices || !pipeline || vertices->owner != this || pipeline->owner != this)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Draw resources must belong to this graphics device.");
+        return false;
+    }
     if (occluded_)
     {
         SDL_Delay(50);
@@ -137,10 +145,18 @@ bool D3D12Renderer::render()
 
     auto rtv = rtv_heap_->GetCPUDescriptorHandleForHeapStart();
     rtv.ptr += static_cast<SIZE_T>(index) * rtv_stride_;
-    constexpr float clear_color[] = {0.04f, 0.07f, 0.12f, 1.0f};
-    command_list_->ClearRenderTargetView(rtv, clear_color, 0, nullptr);
+    command_list_->ClearRenderTargetView(rtv, draw.clear_color.data(), 0, nullptr);
     command_list_->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
-    draw_triangle();
+    const D3D12_VIEWPORT viewport{0.0f, 0.0f,
+        static_cast<float>(width_), static_cast<float>(height_), 0.0f, 1.0f};
+    const D3D12_RECT scissor{0, 0, width_, height_};
+    command_list_->SetPipelineState(pipeline->state.Get());
+    command_list_->SetGraphicsRootSignature(pipeline->root_signature.Get());
+    command_list_->RSSetViewports(1, &viewport);
+    command_list_->RSSetScissorRects(1, &scissor);
+    command_list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    command_list_->IASetVertexBuffers(0, 1, &vertices->view);
+    command_list_->DrawInstanced(vertices->vertex_count(), 1, 0, 0);
 
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;

@@ -26,45 +26,16 @@ FetchContent_MakeAvailable(SDL3)
 add_executable(Pyroclast
     src/app/main.cpp
     src/app/command_line.cpp
+    src/app/triangle_demo.cpp
+    src/graphics/graphics_device.cpp
     src/graphics/d3d12/d3d12_initialize.cpp
     src/graphics/d3d12/d3d12_renderer.cpp
-    src/graphics/d3d12/d3d12_triangle.cpp
+    src/graphics/d3d12/d3d12_resources.cpp
 )
 target_compile_definitions(Pyroclast PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 target_link_libraries(Pyroclast PRIVATE SDL3::SDL3-static d3d12 dxgi)
 
-find_program(PYROCLAST_DXC NAMES dxc
-    HINTS
-        "$ENV{WindowsSdkDir}/bin/${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}/x64"
-        "$ENV{ProgramFiles\(x86\)}/Windows Kits/10/bin/${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}/x64"
-    DOC "Path to the DirectX Shader Compiler (dxc.exe)"
-)
-if(NOT PYROCLAST_DXC)
-    message(FATAL_ERROR "DXC was not found. Install a recent Windows SDK or set PYROCLAST_DXC to dxc.exe.")
-endif()
-message(STATUS "Pyroclast DXC: ${PYROCLAST_DXC}")
-
-set(shader_output_dir "${CMAKE_CURRENT_BINARY_DIR}/generated/shaders/d3d12/$<CONFIG>")
-foreach(stage IN ITEMS vs ps)
-    set(shader_header "${shader_output_dir}/triangle_${stage}.hpp")
-    set(shader_binary "${shader_output_dir}/triangle_${stage}.dxil")
-    add_custom_command(
-        OUTPUT "${shader_header}" "${shader_binary}"
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${shader_output_dir}"
-        COMMAND "${PYROCLAST_DXC}"
-            -T "${stage}_6_0" -E "${stage}_main" -HV 2021 -Ges -WX
-            "$<IF:$<CONFIG:Debug>,-Od,-O3>"
-            "$<$<CONFIG:Debug>:-Zi>" "$<$<CONFIG:Debug>:-Qembed_debug>"
-            -Fo "${shader_binary}" -Fh "${shader_header}" -Vn "triangle_${stage}"
-            "${CMAKE_CURRENT_SOURCE_DIR}/shaders/triangle.hlsl"
-        DEPENDS shaders/triangle.hlsl "${PYROCLAST_DXC}"
-        COMMENT "Compiling triangle ${stage} to DXIL"
-        COMMAND_EXPAND_LISTS
-        VERBATIM
-    )
-    target_sources(Pyroclast PRIVATE "${shader_header}" "${shader_binary}")
-endforeach()
-target_include_directories(Pyroclast PRIVATE "${shader_output_dir}")
+include(cmake/Shaders.cmake)
 
 include(CTest)
 set(project_targets Pyroclast)

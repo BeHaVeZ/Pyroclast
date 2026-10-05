@@ -1,0 +1,22 @@
+#include "graphics_device.hpp"
+#include "d3d12/d3d12_renderer.hpp"
+
+#include <SDL3/SDL.h>
+
+namespace pyroclast
+{
+GraphicsDeviceCreation create_graphics_device(Renderer renderer, SDL_Window* window)
+{
+    if (renderer == Renderer::vulkan)
+    {
+        SDL_Log("Vulkan is not implemented yet; running the SDL window shell.");
+        return {};
+    }
+    auto device = std::make_unique<D3D12Renderer>();
+    if (!device->initialize(window))
+    {
+        return {nullptr, "Graphics initialization failed; see the backend diagnostics."};
+    }
+    return {std::move(device), {}};
+}
+}

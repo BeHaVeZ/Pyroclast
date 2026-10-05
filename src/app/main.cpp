@@ -2,7 +2,7 @@
 #include <SDL3/SDL_main.h>
 
 #include "command_line.hpp"
-#include "../graphics/d3d12/d3d12_renderer.hpp"
+#include "triangle_demo.hpp"
 
 #include <cstdio>
 #include <memory>
@@ -21,7 +21,8 @@ struct SdlCleanup final
     }
 };
 
-int run_event_loop(SDL_Window* window, pyroclast::D3D12Renderer* renderer)
+int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice* renderer,
+    const pyroclast::TriangleDemo& demo)
 {
     const auto window_id = SDL_GetWindowID(window);
     while (true)
@@ -50,7 +51,7 @@ int run_event_loop(SDL_Window* window, pyroclast::D3D12Renderer* renderer)
             }
             if (width > 0 && height > 0)
             {
-                if (!renderer->resize(width, height) || !renderer->render())
+                if (!renderer->resize(width, height) || !demo.render(*renderer))
                 {
                     return 1;
                 }
@@ -88,19 +89,19 @@ int run_application(const pyroclast::ApplicationOptions& options)
         return 1;
     }
 
-    if (options.renderer == pyroclast::Renderer::vulkan)
+    auto creation = pyroclast::create_graphics_device(options.renderer, window.get());
+    if (!creation.error.empty())
     {
-        SDL_Log("Vulkan is not implemented yet; running the SDL window shell.");
-        return run_event_loop(window.get(), nullptr);
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "%s", creation.error.c_str());
+        return 1;
     }
-
-    pyroclast::D3D12Renderer renderer;
-    if (!renderer.initialize(window.get()))
+    pyroclast::TriangleDemo demo;
+    if (creation.device && !demo.initialize(*creation.device))
     {
         return 1;
     }
-    const int exit_code = run_event_loop(window.get(), &renderer);
-    return renderer.wait_idle() ? exit_code : 1;
+    const int exit_code = run_event_loop(window.get(), creation.device.get(), demo);
+    return !creation.device || creation.device->wait_idle() ? exit_code : 1;
 }
 }
 

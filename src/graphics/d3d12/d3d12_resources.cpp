@@ -1,7 +1,6 @@
 #include "d3d12_renderer.hpp"
 
-#include "triangle_vs.hpp"
-#include "triangle_ps.hpp"
+#include "d3d12_resources.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -11,33 +10,26 @@
 
 namespace pyroclast
 {
-namespace
+std::unique_ptr<GraphicsPipeline> D3D12Renderer::create_graphics_pipeline(
+    const GraphicsPipelineDescription& shaders)
 {
-struct Vertex
-{
-    float position[3];
-    float color[3];
-};
-static_assert(sizeof(Vertex) == 24 && offsetof(Vertex, color) == 12);
-constexpr Vertex vertices[] = {
-    {{0.0f, 0.6f, 0.0f}, {1.0f, 0.0f, 0.0f}},
-    {{0.6f, -0.6f, 0.0f}, {0.0f, 1.0f, 0.0f}},
-    {{-0.6f, -0.6f, 0.0f}, {0.0f, 0.0f, 1.0f}}
-};
-}
-
-bool D3D12Renderer::create_triangle_pipeline()
-{
+    if (shaders.vertex_shader.empty() || shaders.pixel_shader.empty())
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Graphics pipeline requires both shader stages.");
+        return nullptr;
+    }
+    auto pipeline = std::make_unique<D3D12GraphicsPipeline>();
+    pipeline->owner = this;
     D3D12_FEATURE_DATA_SHADER_MODEL shader_model{D3D_SHADER_MODEL_6_0};
     if (!check(device_->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL,
         &shader_model, sizeof(shader_model)), "Query shader model support"))
     {
-        return false;
+        return nullptr;
     }
     if (shader_model.HighestShaderModel < D3D_SHADER_MODEL_6_0)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The triangle requires shader model 6.0.");
-        return false;
+        return nullptr;
     }
 
     D3D12_ROOT_SIGNATURE_DESC root_description{};
@@ -53,10 +45,10 @@ bool D3D12Renderer::create_triangle_pipeline()
     }
     if (!check(result, "Serialize root signature") ||
         !check(device_->CreateRootSignature(0, serialized_root->GetBufferPointer(),
-            serialized_root->GetBufferSize(), IID_PPV_ARGS(&root_signature_)),
+            serialized_root->GetBufferSize(), IID_PPV_ARGS(&pipeline->root_signature)),
             "Create root signature"))
     {
-        return false;
+        return nullptr;
     }
 
     const D3D12_INPUT_ELEMENT_DESC input_layout[] = {
@@ -66,9 +58,9 @@ bool D3D12Renderer::create_triangle_pipeline()
             static_cast<UINT>(offsetof(Vertex, color)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
     };
     D3D12_GRAPHICS_PIPELINE_STATE_DESC description{};
-    description.pRootSignature = root_signature_.Get();
-    description.VS = {triangle_vs, sizeof(triangle_vs)};
-    description.PS = {triangle_ps, sizeof(triangle_ps)};
+    description.pRootSignature = pipeline->root_signature.Get();
+    description.VS = {shaders.vertex_shader.data(), shaders.vertex_shader.size()};
+    description.PS = {shaders.pixel_shader.data(), shaders.pixel_shader.size()};
     description.InputLayout = {input_layout, 2};
     description.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     description.NumRenderTargets = 1;
@@ -90,15 +82,27 @@ bool D3D12Renderer::create_triangle_pipeline()
     blend.BlendOpAlpha = D3D12_BLEND_OP_ADD;
     blend.LogicOp = D3D12_LOGIC_OP_NOOP;
     blend.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-    return check(device_->CreateGraphicsPipelineState(&description, IID_PPV_ARGS(&pipeline_)),
-        "Create triangle graphics pipeline") && check_validation();
+    if (!check(device_->CreateGraphicsPipelineState(&description, IID_PPV_ARGS(&pipeline->state)),
+        "Create graphics pipeline") || !check_validation())
+    {
+        return nullptr;
+    }
+    return pipeline;
 }
 
-bool D3D12Renderer::upload_triangle()
+std::unique_ptr<VertexBuffer> D3D12Renderer::create_vertex_buffer(std::span<const Vertex> vertices)
 {
+    if (vertices.empty() || vertices.size_bytes() > std::numeric_limits<UINT>::max())
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Vertex buffer must have a nonzero size fitting a 32-bit buffer view.");
+        return nullptr;
+    }
+    auto buffer = std::make_unique<D3D12VertexBuffer>();
+    buffer->owner = this;
+    buffer->count = static_cast<UINT>(vertices.size());
     D3D12_RESOURCE_DESC description{};
     description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-    description.Width = sizeof(vertices);
+    description.Width = vertices.size_bytes();
     description.Height = 1;
     description.DepthOrArraySize = 1;
     description.MipLevels = 1;
@@ -111,71 +115,59 @@ bool D3D12Renderer::upload_triangle()
     heap.VisibleNodeMask = 1;
     if (!check(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE,
         &description, D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
-        IID_PPV_ARGS(&vertex_buffer_)), "Create triangle vertex buffer"))
+        IID_PPV_ARGS(&buffer->resource)), "Create vertex buffer"))
     {
-        return false;
+        return nullptr;
     }
     heap.Type = D3D12_HEAP_TYPE_UPLOAD;
     if (!check(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE,
         &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-        IID_PPV_ARGS(&triangle_upload_)), "Create triangle upload buffer"))
+        IID_PPV_ARGS(&upload_staging_)), "Create upload buffer"))
     {
-        return false;
+        return nullptr;
     }
 
     void* mapped = nullptr;
     const D3D12_RANGE read_range{0, 0};
-    if (!check(triangle_upload_->Map(0, &read_range, &mapped), "Map triangle upload buffer"))
+    if (!check(upload_staging_->Map(0, &read_range, &mapped), "Map upload buffer"))
     {
-        return false;
+        return nullptr;
     }
-    std::memcpy(mapped, vertices, sizeof(vertices));
-    const D3D12_RANGE written_range{0, sizeof(vertices)};
-    triangle_upload_->Unmap(0, &written_range);
+    std::memcpy(mapped, vertices.data(), vertices.size_bytes());
+    const D3D12_RANGE written_range{0, vertices.size_bytes()};
+    upload_staging_->Unmap(0, &written_range);
 
-    if (!check(frames_[0].allocator->Reset(), "Reset upload allocator") ||
+    if (!wait_idle() || !check(frames_[0].allocator->Reset(), "Reset upload allocator") ||
         !check(command_list_->Reset(frames_[0].allocator.Get(), nullptr), "Reset upload command list"))
     {
-        return false;
+        return nullptr;
     }
-    command_list_->CopyBufferRegion(vertex_buffer_.Get(), 0, triangle_upload_.Get(), 0, sizeof(vertices));
+    command_list_->CopyBufferRegion(buffer->resource.Get(), 0, upload_staging_.Get(), 0, vertices.size_bytes());
     D3D12_RESOURCE_BARRIER barrier{};
     barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    barrier.Transition.pResource = vertex_buffer_.Get();
+    barrier.Transition.pResource = buffer->resource.Get();
     barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
     command_list_->ResourceBarrier(1, &barrier);
     if (!check(command_list_->Close(), "Close upload command list"))
     {
-        return false;
+        return nullptr;
     }
     ID3D12CommandList* lists[] = {command_list_.Get()};
+    pending_upload_buffer_ = buffer->resource;
     queue_->ExecuteCommandLists(1, lists);
 
     if (!wait_idle())
     {
-        return false;
+        return nullptr;
     }
-    triangle_upload_.Reset();
-    vertex_view_.BufferLocation = vertex_buffer_->GetGPUVirtualAddress();
-    vertex_view_.SizeInBytes = static_cast<UINT>(sizeof(vertices));
-    vertex_view_.StrideInBytes = sizeof(Vertex);
-    SDL_Log("Triangle initialized: three vertices, shader model 6.0.");
-    return true;
-}
-
-void D3D12Renderer::draw_triangle()
-{
-    const D3D12_VIEWPORT viewport{0.0f, 0.0f,
-        static_cast<float>(width_), static_cast<float>(height_), 0.0f, 1.0f};
-    const D3D12_RECT scissor{0, 0, width_, height_};
-    command_list_->SetPipelineState(pipeline_.Get());
-    command_list_->SetGraphicsRootSignature(root_signature_.Get());
-    command_list_->RSSetViewports(1, &viewport);
-    command_list_->RSSetScissorRects(1, &scissor);
-    command_list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    command_list_->IASetVertexBuffers(0, 1, &vertex_view_);
-    command_list_->DrawInstanced(3, 1, 0, 0);
+    upload_staging_.Reset();
+    pending_upload_buffer_.Reset();
+    buffer->view.BufferLocation = buffer->resource->GetGPUVirtualAddress();
+    buffer->view.SizeInBytes = static_cast<UINT>(vertices.size_bytes());
+    buffer->view.StrideInBytes = sizeof(Vertex);
+    SDL_Log("Vertex buffer uploaded: %u vertices.", buffer->count);
+    return buffer;
 }
 }

@@ -1,16 +1,12 @@
 #pragma once
 
+#include "../graphics/graphics_api.hpp"
+
 #include <span>
 #include <string>
 
 namespace pyroclast
 {
-enum class Renderer
-{
-    d3d12,
-    vulkan
-};
-
 struct ApplicationOptions
 {
     Renderer renderer = Renderer::d3d12;

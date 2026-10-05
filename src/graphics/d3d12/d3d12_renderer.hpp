@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../graphics_device.hpp"
+
 #include <d3d12.h>
 #include <d3d12sdklayers.h>
 #include <dxgi1_6.h>
@@ -13,18 +15,21 @@ struct SDL_Window;
 
 namespace pyroclast
 {
-class D3D12Renderer final
+class D3D12Renderer final : public GraphicsDevice
 {
 public:
     D3D12Renderer() = default;
-    ~D3D12Renderer();
+    ~D3D12Renderer() override;
     D3D12Renderer(const D3D12Renderer&) = delete;
     D3D12Renderer& operator=(const D3D12Renderer&) = delete;
 
     bool initialize(SDL_Window* window);
-    bool resize(int width, int height);
-    bool render();
-    bool wait_idle();
+    std::unique_ptr<VertexBuffer> create_vertex_buffer(std::span<const Vertex> vertices) override;
+    std::unique_ptr<GraphicsPipeline> create_graphics_pipeline(
+        const GraphicsPipelineDescription& description) override;
+    bool resize(int width, int height) override;
+    bool render(const DrawCommand& draw) override;
+    bool wait_idle() override;
 
 private:
     static constexpr UINT frame_count = 2;
@@ -40,9 +45,6 @@ private:
     bool create_device();
     bool create_swapchain(SDL_Window* window);
     bool create_render_targets();
-    bool create_triangle_pipeline();
-    bool upload_triangle();
-    void draw_triangle();
     bool wait_for_fence(std::uint64_t value);
     bool check(HRESULT result, const char* operation);
     bool check_validation();
@@ -57,11 +59,8 @@ private:
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> rtv_heap_;
     std::array<Frame, frame_count> frames_;
     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> command_list_;
-    Microsoft::WRL::ComPtr<ID3D12RootSignature> root_signature_;
-    Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline_;
-    Microsoft::WRL::ComPtr<ID3D12Resource> vertex_buffer_;
-    Microsoft::WRL::ComPtr<ID3D12Resource> triangle_upload_;
-    D3D12_VERTEX_BUFFER_VIEW vertex_view_{};
+    Microsoft::WRL::ComPtr<ID3D12Resource> upload_staging_;
+    Microsoft::WRL::ComPtr<ID3D12Resource> pending_upload_buffer_;
     std::uint64_t next_fence_value_ = 1;
     UINT rtv_stride_ = 0;
     int width_ = 0;
