@@ -6,15 +6,22 @@
 
 namespace pyroclast
 {
+#ifdef NDEBUG
+inline constexpr const char* build_configuration = "Release";
+#else
+inline constexpr const char* build_configuration = "Debug";
+#endif
+
 class FrameBaseline final
 {
 public:
-    FrameBaseline(std::uint32_t explosions, std::uint32_t capacity, std::optional<std::uint32_t> profile_tick)
-        : explosions_(explosions), capacity_(capacity), profile_tick_(profile_tick) {}
+    FrameBaseline(const char* renderer, std::uint32_t explosions, std::uint32_t capacity, std::optional<std::uint32_t> profile_tick)
+        : renderer_(renderer), explosions_(explosions), capacity_(capacity), profile_tick_(profile_tick) {}
     void disable() { enabled_ = false; }
     void record(double milliseconds, std::optional<GpuTimings> gpu);
 
 private:
+    const char* renderer_;
     std::uint32_t explosions_;
     std::uint32_t capacity_;
     std::optional<std::uint32_t> profile_tick_;

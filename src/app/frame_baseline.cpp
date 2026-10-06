@@ -28,10 +28,10 @@ void FrameBaseline::record(double milliseconds, std::optional<GpuTimings> gpu)
     std::sort(samples_.begin(), samples_.end());
     const double median = (samples_[299] + samples_[300]) * 0.5;
     if (profile_tick_)
-        SDL_Log("Fixed-state sample: tick=%u, zero integration steps, VSync off; warmup=120, samples=600, resolution=1280x720, explosions=%u, capacity=%u.",
-            *profile_tick_, explosions_, capacity_);
-    else SDL_Log("Explosion startup baseline: 600 samples after 120 warmup frames; 1280x720, VSync on, explosions=%u, capacity=%u, burst=%u.",
-        explosions_, capacity_, explosions_ * particle_layout::explosion_particles);
+        SDL_Log("Fixed-state sample: tick=%u, zero integration steps, VSync off; warmup=120, samples=600, resolution=1280x720, explosions=%u, capacity=%u, renderer=%s, build=%s.",
+            *profile_tick_, explosions_, capacity_, renderer_, build_configuration);
+    else SDL_Log("Explosion startup baseline: 600 samples after 120 warmup frames; 1280x720, VSync on, explosions=%u, capacity=%u, burst=%u, renderer=%s, build=%s.",
+        explosions_, capacity_, explosions_ * particle_layout::explosion_particles, renderer_, build_configuration);
     SDL_Log("CPU resize/render call including fence/Present waits: average=%.4f ms, median=%.4f ms, p99=%.4f ms. Not GPU execution time.",
         average, median, samples_[593]);
     if (gpu_count_ != 0)

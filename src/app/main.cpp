@@ -23,10 +23,12 @@ struct SdlCleanup final
 };
 
 int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice* renderer,
-    pyroclast::ParticleSystem& demo, std::optional<std::uint32_t> profile_tick)
+    pyroclast::ParticleSystem& demo, const pyroclast::ApplicationOptions& options)
 {
     const auto window_id = SDL_GetWindowID(window);
-    pyroclast::FrameBaseline baseline(demo.explosion_count(), demo.capacity(), profile_tick);
+    const auto profile_tick = options.profile_tick;
+    pyroclast::FrameBaseline baseline(pyroclast::renderer_name(options.renderer),
+        demo.explosion_count(), demo.capacity(), profile_tick);
     auto previous_time = SDL_GetPerformanceCounter();
     while (true)
     {
@@ -147,7 +149,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
     }
     SDL_SetWindowTitle(window.get(), "Pyroclast - Explosion | Space: trigger | R: clear | P: pause | N: step");
     SDL_Log("Explosion demo ready. Space: trigger, R: clear, P: pause, N: single step.");
-    const int exit_code = run_event_loop(window.get(), creation.device.get(), demo, options.profile_tick);
+    const int exit_code = run_event_loop(window.get(), creation.device.get(), demo, options);
     return !creation.device || creation.device->wait_idle() ? exit_code : 1;
 }
 }
@@ -178,10 +180,11 @@ int main(int argc, char** argv)
     }
 
     const int version = SDL_GetVersion();
-    SDL_Log("Starting Pyroclast (SDL %d.%d.%d)",
+    SDL_Log("Starting Pyroclast (SDL %d.%d.%d, %s build)",
         SDL_VERSIONNUM_MAJOR(version),
         SDL_VERSIONNUM_MINOR(version),
-        SDL_VERSIONNUM_MICRO(version));
+        SDL_VERSIONNUM_MICRO(version),
+        pyroclast::build_configuration);
     SDL_Log("Requested renderer: %s", pyroclast::renderer_name(result.options.renderer));
     const int exit_code = run_application(result.options);
     SDL_Log("Pyroclast shutdown (exit code %d)", exit_code);
