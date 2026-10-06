@@ -42,10 +42,10 @@ bool VulkanRenderer::validation_ok() const
     return validation_errors_.load() == 0;
 }
 
-bool VulkanRenderer::initialize(SDL_Window* window, bool gpu_timing, bool vsync, bool half_smoke)
+bool VulkanRenderer::initialize(SDL_Window* window, const GraphicsDeviceOptions& options)
 {
-    vsync_ = vsync;
-    half_smoke_ = half_smoke;
+    vsync_ = options.vsync;
+    half_smoke_ = options.half_resolution_smoke;
     window_ = window;
     if (!create_instance())
     {
@@ -61,7 +61,7 @@ bool VulkanRenderer::initialize(SDL_Window* window, bool gpu_timing, bool vsync,
     {
         return false;
     }
-    if (gpu_timing && !create_timestamps()) return false;
+    if (options.gpu_timing && !create_timestamps()) return false;
     SDL_Log("Vulkan initialized: %ux%u, two frames in flight, VSync %s.",
         extent_.width, extent_.height, vsync_ ? "enabled" : "disabled");
     return validation_ok();

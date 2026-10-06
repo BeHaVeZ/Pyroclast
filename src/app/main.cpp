@@ -129,8 +129,11 @@ int run_application(const pyroclast::ApplicationOptions& options)
         return 1;
     }
 
-    auto creation = pyroclast::create_graphics_device(options.renderer, window.get(),
-        options.gpu_timing || options.profile_tick.has_value(), !options.profile_tick, options.half_smoke);
+    const pyroclast::GraphicsDeviceOptions device_options{
+        .gpu_timing = options.gpu_timing || options.profile_tick.has_value(),
+        .vsync = !options.profile_tick.has_value(),
+        .half_resolution_smoke = options.half_smoke};
+    auto creation = pyroclast::create_graphics_device(options.renderer, window.get(), device_options);
     if (!creation.error.empty())
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "%s", creation.error.c_str());

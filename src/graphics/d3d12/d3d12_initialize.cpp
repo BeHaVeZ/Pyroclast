@@ -176,16 +176,16 @@ bool D3D12Renderer::create_render_targets()
     return check_validation();
 }
 
-bool D3D12Renderer::initialize(SDL_Window* window, bool gpu_timing, bool vsync, bool half_smoke)
+bool D3D12Renderer::initialize(SDL_Window* window, const GraphicsDeviceOptions& options)
 {
-    vsync_ = vsync;
-    half_smoke_ = half_smoke;
+    vsync_ = options.vsync;
+    half_smoke_ = options.half_resolution_smoke;
     if (!create_device() || !create_swapchain(window) || !check_validation())
     {
         return false;
     }
     if (half_smoke_ && (!create_smoke_pipeline() || !create_smoke_target())) return false;
-    if (gpu_timing && !create_timestamps()) return false;
+    if (options.gpu_timing && !create_timestamps()) return false;
     SDL_Log("D3D12 initialized: %dx%d, two backbuffers, VSync %s.", width_, height_, vsync_ ? "enabled" : "disabled");
     return true;
 }

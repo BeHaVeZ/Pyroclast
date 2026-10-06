@@ -23,7 +23,7 @@ public:
     D3D12Renderer(const D3D12Renderer&) = delete;
     D3D12Renderer& operator=(const D3D12Renderer&) = delete;
 
-    bool initialize(SDL_Window* window, bool gpu_timing = false, bool vsync = true, bool half_smoke = false);
+    bool initialize(SDL_Window* window, const GraphicsDeviceOptions& options);
     std::unique_ptr<VertexBuffer> create_vertex_buffer(std::span<const std::byte> vertices, VertexLayout layout) override;
     std::unique_ptr<GraphicsPipeline> create_graphics_pipeline(
         const GraphicsPipelineDescription& description) override;

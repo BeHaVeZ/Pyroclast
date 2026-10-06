@@ -115,5 +115,12 @@ struct GraphicsDeviceCreation
     std::string error;
 };
 
-GraphicsDeviceCreation create_graphics_device(Renderer renderer, SDL_Window* window, bool gpu_timing = false, bool vsync = true, bool half_smoke = false);
+struct GraphicsDeviceOptions
+{
+    bool gpu_timing = false;
+    bool vsync = true;
+    bool half_resolution_smoke = false;
+};
+
+GraphicsDeviceCreation create_graphics_device(Renderer renderer, SDL_Window* window, const GraphicsDeviceOptions& options = {});
 }
