@@ -66,6 +66,8 @@ int main()
     const auto layered = [](const TestDevice& owner, const ParticleSystem& particles, const ParticleWork& work, std::uint32_t explosions) {
         const auto emissive_count = explosions * ParticleSystem::emissive_particles;
         return &work.smoke.pipeline == owner.smoke && &work.emissive.pipeline == owner.emissive &&
+            work.smoke.layer == particle_layout::particle_layer_smoke &&
+            work.emissive.layer == particle_layout::particle_layer_emissive &&
             work.smoke.first_record == emissive_count && work.smoke.record_count == particles.capacity() - emissive_count &&
             work.emissive.first_record == 0 && work.emissive.record_count == emissive_count;
     };

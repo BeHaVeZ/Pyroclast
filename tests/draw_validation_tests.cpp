@@ -46,6 +46,8 @@ int main()
     check("range starting past the end", validate(buffer, {{light, records + 1, 1}}, nullptr, false), "outside the vertex buffer");
     check("range running past the end", validate(buffer, {{light, 600, 401}}, nullptr, false), "outside the vertex buffer");
     check("range count that would overflow", validate(buffer, {{light, 2, 0xffffffffu}}, nullptr, false), "outside the vertex buffer");
+    check("smoke layer", validate(buffer, {{smoke, 600, 400, particle_layout::particle_layer_smoke}}, nullptr, false), nullptr);
+    check("unknown layer", validate(buffer, {{light, 0, 600, 2}}, nullptr, false), "unknown particle layer");
 
     check("half resolution without smoke", validate(buffer, {{light, 0, 600}}, nullptr, true), "one leading particle smoke range");
     check("half resolution with smoke last", validate(buffer, {{light, 0, 600}, {smoke, 600, 400}}, nullptr, true),

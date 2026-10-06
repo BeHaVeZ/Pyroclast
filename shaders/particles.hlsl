@@ -1,6 +1,6 @@
 #include "explosion.hlsli"
 
-struct ViewParameters { float aspect_ratio; uint first_record; };
+struct ViewParameters { float aspect_ratio; uint layer; };
 #ifdef __spirv__
 [[vk::push_constant]]
 #endif
@@ -24,7 +24,7 @@ PixelInput vs_main(float2 position : POSITION, float3 life : TEXCOORD0,
     float2 corner = corners[vertex];
     float size = life.y > 0 ? life.z : 0;
     float progress = life.y > 0 ? saturate(life.x / max(life.y, 0.001)) : 1;
-    bool smoke = view.first_record != 0;
+    bool smoke = view.layer == particle_layer_smoke;
     bool fireball = !smoke && instance % emissive_particles < fireball_particles;
     if (smoke) size *= 1 + 0.55 * life.x;
     else if (fireball) size *= 1 + 1.8 * progress;

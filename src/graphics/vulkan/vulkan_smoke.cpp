@@ -228,7 +228,7 @@ void VulkanRenderer::draw_range(VkCommandBuffer command, const DrawRange& range,
     const VkDeviceSize offset = static_cast<VkDeviceSize>(range.first_record) * vertices.stride();
     vkCmdBindVertexBuffers(command, 0, 1, &vertices.buffer, &offset);
     vkCmdPushConstants(command, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float), &aspect);
-    vkCmdPushConstants(command, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, sizeof(float), sizeof(std::uint32_t), &range.first_record);
+    vkCmdPushConstants(command, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, sizeof(float), sizeof(std::uint32_t), &range.layer);
     vkCmdDraw(command, 6, range.record_count, 0, 0);
 }
 

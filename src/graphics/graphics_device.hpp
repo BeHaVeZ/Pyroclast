@@ -72,6 +72,7 @@ struct DrawRange
     const GraphicsPipeline& pipeline;
     std::uint32_t first_record;
     std::uint32_t record_count;
+    std::uint32_t layer;
 };
 
 struct DrawCommand

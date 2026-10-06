@@ -18,6 +18,10 @@ const char* validate_draw(const DrawCommand& draw, bool half_resolution_smoke)
         {
             return "Draw range lies outside the vertex buffer.";
         }
+        if (range.layer != particle_layout::particle_layer_emissive && range.layer != particle_layout::particle_layer_smoke)
+        {
+            return "Draw range names an unknown particle layer.";
+        }
     }
     const auto is_smoke = [](const DrawRange& range) {
         return range.pipeline.blend() == BlendMode::premultiplied_alpha;

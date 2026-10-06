@@ -105,7 +105,7 @@ void D3D12Renderer::draw_range(const DrawRange& range, const D3D12VertexBuffer& 
     view.SizeInBytes = range.record_count * view.StrideInBytes;
     command_list_->IASetVertexBuffers(0, 1, &view);
     command_list_->SetGraphicsRoot32BitConstants(0, 1, &aspect, 0);
-    command_list_->SetGraphicsRoot32BitConstants(0, 1, &range.first_record, 1);
+    command_list_->SetGraphicsRoot32BitConstants(0, 1, &range.layer, 1);
     command_list_->DrawInstanced(6, range.record_count, 0, 0);
 }
 

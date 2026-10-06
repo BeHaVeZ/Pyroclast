@@ -56,8 +56,8 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds)
     const auto emissive_count = explosion_count_ * emissive_particles;
     return {
         {*compute_, {capacity_, steps, burst_count_, reset_epoch_}, (capacity_ + group_size - 1) / group_size},
-        {*smoke_graphics_, emissive_count, capacity_ - emissive_count},
-        {*graphics_, 0, emissive_count},
+        {*smoke_graphics_, emissive_count, capacity_ - emissive_count, particle_layout::particle_layer_smoke},
+        {*graphics_, 0, emissive_count, particle_layout::particle_layer_emissive},
         steps};
 }
 
