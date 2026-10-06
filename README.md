@@ -227,7 +227,8 @@ Debug Vulkan requires `VK_LAYER_KHRONOS_validation` and enables synchronization
 validation. Startup fails with an installation/path hint if the layer is absent.
 Repeat the explosion and resize/minimize checks with `--renderer=vulkan`; a clean
 Debug run logs `Vulkan validation summary: 0 warnings, 0 errors` and exits with
-code 0. Loader warnings from installed third-party overlays are also logged.
+code 0. Loader messages from installed third-party overlays are logged as
+`Vulkan loader:` and are not counted in the summary.
 
 `cmake/Shaders.cmake` compiles `shaders/particles.hlsl` (`vs_main`, `ps_main`)
 and `shaders/particles_compute.hlsl` (`cs_main`) for both backends.

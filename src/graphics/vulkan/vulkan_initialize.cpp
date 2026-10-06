@@ -9,20 +9,20 @@
 namespace pyroclast
 {
 VKAPI_ATTR VkBool32 VKAPI_CALL VulkanRenderer::debug_callback(
-    VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT,
+    VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT type,
     const VkDebugUtilsMessengerCallbackDataEXT* data, void* user)
 {
     auto& renderer = *static_cast<VulkanRenderer*>(user);
-    if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
+    const bool error = (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) != 0;
+    const bool validation = (type & (VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+        VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT)) != 0;
+    if (validation)
     {
-        ++renderer.validation_errors_;
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Vulkan validation: %s", data->pMessage);
+        ++(error ? renderer.validation_errors_ : renderer.validation_warnings_);
     }
-    else
-    {
-        ++renderer.validation_warnings_;
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Vulkan validation: %s", data->pMessage);
-    }
+    const char* source = validation ? "Vulkan validation" : "Vulkan loader";
+    if (error) SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "%s: %s", source, data->pMessage);
+    else SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "%s: %s", source, data->pMessage);
     return VK_FALSE;
 }
 
