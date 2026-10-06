@@ -1,4 +1,4 @@
-#include "simulation/particle_system.hpp"
+#include "app/explosion_renderer.hpp"
 #include "graphics/draw_validation.hpp"
 
 #include <cstdio>
@@ -36,23 +36,15 @@ public:
     std::optional<pyroclast::GpuTimings> completed_gpu_timings() const override { return std::nullopt; }
     pyroclast::RenderResult render(const pyroclast::DrawCommand& draw) override
     {
-        valid_ranges = pyroclast::validate_draw(draw, true) == nullptr && draw.ranges.size() == 2 &&
-            &draw.ranges[0].pipeline == smoke && &draw.ranges[1].pipeline == emissive &&
-            draw.ranges[0].first_record == expected_explosions * pyroclast::ParticleSystem::emissive_particles &&
-            draw.ranges[0].record_count == draw.vertices.record_count() - expected_explosions * pyroclast::ParticleSystem::emissive_particles &&
-            draw.ranges[1].first_record == 0 && draw.ranges[1].record_count == expected_explosions * pyroclast::ParticleSystem::emissive_particles;
-        constants = draw.compute->constants;
-        groups = draw.compute->group_count;
+        valid_frame = pyroclast::validate_draw(draw, true) == nullptr && draw.ranges.size() == 2 &&
+            &draw.ranges[0].pipeline == smoke && &draw.ranges[1].pipeline == emissive && draw.compute;
         return result;
     }
 
-    std::uint32_t expected_explosions = 1;
     bool valid_upload = false;
-    bool valid_ranges = false;
+    bool valid_frame = false;
     const pyroclast::GraphicsPipeline* smoke = nullptr;
     const pyroclast::GraphicsPipeline* emissive = nullptr;
-    std::array<std::uint32_t, 4> constants{};
-    std::uint32_t groups = 0;
     pyroclast::RenderResult result = pyroclast::RenderResult::submitted;
 };
 }
@@ -66,107 +58,112 @@ int main()
     const auto check = [&failures](bool value, const char* name) {
         if (!value) { std::fprintf(stderr, "FAIL: %s\n", name); ++failures; }
     };
+    const auto submit = [](ParticleSystem& particles, double elapsed) {
+        const auto work = particles.plan(elapsed);
+        particles.commit(work);
+        return work;
+    };
+    const auto layered = [](const TestDevice& owner, const ParticleSystem& particles, const ParticleWork& work, std::uint32_t explosions) {
+        const auto emissive_count = explosions * ParticleSystem::emissive_particles;
+        return &work.smoke.pipeline == owner.smoke && &work.emissive.pipeline == owner.emissive &&
+            work.smoke.first_record == emissive_count && work.smoke.record_count == particles.capacity() - emissive_count &&
+            work.emissive.first_record == 0 && work.emissive.record_count == emissive_count;
+    };
+    constexpr auto group_size = particle_layout::simulation_group_size;
+
     check(system.initialize(device) && device.valid_upload, "bounded zero-initialized pool");
-    system.render(device, 16.0f / 9.0f, 1.0 / 60);
-    check(device.constants[0] == 8192 && device.groups == 128 && device.constants[2] == ParticleSystem::explosion_particles, "default dispatch");
-    check(device.constants[1] == 1, "fixed simulation step");
-    check(device.valid_ranges, "smoke alpha draw precedes additive light and covers the bounded pool");
+    const auto first = submit(system, 1.0 / 60);
+    check(first.dispatch.constants[0] == ParticleSystem::minimum_capacity &&
+        first.dispatch.group_count == ParticleSystem::minimum_capacity / group_size &&
+        first.dispatch.constants[2] == ParticleSystem::explosion_particles, "default dispatch");
+    check(first.steps == 1 && first.dispatch.constants[1] == 1, "fixed simulation step");
+    check(layered(device, system, first, 1), "smoke and light cover the bounded pool as two contiguous layers");
     system.toggle_pause();
-    system.render(device, 1, 1.0 / 60);
-    check(device.constants[1] == 0, "pause does not advance simulation");
+    check(submit(system, 1.0 / 60).steps == 0, "pause does not advance simulation");
     system.step();
-    device.result = RenderResult::skipped;
-    check(system.render(device, 1, 1.0 / 60) == RenderResult::skipped, "skipped submission is reported");
-    device.result = RenderResult::submitted;
-    system.render(device, 1, 1.0 / 60);
-    check(device.constants[1] != 0, "skipped submission preserves queued step");
-    system.render(device, 1, 1.0 / 60);
-    check(device.constants[1] == 0, "step advances exactly once");
+    system.plan(1.0 / 60);
+    check(submit(system, 1.0 / 60).steps != 0, "skipped submission preserves queued step");
+    check(submit(system, 1.0 / 60).steps == 0, "step advances exactly once");
     system.step();
     system.reset();
-    device.result = RenderResult::skipped;
-    system.render(device, 1, 1.0 / 60);
-    const auto epoch = device.constants[3];
-    device.result = RenderResult::submitted;
-    system.render(device, 1, 1.0 / 60);
-    check(epoch == 2 && device.constants[3] == epoch && device.constants[1] == 0,
+    const auto epoch = system.plan(1.0 / 60).dispatch.constants[3];
+    const auto cleared = submit(system, 1.0 / 60);
+    check(epoch == 2 && cleared.dispatch.constants[3] == epoch && cleared.steps == 0,
         "reset persists across skipped frames and clears queued steps");
-    check(device.constants[2] == 0, "clear requests no new particles");
+    check(cleared.dispatch.constants[2] == 0, "clear requests no new particles");
     system.step();
     system.trigger_explosion();
-    device.result = RenderResult::skipped;
-    system.render(device, 1, 1.0 / 60);
-    const auto trigger_epoch = device.constants[3];
-    device.result = RenderResult::submitted;
-    system.render(device, 1, 1.0 / 60);
-    check(device.constants[2] == ParticleSystem::explosion_particles && device.constants[3] == trigger_epoch &&
-        device.constants[1] == 0, "trigger survives skipped submission, retains pause, clears pending steps");
-    system.render(device, 1, 1.0 / 60);
-    check(device.constants[3] == trigger_epoch, "trigger epoch does not advance each frame");
+    const auto trigger_epoch = system.plan(1.0 / 60).dispatch.constants[3];
+    const auto triggered = submit(system, 1.0 / 60);
+    check(triggered.dispatch.constants[2] == ParticleSystem::explosion_particles && triggered.dispatch.constants[3] == trigger_epoch &&
+        triggered.steps == 0, "trigger survives skipped submission, retains pause, clears pending steps");
+    check(submit(system, 1.0 / 60).dispatch.constants[3] == trigger_epoch, "trigger epoch does not advance each frame");
     for (int trigger = 0; trigger < 10; ++trigger) system.trigger_explosion();
-    system.render(device, 1, 1.0 / 60);
-    check(device.constants[2] == ParticleSystem::explosion_particles && device.constants[3] == trigger_epoch + 10,
+    const auto retriggered = submit(system, 1.0 / 60);
+    check(retriggered.dispatch.constants[2] == ParticleSystem::explosion_particles && retriggered.dispatch.constants[3] == trigger_epoch + 10,
         "repeated triggers replace the burst without growing particle count");
     system.toggle_pause();
-    system.render(device, 1, 1.0 / 60);
-    check(device.constants[1] == 1, "triggered burst advances after resuming");
+    check(submit(system, 1.0 / 60).steps == 1, "triggered burst advances after resuming");
+
     ParticleSystem timed;
     timed.initialize(device);
     std::uint32_t ticks = 0;
-    for (int frame = 0; frame < 240; ++frame)
-    {
-        timed.render(device, 1, 1.0 / 240);
-        ticks += device.constants[1];
-    }
+    for (int frame = 0; frame < 240; ++frame) ticks += submit(timed, 1.0 / 240).steps;
     check(ticks == 60, "240 Hz presentation still advances 60 simulation ticks per second");
-    timed.render(device, 1, 1.0);
-    check(device.constants[1] == 4, "catch-up work is bounded after a stall");
-    timed.render(device, 1, 0);
-    check(device.constants[1] == 0, "excess catch-up time is discarded");
-    device.result = RenderResult::skipped;
-    timed.render(device, 1, 1.0 / 60);
-    device.result = RenderResult::submitted;
-    timed.render(device, 1, 0);
-    check(device.constants[1] == 1, "skipped submission preserves accumulated simulation time");
+    check(submit(timed, 1.0).steps == particle_layout::maximum_simulation_steps, "catch-up work is bounded after a stall");
+    check(submit(timed, 0).steps == 0, "excess catch-up time is discarded");
+    timed.plan(1.0 / 60);
+    check(submit(timed, 0).steps == 1, "skipped submission preserves accumulated simulation time");
+
     for (const auto count : {1u, 10u, 50u, 100u})
     {
         TestDevice stress_device;
-        stress_device.expected_explosions = count;
         ParticleSystem stress;
         check(stress.initialize(stress_device, count), "stress initialization");
-        stress.render(stress_device, 1, 0);
+        const auto started = submit(stress, 0);
         const auto burst = count * ParticleSystem::explosion_particles;
         const auto expected_capacity = count == 1 ? ParticleSystem::minimum_capacity : burst;
         check(stress_device.valid_upload && stress.capacity() == expected_capacity &&
-            stress_device.constants[0] == expected_capacity && stress_device.constants[2] == burst &&
-            stress_device.groups == (expected_capacity + particle_layout::simulation_group_size - 1) / particle_layout::simulation_group_size &&
-            stress_device.valid_ranges,
+            stress.particles().record_count() == expected_capacity &&
+            started.dispatch.constants[0] == expected_capacity && started.dispatch.constants[2] == burst &&
+            started.dispatch.group_count == (expected_capacity + group_size - 1) / group_size &&
+            layered(stress_device, stress, started, count),
             "bounded stress dispatch and layer-contiguous ranges");
         stress.reset();
-        stress.render(stress_device, 1, 0);
-        check(stress_device.constants[2] == 0 && stress_device.valid_ranges, "clear retains scenario layout");
+        const auto emptied = submit(stress, 0);
+        check(emptied.dispatch.constants[2] == 0 && layered(stress_device, stress, emptied, count), "clear retains scenario layout");
         stress.trigger_explosion();
-        stress.render(stress_device, 1, 0);
-        check(stress_device.constants[2] == burst, "restart restores selected group");
+        check(submit(stress, 0).dispatch.constants[2] == burst, "restart restores selected group");
     }
-    TestDevice profile_device;
+
     ParticleSystem profile;
-    profile.initialize(profile_device);
+    profile.initialize(device);
     profile.prepare_profile(180);
-    profile_device.result = RenderResult::skipped;
-    profile.render(profile_device, 1, 1);
+    profile.plan(1);
     check(profile.has_pending_steps(), "skipped profile preparation retains ticks");
-    profile_device.result = RenderResult::submitted;
     for (int tick = 0; tick < 180; ++tick)
     {
-        profile.render(profile_device, 1, 1);
-        check(profile_device.constants[1] == 1, "profile preparation advances one fixed tick");
+        check(submit(profile, 1).steps == 1, "profile preparation advances one fixed tick");
     }
     check(!profile.has_pending_steps(), "profile reaches target tick exactly");
-    profile.render(profile_device, 1, 1);
-    check(profile_device.constants[1] == 0, "profile state stays frozen regardless of elapsed time");
+    check(submit(profile, 1).steps == 0, "profile state stays frozen regardless of elapsed time");
+
     ParticleSystem invalid;
     check(!invalid.initialize(device, 0) &&
         !invalid.initialize(device, 101), "invalid scenarios fail before allocation");
+
+    ParticleSystem rendered;
+    rendered.initialize(device);
+    check(render_explosions(device, rendered, 16.0f / 9.0f, 1.0 / 60) == RenderResult::submitted && device.valid_frame,
+        "rendered frame is valid: smoke alpha draw precedes additive light");
+    rendered.toggle_pause();
+    rendered.step();
+    device.result = RenderResult::skipped;
+    check(render_explosions(device, rendered, 1, 1.0 / 60) == RenderResult::skipped && rendered.has_pending_steps(),
+        "skipped frame is reported and keeps its queued step");
+    device.result = RenderResult::submitted;
+    render_explosions(device, rendered, 1, 1.0 / 60);
+    check(!rendered.has_pending_steps(), "submitted frame consumes its queued step");
+
     return failures == 0 ? 0 : 1;
 }

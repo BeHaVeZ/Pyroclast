@@ -37,12 +37,15 @@ bool ParticleSystem::initialize(GraphicsDevice& device, std::uint32_t explosions
     return true;
 }
 
-RenderResult ParticleSystem::render(GraphicsDevice& device, float aspect_ratio, double elapsed_seconds)
+namespace
+{
+constexpr double fixed_step = 1.0 / 60.0;
+}
+
+ParticleWork ParticleSystem::plan(double elapsed_seconds)
 {
     assert(particles_ && graphics_ && smoke_graphics_ && compute_);
     assert(std::isfinite(elapsed_seconds) && elapsed_seconds >= 0);
-    assert(std::isfinite(aspect_ratio) && aspect_ratio > 0);
-    constexpr double fixed_step = 1.0 / 60.0;
     if (!paused_)
     {
         accumulator_ = std::min(accumulator_ + elapsed_seconds, particle_layout::maximum_simulation_steps * fixed_step);
@@ -50,20 +53,18 @@ RenderResult ParticleSystem::render(GraphicsDevice& device, float aspect_ratio, 
     const auto steps = paused_ ? std::min(pending_steps_, 1u) :
         static_cast<std::uint32_t>(std::floor(accumulator_ / fixed_step));
     constexpr auto group_size = particle_layout::simulation_group_size;
-    const ComputeDispatch dispatch{*compute_,
-        {capacity_, steps, burst_count_, reset_epoch_}, (capacity_ + group_size - 1) / group_size};
     const auto emissive_count = explosion_count_ * emissive_particles;
-    const DrawRange ranges[] = {
+    return {
+        {*compute_, {capacity_, steps, burst_count_, reset_epoch_}, (capacity_ + group_size - 1) / group_size},
         {*smoke_graphics_, emissive_count, capacity_ - emissive_count},
-        {*graphics_, 0, emissive_count}
-    };
-    const auto result = device.render({*particles_, ranges, {0.04f, 0.07f, 0.12f, 1.0f}, &dispatch, aspect_ratio});
-    if (result == RenderResult::submitted)
-    {
-        if (paused_) pending_steps_ -= steps;
-        else accumulator_ = std::max(0.0, accumulator_ - steps * fixed_step);
-    }
-    return result;
+        {*graphics_, 0, emissive_count},
+        steps};
+}
+
+void ParticleSystem::commit(const ParticleWork& work)
+{
+    if (paused_) pending_steps_ -= std::min(pending_steps_, work.steps);
+    else accumulator_ = std::max(0.0, accumulator_ - work.steps * fixed_step);
 }
 
 void ParticleSystem::prepare_profile(std::uint32_t tick)

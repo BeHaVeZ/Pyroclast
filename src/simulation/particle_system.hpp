@@ -22,6 +22,14 @@ static_assert(sizeof(Particle) == particle_layout::particle_stride &&
     offsetof(Particle, size) == particle_layout::particle_life_offset + 8 &&
     offsetof(Particle, reset_epoch) == particle_layout::particle_epoch_offset);
 
+struct ParticleWork
+{
+    ComputeDispatch dispatch;
+    DrawRange smoke;
+    DrawRange emissive;
+    std::uint32_t steps;
+};
+
 class ParticleSystem final
 {
 public:
@@ -33,7 +41,9 @@ public:
     bool initialize(GraphicsDevice& device, std::uint32_t explosions = 1);
     std::uint32_t capacity() const { return capacity_; }
     std::uint32_t explosion_count() const { return explosion_count_; }
-    RenderResult render(GraphicsDevice& device, float aspect_ratio, double elapsed_seconds);
+    const VertexBuffer& particles() const { return *particles_; }
+    ParticleWork plan(double elapsed_seconds);
+    void commit(const ParticleWork& work);
     void prepare_profile(std::uint32_t tick);
     bool has_pending_steps() const { return pending_steps_ != 0; }
     void trigger_explosion();

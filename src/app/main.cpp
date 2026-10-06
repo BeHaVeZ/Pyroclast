@@ -2,8 +2,8 @@
 #include <SDL3/SDL_main.h>
 
 #include "command_line.hpp"
+#include "explosion_renderer.hpp"
 #include "frame_baseline.hpp"
-#include "../simulation/particle_system.hpp"
 
 #include <cstdio>
 #include <memory>
@@ -83,7 +83,8 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice* renderer,
                 const double elapsed = static_cast<double>(start - previous_time) /
                     static_cast<double>(SDL_GetPerformanceFrequency());
                 previous_time = start;
-                const auto result = demo.render(*renderer, static_cast<float>(width) / static_cast<float>(height), elapsed);
+                const auto result = pyroclast::render_explosions(*renderer, demo,
+                    static_cast<float>(width) / static_cast<float>(height), elapsed);
                 if (result == pyroclast::RenderResult::failed) return 1;
                 if (result == pyroclast::RenderResult::submitted)
                 {
