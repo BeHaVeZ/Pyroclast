@@ -27,6 +27,7 @@ find_package(Vulkan 1.1 REQUIRED)
 add_executable(Pyroclast
     src/app/main.cpp
     src/app/frame_baseline.cpp
+    src/app/frame_statistics.cpp
     src/app/command_line.cpp
     src/app/explosion_renderer.cpp
     src/simulation/particle_system.cpp
@@ -70,6 +71,10 @@ if(BUILD_TESTING)
     target_include_directories(DrawValidationTests PRIVATE src)
     add_test(NAME draw_validation COMMAND DrawValidationTests)
     list(APPEND project_targets DrawValidationTests)
+    add_executable(FrameStatisticsTests tests/frame_statistics_tests.cpp src/app/frame_statistics.cpp)
+    target_include_directories(FrameStatisticsTests PRIVATE src)
+    add_test(NAME frame_statistics COMMAND FrameStatisticsTests)
+    list(APPEND project_targets FrameStatisticsTests)
 endif()
 
 foreach(target IN LISTS project_targets)

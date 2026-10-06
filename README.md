@@ -199,7 +199,7 @@ In Visual Studio, open this repository with **File > Open > Folder**, select the
 right-click the executable in CMake Targets View and select **Add Debug
 Configuration**. Set `args` in the generated `launch.vs.json`, for example
 `"args": ["--renderer=vulkan"]`. Keep the generated target and executable fields.
-The local `.vs/` settings are ignored by Git. Run the `command_line`, `particle_controls` and `draw_validation` tests from
+The local `.vs/` settings are ignored by Git. Run the `command_line`, `particle_controls`, `draw_validation` and `frame_statistics` tests from
 **Test > Test Explorer**, or run the CTest commands above in Developer PowerShell.
 
 For Vulkan Debug with a copy-only SDK, also add an `env` property to that launch
@@ -286,6 +286,11 @@ presentation time, so the output separates CPU call times from GPU regions.
 ```powershell
 .\out\build\windows-x64\Release\Pyroclast.exe --renderer=vulkan --explosions=100 --profile-tick=180
 ```
+
+When a startup or fixed-state sample completes, the application also prints one
+JSON line on standard output: build configuration, renderer, GPU name, scenario,
+smoke resolution, and the same CPU and GPU timings as the log. Scripts should read
+that record instead of matching log text.
 
 In Visual Studio, add `"--profile-tick=180"` to your existing profile's `args`.
 The frozen plume is intentional. Remove that argument to restore normal playback.

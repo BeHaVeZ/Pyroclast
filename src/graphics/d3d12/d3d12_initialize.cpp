@@ -62,6 +62,7 @@ bool D3D12Renderer::create_device()
         char adapter_name[512]{};
         WideCharToMultiByte(CP_UTF8, 0, description.Description, -1,
             adapter_name, static_cast<int>(sizeof(adapter_name)), nullptr, nullptr);
+        adapter_name_ = adapter_name;
         SDL_Log("D3D12 adapter: %s", adapter_name);
         break;
     }

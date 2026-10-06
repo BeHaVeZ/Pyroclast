@@ -40,6 +40,7 @@ public:
     bool resize(int, int) override { return true; }
     bool wait_idle() override { return true; }
     std::optional<pyroclast::GpuTimings> completed_gpu_timings() const override { return std::nullopt; }
+    std::string_view adapter_name() const override { return "test device"; }
     pyroclast::RenderResult render(const pyroclast::Frame& frame) override
     {
         valid_frame = pyroclast::validate_frame(frame) == nullptr && frame.compute;

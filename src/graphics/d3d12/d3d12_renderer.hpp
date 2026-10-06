@@ -34,6 +34,7 @@ public:
     RenderResult render(const Frame& frame) override;
     bool wait_idle() override;
     std::optional<GpuTimings> completed_gpu_timings() const override { return gpu_timings_; }
+    std::string_view adapter_name() const override { return adapter_name_; }
 
 private:
     static constexpr UINT frame_count = 2;
@@ -61,6 +62,7 @@ private:
     bool check(HRESULT result, const char* operation);
     bool check_validation();
 
+    std::string adapter_name_;
     Microsoft::WRL::ComPtr<IDXGIFactory6> factory_;
     Microsoft::WRL::ComPtr<ID3D12Device> device_;
     Microsoft::WRL::ComPtr<ID3D12InfoQueue> info_queue_;

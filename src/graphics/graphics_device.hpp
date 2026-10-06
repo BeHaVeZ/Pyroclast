@@ -11,6 +11,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 
 struct SDL_Window;
 
@@ -132,6 +133,8 @@ public:
     virtual RenderResult render(const Frame& frame) = 0;
     virtual bool wait_idle() = 0;
     virtual std::optional<GpuTimings> completed_gpu_timings() const = 0;
+    // The selected GPU as the driver reports it; valid for the device's lifetime.
+    virtual std::string_view adapter_name() const = 0;
 };
 
 struct GraphicsDeviceCreation

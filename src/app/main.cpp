@@ -27,8 +27,8 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, pyro
 {
     const auto window_id = SDL_GetWindowID(window);
     const auto profile_tick = options.profile_tick;
-    pyroclast::FrameBaseline baseline(pyroclast::renderer_name(options.renderer),
-        demo.explosion_count(), demo.capacity(), profile_tick);
+    pyroclast::FrameBaseline baseline({pyroclast::renderer_name(options.renderer), std::string(renderer.adapter_name()),
+        demo.explosion_count(), demo.capacity(), profile_tick, options.half_smoke});
     auto previous_time = SDL_GetPerformanceCounter();
     while (true)
     {

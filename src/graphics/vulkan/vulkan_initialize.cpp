@@ -248,6 +248,7 @@ bool VulkanRenderer::create_device()
     vkGetDeviceQueue(device_, queue_family_, 0, &queue_);
     VkPhysicalDeviceProperties properties{};
     vkGetPhysicalDeviceProperties(physical_, &properties);
+    adapter_name_ = properties.deviceName;
     SDL_Log("Vulkan adapter: %s", properties.deviceName);
     return validation_ok();
 }

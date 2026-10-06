@@ -28,6 +28,7 @@ public:
     RenderResult render(const Frame& frame) override;
     bool wait_idle() override;
     std::optional<GpuTimings> completed_gpu_timings() const override { return gpu_timings_; }
+    std::string_view adapter_name() const override { return adapter_name_; }
 
 private:
     struct FrameSlot
@@ -68,6 +69,7 @@ private:
         const VkDebugUtilsMessengerCallbackDataEXT* data, void* user);
 
     SDL_Window* window_ = nullptr;
+    std::string adapter_name_;
     VkInstance instance_ = VK_NULL_HANDLE;
     VkDebugUtilsMessengerEXT messenger_ = VK_NULL_HANDLE;
     VkSurfaceKHR surface_ = VK_NULL_HANDLE;
