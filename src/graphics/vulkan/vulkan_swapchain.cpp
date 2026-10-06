@@ -22,11 +22,6 @@ bool VulkanRenderer::create_swapchain()
         extent_.height = std::clamp(static_cast<std::uint32_t>(height_),
             capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
     }
-    if (extent_.width == 0 || extent_.height == 0)
-    {
-        rebuild_ = true;
-        return true;
-    }
     std::uint32_t count = 0;
     if (!check(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_, surface_, &count, nullptr), "Enumerate Vulkan surface formats"))
     {
@@ -83,6 +78,11 @@ bool VulkanRenderer::create_swapchain()
         {
             return false;
         }
+    }
+    if (extent_.width == 0 || extent_.height == 0)
+    {
+        rebuild_ = true;
+        return true;
     }
     VkSwapchainCreateInfoKHR info{};
     info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
