@@ -26,7 +26,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice* renderer,
     pyroclast::ParticleSystem& demo)
 {
     const auto window_id = SDL_GetWindowID(window);
-    pyroclast::FrameBaseline baseline;
+    pyroclast::FrameBaseline baseline(demo.explosion_count(), demo.capacity());
     auto previous_time = SDL_GetPerformanceCounter();
     while (true)
     {
@@ -133,7 +133,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
         return 1;
     }
     pyroclast::ParticleSystem demo;
-    if (creation.device && !demo.initialize(*creation.device, options.renderer))
+    if (creation.device && !demo.initialize(*creation.device, options.renderer, options.explosions))
     {
         return 1;
     }
@@ -157,9 +157,10 @@ int main(int argc, char** argv)
     if (result.options.show_help)
     {
         std::puts(
-            "Usage: Pyroclast.exe [--renderer=d3d12|vulkan] [--gpu-timing] [--help]\n"
+            "Usage: Pyroclast.exe [--renderer=d3d12|vulkan] [--explosions=1|10|50|100] [--gpu-timing] [--help]\n"
             "  --renderer=d3d12   Request Direct3D 12 (default).\n"
             "  --renderer=vulkan  Request Vulkan.\n"
+            "  --explosions=N     Simultaneous explosion group (1, 10, 50, 100; default 1).\n"
             "  --gpu-timing       Enable GPU timestamp measurements.\n"
             "  --help             Print usage and exit.\n"
             "Both renderers run the same GPU explosion effect.");

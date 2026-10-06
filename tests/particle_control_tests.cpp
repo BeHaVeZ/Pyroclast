@@ -14,7 +14,10 @@ namespace
 class TestBuffer final : public pyroclast::VertexBuffer
 {
 public:
-    std::uint32_t vertex_count() const override { return pyroclast::ParticleSystem::capacity; }
+    explicit TestBuffer(std::uint32_t count) : count_(count) {}
+    std::uint32_t vertex_count() const override { return count_; }
+private:
+    std::uint32_t count_;
 };
 
 class TestDevice final : public pyroclast::GraphicsDevice
@@ -23,9 +26,9 @@ public:
     std::unique_ptr<pyroclast::VertexBuffer> create_vertex_buffer(
         std::span<const std::byte> bytes, pyroclast::VertexLayout layout) override
     {
-        valid_upload = layout == pyroclast::VertexLayout::particle && bytes.size() == 8192 * 32;
+        valid_upload = layout == pyroclast::VertexLayout::particle && bytes.size() >= 8192 * 32 && bytes.size() <= 256000 * 32;
         for (const auto byte : bytes) valid_upload &= byte == std::byte{0};
-        return std::make_unique<TestBuffer>();
+        return std::make_unique<TestBuffer>(static_cast<std::uint32_t>(bytes.size() / 32));
     }
     std::unique_ptr<pyroclast::GraphicsPipeline> create_graphics_pipeline(
         const pyroclast::GraphicsPipelineDescription& description) override
@@ -47,14 +50,15 @@ public:
     {
         valid_ranges = draw.ranges.size() == 2 &&
             &draw.ranges[0].pipeline == smoke && &draw.ranges[1].pipeline == emissive &&
-            draw.ranges[0].first_record == pyroclast::ParticleSystem::emissive_particles &&
-            draw.ranges[0].record_count == pyroclast::ParticleSystem::capacity - pyroclast::ParticleSystem::emissive_particles &&
-            draw.ranges[1].first_record == 0 && draw.ranges[1].record_count == pyroclast::ParticleSystem::emissive_particles;
+            draw.ranges[0].first_record == expected_explosions * pyroclast::ParticleSystem::emissive_particles &&
+            draw.ranges[0].record_count == draw.vertices.vertex_count() - expected_explosions * pyroclast::ParticleSystem::emissive_particles &&
+            draw.ranges[1].first_record == 0 && draw.ranges[1].record_count == expected_explosions * pyroclast::ParticleSystem::emissive_particles;
         constants = draw.compute->constants;
         groups = draw.compute->group_count;
         return result;
     }
 
+    std::uint32_t expected_explosions = 1;
     bool valid_upload = false;
     bool valid_ranges = false;
     const pyroclast::GraphicsPipeline* smoke = nullptr;
@@ -136,5 +140,27 @@ int main()
     device.result = RenderResult::submitted;
     timed.render(device, 1, 0);
     check(device.constants[1] == 1, "skipped submission preserves accumulated simulation time");
+    for (const auto count : {1u, 10u, 50u, 100u})
+    {
+        TestDevice stress_device;
+        stress_device.expected_explosions = count;
+        ParticleSystem stress;
+        check(stress.initialize(stress_device, Renderer::d3d12, count), "stress initialization");
+        stress.render(stress_device, 1, 0);
+        const auto expected_capacity = count == 1 ? 8192u : count * 2560;
+        check(stress_device.valid_upload && stress.capacity() == expected_capacity &&
+            stress_device.constants[0] == expected_capacity && stress_device.constants[2] == count * 2560 &&
+            stress_device.groups == (expected_capacity + 63) / 64 && stress_device.valid_ranges,
+            "bounded stress dispatch and layer-contiguous ranges");
+        stress.reset();
+        stress.render(stress_device, 1, 0);
+        check(stress_device.constants[2] == 0 && stress_device.valid_ranges, "clear retains scenario layout");
+        stress.trigger_explosion();
+        stress.render(stress_device, 1, 0);
+        check(stress_device.constants[2] == count * 2560, "restart restores selected group");
+    }
+    ParticleSystem invalid;
+    check(!invalid.initialize(device, Renderer::d3d12, 0) &&
+        !invalid.initialize(device, Renderer::d3d12, 101), "invalid scenarios fail before allocation");
     return failures == 0 ? 0 : 1;
 }

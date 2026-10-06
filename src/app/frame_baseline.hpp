@@ -9,10 +9,13 @@ namespace pyroclast
 class FrameBaseline final
 {
 public:
+    FrameBaseline(std::uint32_t explosions, std::uint32_t capacity) : explosions_(explosions), capacity_(capacity) {}
     void disable() { enabled_ = false; }
     void record(double milliseconds, std::optional<GpuTimings> gpu);
 
 private:
+    std::uint32_t explosions_;
+    std::uint32_t capacity_;
     std::array<double, 600> samples_{};
     std::size_t warmup_ = 120;
     std::size_t count_ = 0;

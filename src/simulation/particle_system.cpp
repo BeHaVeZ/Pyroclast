@@ -9,9 +9,17 @@
 
 namespace pyroclast
 {
-bool ParticleSystem::initialize(GraphicsDevice& device, Renderer renderer)
+bool ParticleSystem::initialize(GraphicsDevice& device, Renderer renderer, std::uint32_t explosions)
 {
-    const std::vector<Particle> initial(capacity);
+    if (explosions != 1 && explosions != 10 && explosions != 50 && explosions != maximum_explosions)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Explosion scenario must contain 1, 10, 50, or 100 effects.");
+        return false;
+    }
+    explosion_count_ = explosions;
+    burst_count_ = explosion_count_ * explosion_particles;
+    capacity_ = std::max(minimum_capacity, burst_count_);
+    const std::vector<Particle> initial(capacity_);
     particles_ = device.create_vertex_buffer(std::as_bytes(std::span(initial)), VertexLayout::particle);
     graphics_ = device.create_graphics_pipeline(particle_shaders(renderer));
     auto smoke = particle_shaders(renderer);
@@ -26,8 +34,8 @@ bool ParticleSystem::initialize(GraphicsDevice& device, Renderer renderer)
     {
         return false;
     }
-    SDL_Log("Explosion ready: capacity=%u, burst=%u, state=%zu bytes, fixed step=1/60 s, seed=0x12345678.",
-        capacity, explosion_particles, initial.size() * sizeof(Particle));
+    SDL_Log("Explosion ready: explosions=%u, capacity=%u, burst=%u, state=%zu bytes, fixed step=1/60 s, seed=0x12345678.",
+        explosion_count_, capacity_, burst_count_, initial.size() * sizeof(Particle));
     return true;
 }
 
@@ -44,10 +52,11 @@ RenderResult ParticleSystem::render(GraphicsDevice& device, float aspect_ratio, 
     const auto steps = paused_ ? std::min(pending_steps_, 1u) :
         static_cast<std::uint32_t>(std::floor(accumulator_ / fixed_step));
     const ComputeDispatch dispatch{*compute_,
-        {capacity, steps, burst_count_, reset_epoch_}, (capacity + 63) / 64};
+        {capacity_, steps, burst_count_, reset_epoch_}, (capacity_ + 63) / 64};
+    const auto emissive_count = explosion_count_ * emissive_particles;
     const DrawRange ranges[] = {
-        {*smoke_graphics_, emissive_particles, capacity - emissive_particles},
-        {*graphics_, 0, emissive_particles}
+        {*smoke_graphics_, emissive_count, capacity_ - emissive_count},
+        {*graphics_, 0, emissive_count}
     };
     const auto result = device.render({*particles_, ranges, {0.04f, 0.07f, 0.12f, 1.0f}, &dispatch, aspect_ratio});
     if (result == RenderResult::submitted)
@@ -60,8 +69,8 @@ RenderResult ParticleSystem::render(GraphicsDevice& device, float aspect_ratio, 
 
 void ParticleSystem::trigger_explosion()
 {
-    reset_pool(explosion_particles);
-    SDL_Log("Explosion triggered: %u particles; replaces the previous burst.", explosion_particles);
+    reset_pool(explosion_count_ * explosion_particles);
+    SDL_Log("Explosion group triggered: %u effects, %u particles; replaces the previous group.", explosion_count_, burst_count_);
 }
 
 void ParticleSystem::reset()
@@ -72,7 +81,7 @@ void ParticleSystem::reset()
 
 void ParticleSystem::reset_pool(std::uint32_t burst_count)
 {
-    assert(burst_count <= capacity);
+    assert(burst_count <= capacity_);
     ++reset_epoch_;
     burst_count_ = burst_count;
     pending_steps_ = 0;

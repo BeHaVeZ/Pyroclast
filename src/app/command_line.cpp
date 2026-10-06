@@ -8,6 +8,7 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
 {
     CommandLineResult result;
     bool renderer_specified = false;
+    bool explosions_specified = false;
 
     for (const char* argument : arguments)
     {
@@ -19,6 +20,25 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
         else if (option == "--gpu-timing")
         {
             result.options.gpu_timing = true;
+        }
+        else if (option.starts_with("--explosions="))
+        {
+            if (explosions_specified)
+            {
+                result.error = "Specify --explosions only once.";
+                return result;
+            }
+            explosions_specified = true;
+            const auto value = option.substr(std::string_view("--explosions=").size());
+            if (value == "1") result.options.explosions = 1;
+            else if (value == "10") result.options.explosions = 10;
+            else if (value == "50") result.options.explosions = 50;
+            else if (value == "100") result.options.explosions = 100;
+            else
+            {
+                result.error = "Expected --explosions=1, 10, 50, or 100.";
+                return result;
+            }
         }
         else if (option.starts_with("--renderer="))
         {

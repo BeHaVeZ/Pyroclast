@@ -2,6 +2,7 @@
 
 #include "../graphics/graphics_api.hpp"
 
+#include <cstdint>
 #include <span>
 #include <string>
 
@@ -12,6 +13,7 @@ struct ApplicationOptions
     Renderer renderer = Renderer::d3d12;
     bool show_help = false;
     bool gpu_timing = false;
+    std::uint32_t explosions = 1;
 };
 
 struct CommandLineResult

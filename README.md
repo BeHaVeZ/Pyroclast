@@ -53,20 +53,22 @@ It is not affiliated with Bohemia Interactive, Arma, Enfusion, or Blastcore, and
 
 ## Current milestone
 
-**Phase 9 - Smoke behavior**
+**Phase 10 - Scaling baseline**
 
 Both backends run the same shared HLSL explosion: a brief fireball, ballistic
-sparks, and longer-lived smoke. A deterministic burst activates 2,560 particles
+sparks, and longer-lived smoke. The default single burst activates 2,560 particles
 (256 fireball particles, 1,792 sparks, and 512 smoke particles) in an 8,192-slot
-GPU pool. Particle state remains 256 KiB. The GPU handles spawning, movement,
+GPU pool. Single-effect particle state remains 256 KiB. The GPU handles spawning, movement,
 cooling, expansion, fading, and death without CPU particle updates.
 
 Smoke rises with cooling-dependent buoyancy, slows through drag, and drifts with
 a fixed wind. Its opacity builds and dissipates over its lifetime. Two ordered
 draw ranges use premultiplied alpha for smoke, then additive blending for light.
-The demo remains a small 2D behavior prototype. Space replaces the current burst;
-fixed 1/60-second simulation and bounded catch-up remain. Multiple explosions,
-culling, LOD, and indirect rendering belong to later phases.
+The demo remains a small 2D behavior prototype. Space replaces the current group;
+fixed 1/60-second simulation and bounded catch-up remain. Startup scenarios now
+support 1, 10, 50, or 100 simultaneous explosions in one
+bounded pool, with one compute dispatch and two layer-ordered draws. Culling,
+LOD, and indirect rendering require profiling evidence before implementation.
 
 See `docs/ROADMAP.md`.
 
@@ -133,7 +135,7 @@ windows pause rendering and wait for events.
 
 Controls:
 
-- **Space:** trigger/restart the deterministic explosion, including while paused.
+- **Space:** trigger/restart the selected deterministic explosion group, including while paused.
 - **R:** clear the pool; retain the pause setting.
 - **P:** pause or resume simulation.
 - **N:** advance one 1/60-second step while paused.
@@ -142,6 +144,32 @@ Fireball particles last 0.35-0.8 seconds; sparks last 1-2.2 seconds; smoke lasts
 6-8 seconds, rounded to simulation ticks. The screen returns to the background after the burst dies.
 Minimizing freezes simulation. Long stalls discard excess catch-up time to keep
 GPU work bounded. Resizing preserves state and corrects particle aspect ratio.
+
+Scaling scenarios are selected at startup with `--explosions=1`, `10`, `50`, or
+`100` (default 1). For example:
+
+```powershell
+.\out\build\windows-x64\Debug\Pyroclast.exe --renderer=d3d12 --explosions=100
+.\out\build\windows-x64\Release\Pyroclast.exe --renderer=vulkan --explosions=50 --gpu-timing
+```
+
+In your existing Visual Studio launch configuration, add `"--explosions=100"`
+to `args` beside the renderer argument. **F5** starts that scenario; **Space**
+restarts the group. Counts are fixed for the process lifetime. All effects spawn
+simultaneously in a deterministic grid; smoke overlaps as it expands. A new
+trigger replaces the previous group. Startup logs report the selected count,
+pool capacity, burst count, and particle-state bytes.
+
+| Explosions | Pool slots | Active slots at spawn | Particle-state bytes |
+|---:|---:|---:|---:|
+| 1 | 8,192 | 2,560 | 262,144 |
+| 10 | 25,600 | 25,600 | 819,200 |
+| 50 | 128,000 | 128,000 | 4,096,000 |
+| 100 | 256,000 | 256,000 | 8,192,000 |
+
+These are bounded baseline workloads. Dead slots still participate in dispatch
+and drawing; there is no compaction or adaptive budget yet. GPU timestamp results
+provide initial scaling evidence, with the limitations described below.
 
 Renderer selection happens at startup and defaults to D3D12:
 
@@ -153,7 +181,7 @@ Renderer selection happens at startup and defaults to D3D12:
 
 Both renderer options initialize their selected backend, log the selected GPU,
 and draw the same explosion effect. `--help` prints usage and exits without opening a window.
-Unknown arguments, invalid renderer values, and repeated renderer selections
+Unknown arguments, invalid renderer/count values, and repeated renderer/count selections
 return exit code 1 before SDL initializes. Use the exact `--renderer=value`
 form; arguments are case sensitive. All arguments are validated even when
 `--help` is present.
@@ -226,7 +254,7 @@ startup, so Visual Studio and other working directories require no shader file
 copying. Vulkan uses a negative-height viewport to match the D3D12 clip-space
 orientation without changing the shared HLSL.
 
-For a small startup measurement, run **Release** and leave the default 1280 x 720
+For a small startup measurement of the selected group, run **Release** and leave the default 1280 x 720
 window focused and untouched. After 120 warmup frames and 600 samples, the log
 reports average, median, and p99 CPU resize/render-call time, including GPU fence
 and VSync presentation waits. Controls, focus loss, minimize, resize, or skipped
@@ -244,7 +272,7 @@ Results are read only after existing frame fences; normal runs allocate no query
 resources. These instrumented regions include synchronization and clear work,
 and do not replace a profiler or prove scaling performance.
 
-See `docs/PHASE1.md` through `docs/PHASE9.md` for ownership, synchronization,
+See `docs/PHASE1.md` through `docs/PHASE10.md` for ownership, synchronization,
 validation results, and current limitations.
 
 Build output stays under `out/`. Machine-specific overrides can go in the ignored

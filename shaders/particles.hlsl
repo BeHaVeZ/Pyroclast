@@ -24,9 +24,8 @@ PixelInput vs_main(float2 position : POSITION, float3 life : TEXCOORD0,
     float2 corner = corners[vertex];
     float size = life.y > 0 ? life.z : 0;
     float progress = life.y > 0 ? saturate(life.x / max(life.y, 0.001)) : 1;
-    uint id = instance + view.first_record;
-    bool smoke = id >= smoke_first;
-    bool fireball = id < fireball_particles;
+    bool smoke = view.first_record != 0;
+    bool fireball = !smoke && instance % emissive_particles < fireball_particles;
     if (smoke) size *= 1 + 0.55 * life.x;
     else if (fireball) size *= 1 + 1.8 * progress;
     output.position = float4((position + corner * size) * float2(1.0 / view.aspect_ratio, 1), 0, 1);
