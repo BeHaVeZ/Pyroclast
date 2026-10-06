@@ -42,7 +42,7 @@ bool VulkanRenderer::create_shader_module(Shader shader, VulkanShaderModule& mod
     info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     info.codeSize = words.size() * sizeof(std::uint32_t);
     info.pCode = words.data();
-    module.device = device_;
-    return check(vkCreateShaderModule(device_, &info, nullptr, &module.handle), "Create Vulkan shader module");
+    module.device = vk_.device;
+    return check(vkCreateShaderModule(vk_.device, &info, nullptr, &module.handle), "Create Vulkan shader module");
 }
 }

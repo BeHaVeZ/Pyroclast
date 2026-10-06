@@ -17,7 +17,7 @@ VulkanRenderTarget::~VulkanRenderTarget()
 bool VulkanRenderer::create_upscale_pipeline()
 {
     VkFormatProperties properties{};
-    vkGetPhysicalDeviceFormatProperties(physical_, format_, &properties);
+    vkGetPhysicalDeviceFormatProperties(vk_.physical, format_, &properties);
     constexpr auto required = VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT |
         VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
     if ((properties.optimalTilingFeatures & required) != required)
@@ -51,27 +51,27 @@ bool VulkanRenderer::create_upscale_pipeline()
     pass.pSubpasses = &subpass;
     pass.dependencyCount = 1;
     pass.pDependencies = &dependency;
-    if (!check(vkCreateRenderPass(device_, &pass, nullptr, &offscreen_pass_), "Create offscreen render pass")) return false;
+    if (!check(vkCreateRenderPass(vk_.device, &pass, nullptr, &passes_.offscreen), "Create offscreen render pass")) return false;
 
     VkSamplerCreateInfo sampler{};
     sampler.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
     sampler.magFilter = sampler.minFilter = VK_FILTER_LINEAR;
     sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
     sampler.addressModeU = sampler.addressModeV = sampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    if (!check(vkCreateSampler(device_, &sampler, nullptr, &upscale_sampler_), "Create upscale sampler")) return false;
+    if (!check(vkCreateSampler(vk_.device, &sampler, nullptr, &passes_.upscale_sampler), "Create upscale sampler")) return false;
     const VkDescriptorSetLayoutBinding bindings[] = {
         {0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-        {1, VK_DESCRIPTOR_TYPE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, &upscale_sampler_}};
+        {1, VK_DESCRIPTOR_TYPE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, &passes_.upscale_sampler}};
     VkDescriptorSetLayoutCreateInfo descriptors{};
     descriptors.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     descriptors.bindingCount = 2;
     descriptors.pBindings = bindings;
-    if (!check(vkCreateDescriptorSetLayout(device_, &descriptors, nullptr, &upscale_descriptors_), "Create upscale descriptors")) return false;
+    if (!check(vkCreateDescriptorSetLayout(vk_.device, &descriptors, nullptr, &passes_.upscale_descriptors), "Create upscale descriptors")) return false;
     VkPipelineLayoutCreateInfo layout{};
     layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     layout.setLayoutCount = 1;
-    layout.pSetLayouts = &upscale_descriptors_;
-    if (!check(vkCreatePipelineLayout(device_, &layout, nullptr, &upscale_layout_), "Create upscale layout")) return false;
+    layout.pSetLayouts = &passes_.upscale_descriptors;
+    if (!check(vkCreatePipelineLayout(vk_.device, &layout, nullptr, &passes_.upscale_layout), "Create upscale layout")) return false;
 
     VulkanShaderModule vertex;
     VulkanShaderModule pixel;
@@ -123,9 +123,9 @@ bool VulkanRenderer::create_upscale_pipeline()
     pipeline.pMultisampleState = &samples;
     pipeline.pColorBlendState = &blend;
     pipeline.pDynamicState = &dynamic;
-    pipeline.layout = upscale_layout_;
-    pipeline.renderPass = render_pass_;
-    return check(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pipeline, nullptr, &upscale_pipeline_), "Create upscale pipeline");
+    pipeline.layout = passes_.upscale_layout;
+    pipeline.renderPass = passes_.backbuffer;
+    return check(vkCreateGraphicsPipelines(vk_.device, VK_NULL_HANDLE, 1, &pipeline, nullptr, &passes_.upscale_pipeline), "Create upscale pipeline");
 }
 
 std::unique_ptr<RenderTarget> VulkanRenderer::create_render_target(const RenderTargetDescription& description)
@@ -135,30 +135,30 @@ std::unique_ptr<RenderTarget> VulkanRenderer::create_render_target(const RenderT
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Render target divisor must be at least one.");
         return nullptr;
     }
-    if (!upscale_pipeline_ && !create_upscale_pipeline()) return nullptr;
+    if (!passes_.upscale_pipeline && !create_upscale_pipeline()) return nullptr;
     auto target = std::make_unique<VulkanRenderTarget>(description);
     target->owner = this;
-    target->device = device_;
+    target->device = vk_.device;
     const VkDescriptorPoolSize sizes[] = {{VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1}, {VK_DESCRIPTOR_TYPE_SAMPLER, 1}};
     VkDescriptorPoolCreateInfo pool{};
     pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     pool.maxSets = 1;
     pool.poolSizeCount = 2;
     pool.pPoolSizes = sizes;
-    if (!check(vkCreateDescriptorPool(device_, &pool, nullptr, &target->descriptor_pool), "Create render target descriptor pool")) return nullptr;
+    if (!check(vkCreateDescriptorPool(vk_.device, &pool, nullptr, &target->descriptor_pool), "Create render target descriptor pool")) return nullptr;
     VkDescriptorSetAllocateInfo set{};
     set.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     set.descriptorPool = target->descriptor_pool;
     set.descriptorSetCount = 1;
-    set.pSetLayouts = &upscale_descriptors_;
-    if (!check(vkAllocateDescriptorSets(device_, &set, &target->descriptor), "Allocate render target descriptor")) return nullptr;
+    set.pSetLayouts = &passes_.upscale_descriptors;
+    if (!check(vkAllocateDescriptorSets(vk_.device, &set, &target->descriptor), "Allocate render target descriptor")) return nullptr;
     return validation_ok() ? std::move(target) : nullptr;
 }
 
 bool VulkanRenderer::size_target(VulkanRenderTarget& target)
 {
     const auto divisor = target.description().divisor;
-    const VkExtent2D extent{(extent_.width + divisor - 1) / divisor, (extent_.height + divisor - 1) / divisor};
+    const VkExtent2D extent{(swapchain_.extent.width + divisor - 1) / divisor, (swapchain_.extent.height + divisor - 1) / divisor};
     if (target.image && target.extent.width == extent.width && target.extent.height == extent.height)
     {
         return true;
@@ -167,10 +167,10 @@ bool VulkanRenderer::size_target(VulkanRenderTarget& target)
     {
         return false;
     }
-    vkDestroyFramebuffer(device_, target.framebuffer, nullptr);
-    vkDestroyImageView(device_, target.view, nullptr);
-    vkDestroyImage(device_, target.image, nullptr);
-    vkFreeMemory(device_, target.memory, nullptr);
+    vkDestroyFramebuffer(vk_.device, target.framebuffer, nullptr);
+    vkDestroyImageView(vk_.device, target.view, nullptr);
+    vkDestroyImage(vk_.device, target.image, nullptr);
+    vkFreeMemory(vk_.device, target.memory, nullptr);
     target.framebuffer = VK_NULL_HANDLE;
     target.view = VK_NULL_HANDLE;
     target.image = VK_NULL_HANDLE;
@@ -185,11 +185,11 @@ bool VulkanRenderer::size_target(VulkanRenderTarget& target)
     texture.samples = VK_SAMPLE_COUNT_1_BIT;
     texture.tiling = VK_IMAGE_TILING_OPTIMAL;
     texture.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-    if (!check(vkCreateImage(device_, &texture, nullptr, &target.image), "Create render target image")) return false;
+    if (!check(vkCreateImage(vk_.device, &texture, nullptr, &target.image), "Create render target image")) return false;
     VkMemoryRequirements requirements{};
-    vkGetImageMemoryRequirements(device_, target.image, &requirements);
+    vkGetImageMemoryRequirements(vk_.device, target.image, &requirements);
     VkPhysicalDeviceMemoryProperties properties{};
-    vkGetPhysicalDeviceMemoryProperties(physical_, &properties);
+    vkGetPhysicalDeviceMemoryProperties(vk_.physical, &properties);
     std::uint32_t type = properties.memoryTypeCount;
     for (std::uint32_t index = 0; index < properties.memoryTypeCount; ++index)
     {
@@ -209,24 +209,24 @@ bool VulkanRenderer::size_target(VulkanRenderTarget& target)
     memory.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     memory.allocationSize = requirements.size;
     memory.memoryTypeIndex = type;
-    if (!check(vkAllocateMemory(device_, &memory, nullptr, &target.memory), "Allocate render target memory") ||
-        !check(vkBindImageMemory(device_, target.image, target.memory, 0), "Bind render target memory")) return false;
+    if (!check(vkAllocateMemory(vk_.device, &memory, nullptr, &target.memory), "Allocate render target memory") ||
+        !check(vkBindImageMemory(vk_.device, target.image, target.memory, 0), "Bind render target memory")) return false;
     VkImageViewCreateInfo view{};
     view.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     view.image = target.image;
     view.viewType = VK_IMAGE_VIEW_TYPE_2D;
     view.format = format_;
     view.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    if (!check(vkCreateImageView(device_, &view, nullptr, &target.view), "Create render target view")) return false;
+    if (!check(vkCreateImageView(vk_.device, &view, nullptr, &target.view), "Create render target view")) return false;
     VkFramebufferCreateInfo framebuffer{};
     framebuffer.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-    framebuffer.renderPass = offscreen_pass_;
+    framebuffer.renderPass = passes_.offscreen;
     framebuffer.attachmentCount = 1;
     framebuffer.pAttachments = &target.view;
     framebuffer.width = extent.width;
     framebuffer.height = extent.height;
     framebuffer.layers = 1;
-    if (!check(vkCreateFramebuffer(device_, &framebuffer, nullptr, &target.framebuffer), "Create render target framebuffer")) return false;
+    if (!check(vkCreateFramebuffer(vk_.device, &framebuffer, nullptr, &target.framebuffer), "Create render target framebuffer")) return false;
     const VkDescriptorImageInfo image{VK_NULL_HANDLE, target.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
     VkWriteDescriptorSet write{};
     write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -234,7 +234,7 @@ bool VulkanRenderer::size_target(VulkanRenderTarget& target)
     write.descriptorCount = 1;
     write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
     write.pImageInfo = &image;
-    vkUpdateDescriptorSets(device_, 1, &write, 0, nullptr);
+    vkUpdateDescriptorSets(vk_.device, 1, &write, 0, nullptr);
     target.extent = extent;
     SDL_Log("Vulkan render target: %ux%u, UNORM8.", extent.width, extent.height);
     return validation_ok();
@@ -242,8 +242,8 @@ bool VulkanRenderer::size_target(VulkanRenderTarget& target)
 
 void VulkanRenderer::upscale(VkCommandBuffer command, const VulkanRenderTarget& source)
 {
-    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, upscale_pipeline_);
-    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, upscale_layout_, 0, 1, &source.descriptor, 0, nullptr);
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, passes_.upscale_pipeline);
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, passes_.upscale_layout, 0, 1, &source.descriptor, 0, nullptr);
     vkCmdDraw(command, 3, 1, 0, 0);
 }
 }

@@ -28,20 +28,20 @@ std::unique_ptr<VertexBuffer> VulkanRenderer::create_vertex_buffer(std::span<con
     }
     auto buffer = std::make_unique<VulkanVertexBuffer>(static_cast<std::uint32_t>(vertices.size() / stride), stride);
     buffer->owner = this;
-    buffer->device = device_;
+    buffer->device = vk_.device;
     VkBufferCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     info.size = vertices.size_bytes();
     info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
     info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    if (!check(vkCreateBuffer(device_, &info, nullptr, &buffer->buffer), "Create Vulkan vertex buffer"))
+    if (!check(vkCreateBuffer(vk_.device, &info, nullptr, &buffer->buffer), "Create Vulkan vertex buffer"))
     {
         return nullptr;
     }
     VkMemoryRequirements requirements{};
-    vkGetBufferMemoryRequirements(device_, buffer->buffer, &requirements);
+    vkGetBufferMemoryRequirements(vk_.device, buffer->buffer, &requirements);
     VkPhysicalDeviceMemoryProperties properties{};
-    vkGetPhysicalDeviceMemoryProperties(physical_, &properties);
+    vkGetPhysicalDeviceMemoryProperties(vk_.physical, &properties);
     std::uint32_t memory_type = properties.memoryTypeCount;
     constexpr VkMemoryPropertyFlags required = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     for (std::uint32_t index = 0; index < properties.memoryTypeCount; ++index)
@@ -71,18 +71,18 @@ std::unique_ptr<VertexBuffer> VulkanRenderer::create_vertex_buffer(std::span<con
     allocation.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocation.allocationSize = requirements.size;
     allocation.memoryTypeIndex = memory_type;
-    if (!check(vkAllocateMemory(device_, &allocation, nullptr, &buffer->memory), "Allocate Vulkan vertex memory") ||
-        !check(vkBindBufferMemory(device_, buffer->buffer, buffer->memory, 0), "Bind Vulkan vertex memory"))
+    if (!check(vkAllocateMemory(vk_.device, &allocation, nullptr, &buffer->memory), "Allocate Vulkan vertex memory") ||
+        !check(vkBindBufferMemory(vk_.device, buffer->buffer, buffer->memory, 0), "Bind Vulkan vertex memory"))
     {
         return nullptr;
     }
     void* mapped = nullptr;
-    if (!check(vkMapMemory(device_, buffer->memory, 0, info.size, 0, &mapped), "Map Vulkan vertex memory"))
+    if (!check(vkMapMemory(vk_.device, buffer->memory, 0, info.size, 0, &mapped), "Map Vulkan vertex memory"))
     {
         return nullptr;
     }
     std::memcpy(mapped, vertices.data(), vertices.size_bytes());
-    vkUnmapMemory(device_, buffer->memory);
+    vkUnmapMemory(vk_.device, buffer->memory);
     SDL_Log("Vertex buffer uploaded: %u vertices.", buffer->record_count());
     return validation_ok() ? std::move(buffer) : nullptr;
 }
@@ -97,14 +97,14 @@ std::unique_ptr<GraphicsPipeline> VulkanRenderer::create_graphics_pipeline(
         return nullptr;
     }
     auto pipeline = std::make_unique<VulkanGraphicsPipeline>(shaders.blend);
-    pipeline->device = device_;
+    pipeline->device = vk_.device;
     pipeline->owner = this;
     VkPipelineLayoutCreateInfo layout{};
     layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     const VkPushConstantRange view{VK_SHADER_STAGE_VERTEX_BIT, 0, 2 * sizeof(std::uint32_t)};
     layout.pushConstantRangeCount = 1;
     layout.pPushConstantRanges = &view;
-    if (!check(vkCreatePipelineLayout(device_, &layout, nullptr, &pipeline->layout), "Create Vulkan pipeline layout"))
+    if (!check(vkCreatePipelineLayout(vk_.device, &layout, nullptr, &pipeline->layout), "Create Vulkan pipeline layout"))
     {
         return nullptr;
     }
@@ -175,8 +175,8 @@ std::unique_ptr<GraphicsPipeline> VulkanRenderer::create_graphics_pipeline(
     info.pColorBlendState = &blend;
     info.pDynamicState = &dynamic;
     info.layout = pipeline->layout;
-    info.renderPass = render_pass_;
-    if (!check(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &info, nullptr, &pipeline->pipeline), "Create Vulkan graphics pipeline"))
+    info.renderPass = passes_.backbuffer;
+    if (!check(vkCreateGraphicsPipelines(vk_.device, VK_NULL_HANDLE, 1, &info, nullptr, &pipeline->pipeline), "Create Vulkan graphics pipeline"))
     {
         return nullptr;
     }

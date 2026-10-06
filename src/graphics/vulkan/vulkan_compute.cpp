@@ -23,13 +23,13 @@ std::unique_ptr<ComputePipeline> VulkanRenderer::create_compute_pipeline(
     }
     auto pipeline = std::make_unique<VulkanComputePipeline>(*vertices);
     pipeline->owner = this;
-    pipeline->device = device_;
+    pipeline->device = vk_.device;
     const VkDescriptorSetLayoutBinding binding{0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
     VkDescriptorSetLayoutCreateInfo descriptors{};
     descriptors.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     descriptors.bindingCount = 1;
     descriptors.pBindings = &binding;
-    if (!check(vkCreateDescriptorSetLayout(device_, &descriptors, nullptr, &pipeline->descriptor_layout), "Create compute descriptor layout"))
+    if (!check(vkCreateDescriptorSetLayout(vk_.device, &descriptors, nullptr, &pipeline->descriptor_layout), "Create compute descriptor layout"))
     {
         return nullptr;
     }
@@ -39,7 +39,7 @@ std::unique_ptr<ComputePipeline> VulkanRenderer::create_compute_pipeline(
     pool.maxSets = 1;
     pool.poolSizeCount = 1;
     pool.pPoolSizes = &pool_size;
-    if (!check(vkCreateDescriptorPool(device_, &pool, nullptr, &pipeline->descriptor_pool), "Create compute descriptor pool"))
+    if (!check(vkCreateDescriptorPool(vk_.device, &pool, nullptr, &pipeline->descriptor_pool), "Create compute descriptor pool"))
     {
         return nullptr;
     }
@@ -48,7 +48,7 @@ std::unique_ptr<ComputePipeline> VulkanRenderer::create_compute_pipeline(
     allocation.descriptorPool = pipeline->descriptor_pool;
     allocation.descriptorSetCount = 1;
     allocation.pSetLayouts = &pipeline->descriptor_layout;
-    if (!check(vkAllocateDescriptorSets(device_, &allocation, &pipeline->descriptor), "Allocate compute descriptor"))
+    if (!check(vkAllocateDescriptorSets(vk_.device, &allocation, &pipeline->descriptor), "Allocate compute descriptor"))
     {
         return nullptr;
     }
@@ -60,7 +60,7 @@ std::unique_ptr<ComputePipeline> VulkanRenderer::create_compute_pipeline(
     write.descriptorCount = 1;
     write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     write.pBufferInfo = &buffer;
-    vkUpdateDescriptorSets(device_, 1, &write, 0, nullptr);
+    vkUpdateDescriptorSets(vk_.device, 1, &write, 0, nullptr);
     const VkPushConstantRange constants{VK_SHADER_STAGE_COMPUTE_BIT, 0, 4 * sizeof(std::uint32_t)};
     VkPipelineLayoutCreateInfo layout{};
     layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -68,7 +68,7 @@ std::unique_ptr<ComputePipeline> VulkanRenderer::create_compute_pipeline(
     layout.pSetLayouts = &pipeline->descriptor_layout;
     layout.pushConstantRangeCount = 1;
     layout.pPushConstantRanges = &constants;
-    if (!check(vkCreatePipelineLayout(device_, &layout, nullptr, &pipeline->layout), "Create compute pipeline layout"))
+    if (!check(vkCreatePipelineLayout(vk_.device, &layout, nullptr, &pipeline->layout), "Create compute pipeline layout"))
     {
         return nullptr;
     }
@@ -84,7 +84,7 @@ std::unique_ptr<ComputePipeline> VulkanRenderer::create_compute_pipeline(
     info.stage.module = module.handle;
     info.stage.pName = "cs_main";
     info.layout = pipeline->layout;
-    if (!check(vkCreateComputePipelines(device_, VK_NULL_HANDLE, 1, &info, nullptr, &pipeline->pipeline), "Create compute pipeline"))
+    if (!check(vkCreateComputePipelines(vk_.device, VK_NULL_HANDLE, 1, &info, nullptr, &pipeline->pipeline), "Create compute pipeline"))
     {
         return nullptr;
     }

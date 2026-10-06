@@ -10,25 +10,25 @@ namespace pyroclast
 bool VulkanRenderer::create_swapchain()
 {
     VkSurfaceCapabilitiesKHR capabilities{};
-    if (!check(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_, surface_, &capabilities), "Query Vulkan surface capabilities"))
+    if (!check(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vk_.physical, vk_.surface, &capabilities), "Query Vulkan surface capabilities"))
     {
         return false;
     }
-    extent_ = capabilities.currentExtent;
-    if (extent_.width == std::numeric_limits<std::uint32_t>::max())
+    swapchain_.extent = capabilities.currentExtent;
+    if (swapchain_.extent.width == std::numeric_limits<std::uint32_t>::max())
     {
-        extent_.width = std::clamp(static_cast<std::uint32_t>(width_),
+        swapchain_.extent.width = std::clamp(static_cast<std::uint32_t>(width_),
             capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
-        extent_.height = std::clamp(static_cast<std::uint32_t>(height_),
+        swapchain_.extent.height = std::clamp(static_cast<std::uint32_t>(height_),
             capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
     }
     std::uint32_t count = 0;
-    if (!check(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_, surface_, &count, nullptr), "Enumerate Vulkan surface formats"))
+    if (!check(vkGetPhysicalDeviceSurfaceFormatsKHR(vk_.physical, vk_.surface, &count, nullptr), "Enumerate Vulkan surface formats"))
     {
         return false;
     }
     std::vector<VkSurfaceFormatKHR> formats(count);
-    if (!check(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_, surface_, &count, formats.data()), "Read Vulkan surface formats"))
+    if (!check(vkGetPhysicalDeviceSurfaceFormatsKHR(vk_.physical, vk_.surface, &count, formats.data()), "Read Vulkan surface formats"))
     {
         return false;
     }
@@ -44,7 +44,7 @@ bool VulkanRenderer::create_swapchain()
         return false;
     }
     format_ = chosen->format;
-    if (!render_pass_)
+    if (!passes_.backbuffer)
     {
         VkAttachmentDescription attachment{};
         attachment.format = format_;
@@ -74,19 +74,19 @@ bool VulkanRenderer::create_swapchain()
         pass.pSubpasses = &subpass;
         pass.dependencyCount = 1;
         pass.pDependencies = &dependency;
-        if (!check(vkCreateRenderPass(device_, &pass, nullptr, &render_pass_), "Create Vulkan render pass"))
+        if (!check(vkCreateRenderPass(vk_.device, &pass, nullptr, &passes_.backbuffer), "Create Vulkan render pass"))
         {
             return false;
         }
     }
-    if (extent_.width == 0 || extent_.height == 0)
+    if (swapchain_.extent.width == 0 || swapchain_.extent.height == 0)
     {
         rebuild_ = true;
         return true;
     }
     VkSwapchainCreateInfoKHR info{};
     info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-    info.surface = surface_;
+    info.surface = vk_.surface;
     info.minImageCount = capabilities.minImageCount + 1;
     if (capabilities.maxImageCount != 0)
     {
@@ -94,7 +94,7 @@ bool VulkanRenderer::create_swapchain()
     }
     info.imageFormat = format_;
     info.imageColorSpace = chosen->colorSpace;
-    info.imageExtent = extent_;
+    info.imageExtent = swapchain_.extent;
     info.imageArrayLayers = 1;
     info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -112,10 +112,10 @@ bool VulkanRenderer::create_swapchain()
     if (!vsync_)
     {
         std::uint32_t mode_count = 0;
-        if (!check(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_, surface_, &mode_count, nullptr),
+        if (!check(vkGetPhysicalDeviceSurfacePresentModesKHR(vk_.physical, vk_.surface, &mode_count, nullptr),
             "Query Vulkan present modes")) return false;
         std::vector<VkPresentModeKHR> modes(mode_count);
-        if (!check(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_, surface_, &mode_count, modes.data()),
+        if (!check(vkGetPhysicalDeviceSurfacePresentModesKHR(vk_.physical, vk_.surface, &mode_count, modes.data()),
             "Read Vulkan present modes")) return false;
         if (std::find(modes.begin(), modes.end(), VK_PRESENT_MODE_IMMEDIATE_KHR) == modes.end())
         {
@@ -126,20 +126,20 @@ bool VulkanRenderer::create_swapchain()
     }
     SDL_Log("Vulkan presentation mode: %s.", vsync_ ? "FIFO" : "IMMEDIATE");
     info.clipped = VK_TRUE;
-    if (!check(vkCreateSwapchainKHR(device_, &info, nullptr, &swapchain_), "Create Vulkan swapchain") ||
-        !check(vkGetSwapchainImagesKHR(device_, swapchain_, &count, nullptr), "Count Vulkan swapchain images"))
+    if (!check(vkCreateSwapchainKHR(vk_.device, &info, nullptr, &swapchain_.handle), "Create Vulkan swapchain") ||
+        !check(vkGetSwapchainImagesKHR(vk_.device, swapchain_.handle, &count, nullptr), "Count Vulkan swapchain images"))
     {
         return false;
     }
     std::vector<VkImage> handles(count);
-    if (!check(vkGetSwapchainImagesKHR(device_, swapchain_, &count, handles.data()), "Read Vulkan swapchain images"))
+    if (!check(vkGetSwapchainImagesKHR(vk_.device, swapchain_.handle, &count, handles.data()), "Read Vulkan swapchain images"))
     {
         return false;
     }
-    images_.resize(count);
-    for (std::size_t index = 0; index < images_.size(); ++index)
+    swapchain_.images.resize(count);
+    for (std::size_t index = 0; index < swapchain_.images.size(); ++index)
     {
-        auto& image = images_[index];
+        auto& image = swapchain_.images[index];
         image.image = handles[index];
         VkImageViewCreateInfo view{};
         view.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -151,42 +151,27 @@ bool VulkanRenderer::create_swapchain()
         semaphore.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
         VkFenceCreateInfo fence{};
         fence.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        if (!check(vkCreateImageView(device_, &view, nullptr, &image.view), "Create swapchain image view") ||
-            !check(vkCreateSemaphore(device_, &semaphore, nullptr, &image.rendered), "Create present-wait semaphore") ||
-            !check(vkCreateFence(device_, &fence, nullptr, &image.presented), "Create presentation fence"))
+        if (!check(vkCreateImageView(vk_.device, &view, nullptr, &image.view), "Create swapchain image view") ||
+            !check(vkCreateSemaphore(vk_.device, &semaphore, nullptr, &image.rendered), "Create present-wait semaphore") ||
+            !check(vkCreateFence(vk_.device, &fence, nullptr, &image.presented), "Create presentation fence"))
         {
             return false;
         }
         VkFramebufferCreateInfo framebuffer{};
         framebuffer.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        framebuffer.renderPass = render_pass_;
+        framebuffer.renderPass = passes_.backbuffer;
         framebuffer.attachmentCount = 1;
         framebuffer.pAttachments = &image.view;
-        framebuffer.width = extent_.width;
-        framebuffer.height = extent_.height;
+        framebuffer.width = swapchain_.extent.width;
+        framebuffer.height = swapchain_.extent.height;
         framebuffer.layers = 1;
-        if (!check(vkCreateFramebuffer(device_, &framebuffer, nullptr, &image.framebuffer), "Create Vulkan framebuffer"))
+        if (!check(vkCreateFramebuffer(vk_.device, &framebuffer, nullptr, &image.framebuffer), "Create Vulkan framebuffer"))
         {
             return false;
         }
     }
     rebuild_ = false;
     return validation_ok();
-}
-
-void VulkanRenderer::destroy_swapchain()
-{
-    for (auto& image : images_)
-    {
-        vkDestroyFramebuffer(device_, image.framebuffer, nullptr);
-        vkDestroyImageView(device_, image.view, nullptr);
-        vkDestroySemaphore(device_, image.rendered, nullptr);
-        vkDestroyFence(device_, image.presented, nullptr);
-    }
-    images_.clear();
-    vkDestroySwapchainKHR(device_, swapchain_, nullptr);
-    swapchain_ = VK_NULL_HANDLE;
-    extent_ = {};
 }
 
 bool VulkanRenderer::resize(int width, int height)
@@ -201,14 +186,14 @@ bool VulkanRenderer::resize(int width, int height)
     {
         return false;
     }
-    destroy_swapchain();
+    swapchain_.reset();
     if (!create_swapchain())
     {
         return false;
     }
-    if (swapchain_)
+    if (swapchain_.handle)
     {
-        SDL_Log("Vulkan swapchain resized: %ux%u", extent_.width, extent_.height);
+        SDL_Log("Vulkan swapchain resized: %ux%u", swapchain_.extent.width, swapchain_.extent.height);
     }
     return validation_ok();
 }

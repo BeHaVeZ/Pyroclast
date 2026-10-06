@@ -18,7 +18,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL VulkanRenderer::debug_callback(
         VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT)) != 0;
     if (validation)
     {
-        ++(error ? renderer.validation_errors_ : renderer.validation_warnings_);
+        ++(error ? renderer.vk_.validation_errors : renderer.vk_.validation_warnings);
     }
     const char* source = validation ? "Vulkan validation" : "Vulkan loader";
     if (error) SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "%s: %s", source, data->pMessage);
@@ -39,7 +39,7 @@ bool VulkanRenderer::check(VkResult result, const char* operation)
 
 bool VulkanRenderer::validation_ok() const
 {
-    return validation_errors_.load() == 0;
+    return vk_.validation_errors.load() == 0;
 }
 
 bool VulkanRenderer::initialize(SDL_Window* window, const GraphicsDeviceOptions& options)
@@ -50,7 +50,7 @@ bool VulkanRenderer::initialize(SDL_Window* window, const GraphicsDeviceOptions&
     {
         return false;
     }
-    if (!SDL_Vulkan_CreateSurface(window_, instance_, nullptr, &surface_))
+    if (!SDL_Vulkan_CreateSurface(window_, vk_.instance, nullptr, &vk_.surface))
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Create Vulkan surface failed: %s", SDL_GetError());
         return false;
@@ -62,7 +62,7 @@ bool VulkanRenderer::initialize(SDL_Window* window, const GraphicsDeviceOptions&
     }
     if (options.gpu_timing && !create_timestamps()) return false;
     SDL_Log("Vulkan initialized: %ux%u, two frames in flight, VSync %s.",
-        extent_.width, extent_.height, vsync_ ? "enabled" : "disabled");
+        swapchain_.extent.width, swapchain_.extent.height, vsync_ ? "enabled" : "disabled");
     return validation_ok();
 }
 
@@ -127,15 +127,15 @@ bool VulkanRenderer::create_instance()
     info.ppEnabledExtensionNames = extensions.data();
     info.enabledLayerCount = static_cast<std::uint32_t>(layers.size());
     info.ppEnabledLayerNames = layers.data();
-    if (!check(vkCreateInstance(&info, nullptr, &instance_), "Create Vulkan 1.1 instance with surface maintenance support"))
+    if (!check(vkCreateInstance(&info, nullptr, &vk_.instance), "Create Vulkan 1.1 instance with surface maintenance support"))
     {
         return false;
     }
 #ifndef NDEBUG
     debug.pNext = nullptr;
     const auto create = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
-        vkGetInstanceProcAddr(instance_, "vkCreateDebugUtilsMessengerEXT"));
-    if (!create || !check(create(instance_, &debug, nullptr, &messenger_), "Create Vulkan debug messenger"))
+        vkGetInstanceProcAddr(vk_.instance, "vkCreateDebugUtilsMessengerEXT"));
+    if (!create || !check(create(vk_.instance, &debug, nullptr, &vk_.messenger), "Create Vulkan debug messenger"))
     {
         return false;
     }
@@ -147,12 +147,12 @@ bool VulkanRenderer::create_instance()
 bool VulkanRenderer::create_device()
 {
     std::uint32_t count = 0;
-    if (!check(vkEnumeratePhysicalDevices(instance_, &count, nullptr), "Enumerate Vulkan adapters"))
+    if (!check(vkEnumeratePhysicalDevices(vk_.instance, &count, nullptr), "Enumerate Vulkan adapters"))
     {
         return false;
     }
     std::vector<VkPhysicalDevice> adapters(count);
-    if (!check(vkEnumeratePhysicalDevices(instance_, &count, adapters.data()), "Read Vulkan adapters"))
+    if (!check(vkEnumeratePhysicalDevices(vk_.instance, &count, adapters.data()), "Read Vulkan adapters"))
     {
         return false;
     }
@@ -199,7 +199,7 @@ bool VulkanRenderer::create_device()
         for (std::uint32_t index = 0; index < count; ++index)
         {
             VkBool32 present = VK_FALSE;
-            if (!check(vkGetPhysicalDeviceSurfaceSupportKHR(adapter, index, surface_, &present), "Query Vulkan presentation support"))
+            if (!check(vkGetPhysicalDeviceSurfaceSupportKHR(adapter, index, vk_.surface, &present), "Query Vulkan presentation support"))
             {
                 return false;
             }
@@ -212,13 +212,13 @@ bool VulkanRenderer::create_device()
             if (score > best_score)
             {
                 best_score = score;
-                physical_ = adapter;
-                queue_family_ = index;
+                vk_.physical = adapter;
+                vk_.queue_family = index;
             }
             break;
         }
     }
-    if (!physical_)
+    if (!vk_.physical)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
             "No hardware Vulkan 1.1 adapter supports a graphics/compute/present queue and VK_EXT_swapchain_maintenance1 presentation fences.");
@@ -227,7 +227,7 @@ bool VulkanRenderer::create_device()
     const float priority = 1.0f;
     VkDeviceQueueCreateInfo queue{};
     queue.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queue.queueFamilyIndex = queue_family_;
+    queue.queueFamilyIndex = vk_.queue_family;
     queue.queueCount = 1;
     queue.pQueuePriorities = &priority;
     VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT maintenance{};
@@ -241,13 +241,15 @@ bool VulkanRenderer::create_device()
     info.pQueueCreateInfos = &queue;
     info.enabledExtensionCount = 2;
     info.ppEnabledExtensionNames = extensions;
-    if (!check(vkCreateDevice(physical_, &info, nullptr, &device_), "Create Vulkan device"))
+    if (!check(vkCreateDevice(vk_.physical, &info, nullptr, &vk_.device), "Create Vulkan device"))
     {
         return false;
     }
-    vkGetDeviceQueue(device_, queue_family_, 0, &queue_);
+    passes_.device = timing_.device = swapchain_.device = vk_.device;
+    for (auto& slot : frames_) slot.device = vk_.device;
+    vkGetDeviceQueue(vk_.device, vk_.queue_family, 0, &vk_.queue);
     VkPhysicalDeviceProperties properties{};
-    vkGetPhysicalDeviceProperties(physical_, &properties);
+    vkGetPhysicalDeviceProperties(vk_.physical, &properties);
     adapter_name_ = properties.deviceName;
     SDL_Log("Vulkan adapter: %s", properties.deviceName);
     return validation_ok();
@@ -259,7 +261,7 @@ bool VulkanRenderer::create_frames()
     {
         VkCommandPoolCreateInfo pool{};
         pool.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        pool.queueFamilyIndex = queue_family_;
+        pool.queueFamilyIndex = vk_.queue_family;
         VkCommandBufferAllocateInfo command{};
         command.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
         command.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
@@ -269,14 +271,14 @@ bool VulkanRenderer::create_frames()
         VkFenceCreateInfo fence{};
         fence.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
         fence.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-        if (!check(vkCreateCommandPool(device_, &pool, nullptr, &frame.pool), "Create frame command pool"))
+        if (!check(vkCreateCommandPool(vk_.device, &pool, nullptr, &frame.pool), "Create frame command pool"))
         {
             return false;
         }
         command.commandPool = frame.pool;
-        if (!check(vkAllocateCommandBuffers(device_, &command, &frame.command), "Allocate frame command buffer") ||
-            !check(vkCreateSemaphore(device_, &semaphore, nullptr, &frame.acquired), "Create image-acquired semaphore") ||
-            !check(vkCreateFence(device_, &fence, nullptr, &frame.submitted), "Create frame fence"))
+        if (!check(vkAllocateCommandBuffers(vk_.device, &command, &frame.command), "Allocate frame command buffer") ||
+            !check(vkCreateSemaphore(vk_.device, &semaphore, nullptr, &frame.acquired), "Create image-acquired semaphore") ||
+            !check(vkCreateFence(vk_.device, &fence, nullptr, &frame.submitted), "Create frame fence"))
         {
             return false;
         }
