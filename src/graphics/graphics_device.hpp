@@ -2,6 +2,7 @@
 
 #include "graphics_api.hpp"
 #include "particle_layout.hpp"
+#include "shaders.hpp"
 
 #include <array>
 #include <cstddef>
@@ -45,8 +46,8 @@ enum class BlendMode { opaque, additive, premultiplied_alpha };
 
 struct GraphicsPipelineDescription
 {
-    std::span<const std::byte> vertex_shader;
-    std::span<const std::byte> pixel_shader;
+    Shader vertex_shader;
+    Shader pixel_shader;
     BlendMode blend = BlendMode::opaque;
 };
 
@@ -84,7 +85,7 @@ public:
     virtual std::unique_ptr<GraphicsPipeline> create_graphics_pipeline(
         const GraphicsPipelineDescription& description) = 0;
     virtual std::unique_ptr<ComputePipeline> create_compute_pipeline(
-        std::span<const std::byte> shader, const VertexBuffer& vertices) = 0;
+        Shader shader, const VertexBuffer& vertices) = 0;
     virtual bool resize(int width, int height) = 0;
     virtual RenderResult render(const DrawCommand& draw) = 0;
     virtual bool wait_idle() = 0;

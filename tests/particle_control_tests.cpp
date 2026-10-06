@@ -1,13 +1,6 @@
 #include "simulation/particle_system.hpp"
-#include "graphics/particle_shaders.hpp"
 
 #include <cstdio>
-
-namespace pyroclast
-{
-GraphicsPipelineDescription particle_shaders(Renderer) { return {{}, {}, BlendMode::additive}; }
-std::span<const std::byte> particle_compute_shader(Renderer) { return {}; }
-}
 
 namespace
 {
@@ -42,7 +35,7 @@ public:
         return pipeline;
     }
     std::unique_ptr<pyroclast::ComputePipeline> create_compute_pipeline(
-        std::span<const std::byte>, const pyroclast::VertexBuffer&) override
+        pyroclast::Shader, const pyroclast::VertexBuffer&) override
     {
         return std::make_unique<pyroclast::ComputePipeline>();
     }
@@ -81,7 +74,7 @@ int main()
     const auto check = [&failures](bool value, const char* name) {
         if (!value) { std::fprintf(stderr, "FAIL: %s\n", name); ++failures; }
     };
-    check(system.initialize(device, Renderer::d3d12) && device.valid_upload, "bounded zero-initialized pool");
+    check(system.initialize(device) && device.valid_upload, "bounded zero-initialized pool");
     system.render(device, 16.0f / 9.0f, 1.0 / 60);
     check(device.constants[0] == 8192 && device.groups == 128 && device.constants[2] == ParticleSystem::explosion_particles, "default dispatch");
     check(device.constants[1] == 1, "fixed simulation step");
@@ -126,7 +119,7 @@ int main()
     system.render(device, 1, 1.0 / 60);
     check(device.constants[1] == 1, "triggered burst advances after resuming");
     ParticleSystem timed;
-    timed.initialize(device, Renderer::d3d12);
+    timed.initialize(device);
     std::uint32_t ticks = 0;
     for (int frame = 0; frame < 240; ++frame)
     {
@@ -148,7 +141,7 @@ int main()
         TestDevice stress_device;
         stress_device.expected_explosions = count;
         ParticleSystem stress;
-        check(stress.initialize(stress_device, Renderer::d3d12, count), "stress initialization");
+        check(stress.initialize(stress_device, count), "stress initialization");
         stress.render(stress_device, 1, 0);
         const auto burst = count * ParticleSystem::explosion_particles;
         const auto expected_capacity = count == 1 ? ParticleSystem::minimum_capacity : burst;
@@ -166,7 +159,7 @@ int main()
     }
     TestDevice profile_device;
     ParticleSystem profile;
-    profile.initialize(profile_device, Renderer::d3d12);
+    profile.initialize(profile_device);
     profile.prepare_profile(180);
     profile_device.result = RenderResult::skipped;
     profile.render(profile_device, 1, 1);
@@ -181,7 +174,7 @@ int main()
     profile.render(profile_device, 1, 1);
     check(profile_device.constants[1] == 0, "profile state stays frozen regardless of elapsed time");
     ParticleSystem invalid;
-    check(!invalid.initialize(device, Renderer::d3d12, 0) &&
-        !invalid.initialize(device, Renderer::d3d12, 101), "invalid scenarios fail before allocation");
+    check(!invalid.initialize(device, 0) &&
+        !invalid.initialize(device, 101), "invalid scenarios fail before allocation");
     return failures == 0 ? 0 : 1;
 }

@@ -29,14 +29,15 @@ add_executable(Pyroclast
     src/app/frame_baseline.cpp
     src/app/command_line.cpp
     src/simulation/particle_system.cpp
-    src/graphics/particle_shaders.cpp
     src/graphics/graphics_device.cpp
+    src/graphics/d3d12/d3d12_shaders.cpp
     src/graphics/d3d12/d3d12_initialize.cpp
     src/graphics/d3d12/d3d12_renderer.cpp
     src/graphics/d3d12/d3d12_resources.cpp
     src/graphics/d3d12/d3d12_timing.cpp
     src/graphics/d3d12/d3d12_smoke.cpp
     src/graphics/d3d12/d3d12_compute.cpp
+    src/graphics/vulkan/vulkan_shaders.cpp
     src/graphics/vulkan/vulkan_initialize.cpp
     src/graphics/vulkan/vulkan_renderer.cpp
     src/graphics/vulkan/vulkan_swapchain.cpp

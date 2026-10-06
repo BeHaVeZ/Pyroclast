@@ -92,41 +92,9 @@ std::unique_ptr<VertexBuffer> VulkanRenderer::create_vertex_buffer(std::span<con
 std::unique_ptr<GraphicsPipeline> VulkanRenderer::create_graphics_pipeline(
     const GraphicsPipelineDescription& shaders)
 {
-    const auto valid = [](std::span<const std::byte> bytes) {
-        if (bytes.size() < 5 * sizeof(std::uint32_t) || bytes.size() % sizeof(std::uint32_t) != 0)
-        {
-            return false;
-        }
-        std::uint32_t magic = 0;
-        std::memcpy(&magic, bytes.data(), sizeof(magic));
-        return magic == 0x07230203;
-    };
-    if (!valid(shaders.vertex_shader) || !valid(shaders.pixel_shader))
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Vulkan graphics pipeline requires word-sized SPIR-V shaders.");
-        return nullptr;
-    }
-    struct Modules
-    {
-        VkDevice device;
-        VkShaderModule vertex = VK_NULL_HANDLE;
-        VkShaderModule pixel = VK_NULL_HANDLE;
-        ~Modules()
-        {
-            vkDestroyShaderModule(device, vertex, nullptr);
-            vkDestroyShaderModule(device, pixel, nullptr);
-        }
-    } modules{device_};
-    const auto create_module = [this](std::span<const std::byte> bytes, VkShaderModule& module) {
-        std::vector<std::uint32_t> words(bytes.size() / sizeof(std::uint32_t));
-        std::memcpy(words.data(), bytes.data(), bytes.size());
-        VkShaderModuleCreateInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-        info.codeSize = bytes.size();
-        info.pCode = words.data();
-        return check(vkCreateShaderModule(device_, &info, nullptr, &module), "Create Vulkan shader module");
-    };
-    if (!create_module(shaders.vertex_shader, modules.vertex) || !create_module(shaders.pixel_shader, modules.pixel))
+    VulkanShaderModule vertex;
+    VulkanShaderModule pixel;
+    if (!create_shader_module(shaders.vertex_shader, vertex) || !create_shader_module(shaders.pixel_shader, pixel))
     {
         return nullptr;
     }
@@ -146,11 +114,11 @@ std::unique_ptr<GraphicsPipeline> VulkanRenderer::create_graphics_pipeline(
     VkPipelineShaderStageCreateInfo stages[2]{};
     stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-    stages[0].module = modules.vertex;
+    stages[0].module = vertex.handle;
     stages[0].pName = "vs_main";
     stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    stages[1].module = modules.pixel;
+    stages[1].module = pixel.handle;
     stages[1].pName = "ps_main";
     const VkVertexInputBindingDescription binding{0, particle_layout::particle_stride, VK_VERTEX_INPUT_RATE_INSTANCE};
     const VkVertexInputAttributeDescription attributes[] = {

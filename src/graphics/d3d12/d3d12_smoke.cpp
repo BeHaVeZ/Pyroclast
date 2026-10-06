@@ -1,15 +1,10 @@
 #include "d3d12_renderer.hpp"
 #include "d3d12_resources.hpp"
+#include "d3d12_shaders.hpp"
 
 #include <SDL3/SDL.h>
 #include <limits>
 #include <utility>
-
-namespace
-{
-#include "d3d12/smoke_composite_vs.hpp"
-#include "d3d12/smoke_composite_ps.hpp"
-}
 
 namespace pyroclast
 {
@@ -46,10 +41,12 @@ bool D3D12Renderer::create_smoke_pipeline()
         !check(device_->CreateRootSignature(0, serialized->GetBufferPointer(), serialized->GetBufferSize(),
             IID_PPV_ARGS(&smoke_root_)), "Create smoke composite root")) return false;
 
+    const auto vertex_shader = d3d12_shader(Shader::smoke_composite_vertex);
+    const auto pixel_shader = d3d12_shader(Shader::smoke_composite_pixel);
     D3D12_GRAPHICS_PIPELINE_STATE_DESC pipeline{};
     pipeline.pRootSignature = smoke_root_.Get();
-    pipeline.VS = {smoke_composite_vs, sizeof(smoke_composite_vs)};
-    pipeline.PS = {smoke_composite_ps, sizeof(smoke_composite_ps)};
+    pipeline.VS = {vertex_shader.data(), vertex_shader.size()};
+    pipeline.PS = {pixel_shader.data(), pixel_shader.size()};
     pipeline.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     pipeline.NumRenderTargets = 1;
     pipeline.RTVFormats[0] = backbuffer_format;

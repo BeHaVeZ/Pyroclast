@@ -2,8 +2,6 @@
 
 #include <SDL3/SDL.h>
 
-#include <cstring>
-
 namespace pyroclast
 {
 VulkanComputePipeline::~VulkanComputePipeline()
@@ -15,17 +13,12 @@ VulkanComputePipeline::~VulkanComputePipeline()
 }
 
 std::unique_ptr<ComputePipeline> VulkanRenderer::create_compute_pipeline(
-    std::span<const std::byte> shader, const VertexBuffer& resource)
+    Shader shader, const VertexBuffer& resource)
 {
     const auto* vertices = dynamic_cast<const VulkanVertexBuffer*>(&resource);
-    std::uint32_t magic = 0;
-    if (shader.size() >= sizeof(magic))
+    if (!vertices || vertices->owner != this)
     {
-        std::memcpy(&magic, shader.data(), sizeof(magic));
-    }
-    if (!vertices || vertices->owner != this || shader.size() < 20 || shader.size() % 4 != 0 || magic != 0x07230203)
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Compute requires SPIR-V and a buffer belonging to this Vulkan device.");
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Compute requires a buffer belonging to this Vulkan device.");
         return nullptr;
     }
     auto pipeline = std::make_unique<VulkanComputePipeline>();
@@ -80,19 +73,8 @@ std::unique_ptr<ComputePipeline> VulkanRenderer::create_compute_pipeline(
     {
         return nullptr;
     }
-    struct Module
-    {
-        VkDevice device;
-        VkShaderModule handle = VK_NULL_HANDLE;
-        ~Module() { vkDestroyShaderModule(device, handle, nullptr); }
-    } module{device_};
-    std::vector<std::uint32_t> words(shader.size() / sizeof(std::uint32_t));
-    std::memcpy(words.data(), shader.data(), shader.size());
-    VkShaderModuleCreateInfo code{};
-    code.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    code.codeSize = shader.size();
-    code.pCode = words.data();
-    if (!check(vkCreateShaderModule(device_, &code, nullptr, &module.handle), "Create compute shader module"))
+    VulkanShaderModule module;
+    if (!create_shader_module(shader, module))
     {
         return nullptr;
     }

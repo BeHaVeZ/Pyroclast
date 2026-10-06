@@ -4,6 +4,16 @@
 
 namespace pyroclast
 {
+struct VulkanShaderModule
+{
+    VulkanShaderModule() = default;
+    VulkanShaderModule(const VulkanShaderModule&) = delete;
+    VulkanShaderModule& operator=(const VulkanShaderModule&) = delete;
+    ~VulkanShaderModule();
+    VkDevice device = VK_NULL_HANDLE;
+    VkShaderModule handle = VK_NULL_HANDLE;
+};
+
 class VulkanVertexBuffer final : public VertexBuffer
 {
 public:

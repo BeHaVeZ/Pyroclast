@@ -1,19 +1,21 @@
 #include "d3d12_renderer.hpp"
 #include "d3d12_resources.hpp"
+#include "d3d12_shaders.hpp"
 
 #include <SDL3/SDL.h>
 
 namespace pyroclast
 {
 std::unique_ptr<ComputePipeline> D3D12Renderer::create_compute_pipeline(
-    std::span<const std::byte> shader, const VertexBuffer& resource)
+    Shader program, const VertexBuffer& resource)
 {
     const auto* vertices = dynamic_cast<const D3D12VertexBuffer*>(&resource);
-    if (!vertices || vertices->owner != this || shader.empty())
+    if (!vertices || vertices->owner != this)
     {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Compute requires shader bytecode and a buffer belonging to this D3D12 device.");
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Compute requires a buffer belonging to this D3D12 device.");
         return nullptr;
     }
+    const auto shader = d3d12_shader(program);
     auto pipeline = std::make_unique<D3D12ComputePipeline>();
     pipeline->owner = this;
     pipeline->vertices = vertices;

@@ -23,7 +23,7 @@ public:
         const GraphicsPipelineDescription& description) override;
     bool resize(int width, int height) override;
     std::unique_ptr<ComputePipeline> create_compute_pipeline(
-        std::span<const std::byte> shader, const VertexBuffer& vertices) override;
+        Shader shader, const VertexBuffer& vertices) override;
     RenderResult render(const DrawCommand& draw) override;
     bool wait_idle() override;
     std::optional<GpuTimings> completed_gpu_timings() const override { return gpu_timings_; }
@@ -49,6 +49,7 @@ private:
 
     bool create_instance();
     bool create_device();
+    bool create_shader_module(Shader shader, struct VulkanShaderModule& module);
     bool create_timestamps();
     bool read_timestamps(std::size_t frame);
     bool create_frames();

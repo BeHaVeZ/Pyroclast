@@ -1,6 +1,7 @@
 #include "d3d12_renderer.hpp"
 
 #include "d3d12_resources.hpp"
+#include "d3d12_shaders.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -13,11 +14,8 @@ namespace pyroclast
 std::unique_ptr<GraphicsPipeline> D3D12Renderer::create_graphics_pipeline(
     const GraphicsPipelineDescription& shaders)
 {
-    if (shaders.vertex_shader.empty() || shaders.pixel_shader.empty())
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Graphics pipeline requires both shader stages.");
-        return nullptr;
-    }
+    const auto vertex_shader = d3d12_shader(shaders.vertex_shader);
+    const auto pixel_shader = d3d12_shader(shaders.pixel_shader);
     auto pipeline = std::make_unique<D3D12GraphicsPipeline>();
     pipeline->owner = this;
     pipeline->blend = shaders.blend;
@@ -66,8 +64,8 @@ std::unique_ptr<GraphicsPipeline> D3D12Renderer::create_graphics_pipeline(
     };
     D3D12_GRAPHICS_PIPELINE_STATE_DESC description{};
     description.pRootSignature = pipeline->root_signature.Get();
-    description.VS = {shaders.vertex_shader.data(), shaders.vertex_shader.size()};
-    description.PS = {shaders.pixel_shader.data(), shaders.pixel_shader.size()};
+    description.VS = {vertex_shader.data(), vertex_shader.size()};
+    description.PS = {pixel_shader.data(), pixel_shader.size()};
     description.InputLayout = {input_layout, 2};
     description.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     description.NumRenderTargets = 1;

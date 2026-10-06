@@ -3,13 +3,6 @@
 
 #include <SDL3/SDL.h>
 #include <algorithm>
-#include <cstring>
-
-namespace
-{
-#include "vulkan/smoke_composite_vs.hpp"
-#include "vulkan/smoke_composite_ps.hpp"
-}
 
 namespace pyroclast
 {
@@ -85,34 +78,17 @@ bool VulkanRenderer::create_smoke_pipeline()
     layout.pSetLayouts = &smoke_descriptors_;
     if (!check(vkCreatePipelineLayout(device_, &layout, nullptr, &smoke_layout_), "Create smoke composite layout")) return false;
 
-    struct Modules
-    {
-        VkDevice device;
-        VkShaderModule vertex = VK_NULL_HANDLE, pixel = VK_NULL_HANDLE;
-        ~Modules()
-        {
-            vkDestroyShaderModule(device, vertex, nullptr);
-            vkDestroyShaderModule(device, pixel, nullptr);
-        }
-    } modules{device_};
-    const auto create_module = [this](const unsigned char* bytes, std::size_t size, VkShaderModule& module) {
-        std::vector<std::uint32_t> words(size / sizeof(std::uint32_t));
-        std::memcpy(words.data(), bytes, size);
-        VkShaderModuleCreateInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-        info.codeSize = size;
-        info.pCode = words.data();
-        return check(vkCreateShaderModule(device_, &info, nullptr, &module), "Create smoke composite shader");
-    };
-    if (!create_module(smoke_composite_vs, sizeof(smoke_composite_vs), modules.vertex) ||
-        !create_module(smoke_composite_ps, sizeof(smoke_composite_ps), modules.pixel)) return false;
+    VulkanShaderModule vertex;
+    VulkanShaderModule pixel;
+    if (!create_shader_module(Shader::smoke_composite_vertex, vertex) ||
+        !create_shader_module(Shader::smoke_composite_pixel, pixel)) return false;
     VkPipelineShaderStageCreateInfo stages[2]{};
     stages[0].sType = stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-    stages[0].module = modules.vertex;
+    stages[0].module = vertex.handle;
     stages[0].pName = "vs_main";
     stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    stages[1].module = modules.pixel;
+    stages[1].module = pixel.handle;
     stages[1].pName = "ps_main";
     VkPipelineVertexInputStateCreateInfo input{};
     input.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;

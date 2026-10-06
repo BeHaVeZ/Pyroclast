@@ -141,7 +141,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
     }
     SDL_Log("Smoke resolution: %s.", options.half_smoke ? "half" : "full");
     pyroclast::ParticleSystem demo;
-    if (creation.device && !demo.initialize(*creation.device, options.renderer, options.explosions))
+    if (creation.device && !demo.initialize(*creation.device, options.explosions))
     {
         return 1;
     }

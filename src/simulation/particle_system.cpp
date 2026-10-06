@@ -1,6 +1,5 @@
 #include "particle_system.hpp"
 
-#include "../graphics/particle_shaders.hpp"
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <cassert>
@@ -9,7 +8,7 @@
 
 namespace pyroclast
 {
-bool ParticleSystem::initialize(GraphicsDevice& device, Renderer renderer, std::uint32_t explosions)
+bool ParticleSystem::initialize(GraphicsDevice& device, std::uint32_t explosions)
 {
     if (!is_explosion_scenario(explosions))
     {
@@ -21,15 +20,14 @@ bool ParticleSystem::initialize(GraphicsDevice& device, Renderer renderer, std::
     capacity_ = std::max(minimum_capacity, burst_count_);
     const std::vector<Particle> initial(capacity_);
     particles_ = device.create_vertex_buffer(std::as_bytes(std::span(initial)), sizeof(Particle));
-    graphics_ = device.create_graphics_pipeline(particle_shaders(renderer));
-    auto smoke = particle_shaders(renderer);
-    smoke.blend = BlendMode::premultiplied_alpha;
-    smoke_graphics_ = device.create_graphics_pipeline(smoke);
+    graphics_ = device.create_graphics_pipeline({Shader::particle_vertex, Shader::particle_pixel, BlendMode::additive});
+    smoke_graphics_ = device.create_graphics_pipeline(
+        {Shader::particle_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha});
     if (!particles_ || !graphics_ || !smoke_graphics_)
     {
         return false;
     }
-    compute_ = device.create_compute_pipeline(particle_compute_shader(renderer), *particles_);
+    compute_ = device.create_compute_pipeline(Shader::particle_simulation, *particles_);
     if (!compute_)
     {
         return false;

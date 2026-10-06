@@ -30,7 +30,7 @@ public:
     static constexpr std::uint32_t smoke_particles = particle_layout::smoke_particles;
     static constexpr std::uint32_t explosion_particles = particle_layout::explosion_particles;
     static_assert(explosion_particles <= minimum_capacity);
-    bool initialize(GraphicsDevice& device, Renderer renderer, std::uint32_t explosions = 1);
+    bool initialize(GraphicsDevice& device, std::uint32_t explosions = 1);
     std::uint32_t capacity() const { return capacity_; }
     std::uint32_t explosion_count() const { return explosion_count_; }
     RenderResult render(GraphicsDevice& device, float aspect_ratio, double elapsed_seconds);
