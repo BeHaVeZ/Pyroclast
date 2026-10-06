@@ -16,23 +16,41 @@ struct SDL_Window;
 
 namespace pyroclast
 {
+enum class BlendMode { opaque, additive, premultiplied_alpha };
+
 class VertexBuffer
 {
 public:
+    VertexBuffer(std::uint32_t record_count, std::uint32_t stride) : record_count_(record_count), stride_(stride) {}
     virtual ~VertexBuffer() = default;
-    virtual std::uint32_t vertex_count() const = 0;
+    std::uint32_t record_count() const { return record_count_; }
+    std::uint32_t stride() const { return stride_; }
+
+private:
+    std::uint32_t record_count_;
+    std::uint32_t stride_;
 };
 
 class GraphicsPipeline
 {
 public:
+    explicit GraphicsPipeline(BlendMode blend) : blend_(blend) {}
     virtual ~GraphicsPipeline() = default;
+    BlendMode blend() const { return blend_; }
+
+private:
+    BlendMode blend_;
 };
 
 class ComputePipeline
 {
 public:
+    explicit ComputePipeline(const VertexBuffer& buffer) : buffer_(&buffer) {}
     virtual ~ComputePipeline() = default;
+    const VertexBuffer& buffer() const { return *buffer_; }
+
+private:
+    const VertexBuffer* buffer_;
 };
 
 struct ComputeDispatch
@@ -41,8 +59,6 @@ struct ComputeDispatch
     std::array<std::uint32_t, 4> constants;
     std::uint32_t group_count;
 };
-
-enum class BlendMode { opaque, additive, premultiplied_alpha };
 
 struct GraphicsPipelineDescription
 {

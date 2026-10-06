@@ -1,18 +1,10 @@
 #include "simulation/particle_system.hpp"
+#include "graphics/draw_validation.hpp"
 
 #include <cstdio>
 
 namespace
 {
-class TestBuffer final : public pyroclast::VertexBuffer
-{
-public:
-    explicit TestBuffer(std::uint32_t count) : count_(count) {}
-    std::uint32_t vertex_count() const override { return count_; }
-private:
-    std::uint32_t count_;
-};
-
 class TestDevice final : public pyroclast::GraphicsDevice
 {
 public:
@@ -24,30 +16,30 @@ public:
         valid_upload = record_stride == stride &&
             bytes.size() >= pyroclast::ParticleSystem::minimum_capacity * stride && bytes.size() <= largest_pool * stride;
         for (const auto byte : bytes) valid_upload &= byte == std::byte{0};
-        return std::make_unique<TestBuffer>(static_cast<std::uint32_t>(bytes.size() / stride));
+        return std::make_unique<pyroclast::VertexBuffer>(static_cast<std::uint32_t>(bytes.size() / stride), record_stride);
     }
     std::unique_ptr<pyroclast::GraphicsPipeline> create_graphics_pipeline(
         const pyroclast::GraphicsPipelineDescription& description) override
     {
-        auto pipeline = std::make_unique<pyroclast::GraphicsPipeline>();
+        auto pipeline = std::make_unique<pyroclast::GraphicsPipeline>(description.blend);
         if (description.blend == pyroclast::BlendMode::premultiplied_alpha) smoke = pipeline.get();
         if (description.blend == pyroclast::BlendMode::additive) emissive = pipeline.get();
         return pipeline;
     }
     std::unique_ptr<pyroclast::ComputePipeline> create_compute_pipeline(
-        pyroclast::Shader, const pyroclast::VertexBuffer&) override
+        pyroclast::Shader, const pyroclast::VertexBuffer& buffer) override
     {
-        return std::make_unique<pyroclast::ComputePipeline>();
+        return std::make_unique<pyroclast::ComputePipeline>(buffer);
     }
     bool resize(int, int) override { return true; }
     bool wait_idle() override { return true; }
     std::optional<pyroclast::GpuTimings> completed_gpu_timings() const override { return std::nullopt; }
     pyroclast::RenderResult render(const pyroclast::DrawCommand& draw) override
     {
-        valid_ranges = draw.ranges.size() == 2 &&
+        valid_ranges = pyroclast::validate_draw(draw, true) == nullptr && draw.ranges.size() == 2 &&
             &draw.ranges[0].pipeline == smoke && &draw.ranges[1].pipeline == emissive &&
             draw.ranges[0].first_record == expected_explosions * pyroclast::ParticleSystem::emissive_particles &&
-            draw.ranges[0].record_count == draw.vertices.vertex_count() - expected_explosions * pyroclast::ParticleSystem::emissive_particles &&
+            draw.ranges[0].record_count == draw.vertices.record_count() - expected_explosions * pyroclast::ParticleSystem::emissive_particles &&
             draw.ranges[1].first_record == 0 && draw.ranges[1].record_count == expected_explosions * pyroclast::ParticleSystem::emissive_particles;
         constants = draw.compute->constants;
         groups = draw.compute->group_count;

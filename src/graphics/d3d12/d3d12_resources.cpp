@@ -16,9 +16,8 @@ std::unique_ptr<GraphicsPipeline> D3D12Renderer::create_graphics_pipeline(
 {
     const auto vertex_shader = d3d12_shader(shaders.vertex_shader);
     const auto pixel_shader = d3d12_shader(shaders.pixel_shader);
-    auto pipeline = std::make_unique<D3D12GraphicsPipeline>();
+    auto pipeline = std::make_unique<D3D12GraphicsPipeline>(shaders.blend);
     pipeline->owner = this;
-    pipeline->blend = shaders.blend;
     D3D12_FEATURE_DATA_SHADER_MODEL shader_model{D3D_SHADER_MODEL_6_0};
     if (!check(device_->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL,
         &shader_model, sizeof(shader_model)), "Query shader model support"))
@@ -104,9 +103,8 @@ std::unique_ptr<VertexBuffer> D3D12Renderer::create_vertex_buffer(std::span<cons
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Vertex buffer must hold whole records and fit a 32-bit buffer view.");
         return nullptr;
     }
-    auto buffer = std::make_unique<D3D12VertexBuffer>();
+    auto buffer = std::make_unique<D3D12VertexBuffer>(static_cast<std::uint32_t>(vertices.size() / stride), stride);
     buffer->owner = this;
-    buffer->count = static_cast<UINT>(vertices.size() / stride);
     D3D12_RESOURCE_DESC description{};
     description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
     description.Width = vertices.size_bytes();
@@ -176,7 +174,7 @@ std::unique_ptr<VertexBuffer> D3D12Renderer::create_vertex_buffer(std::span<cons
     buffer->view.BufferLocation = buffer->resource->GetGPUVirtualAddress();
     buffer->view.SizeInBytes = static_cast<UINT>(vertices.size_bytes());
     buffer->view.StrideInBytes = stride;
-    SDL_Log("Vertex buffer uploaded: %u vertices.", buffer->count);
+    SDL_Log("Vertex buffer uploaded: %u vertices.", buffer->record_count());
     return buffer;
 }
 }

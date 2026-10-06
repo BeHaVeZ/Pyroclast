@@ -26,11 +26,9 @@ std::unique_ptr<VertexBuffer> VulkanRenderer::create_vertex_buffer(std::span<con
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Vertex buffer requires a nonempty, bounded span of whole records.");
         return nullptr;
     }
-    auto buffer = std::make_unique<VulkanVertexBuffer>();
+    auto buffer = std::make_unique<VulkanVertexBuffer>(static_cast<std::uint32_t>(vertices.size() / stride), stride);
     buffer->owner = this;
     buffer->device = device_;
-    buffer->count = static_cast<std::uint32_t>(vertices.size() / stride);
-    buffer->stride = stride;
     VkBufferCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     info.size = vertices.size_bytes();
@@ -85,7 +83,7 @@ std::unique_ptr<VertexBuffer> VulkanRenderer::create_vertex_buffer(std::span<con
     }
     std::memcpy(mapped, vertices.data(), vertices.size_bytes());
     vkUnmapMemory(device_, buffer->memory);
-    SDL_Log("Vertex buffer uploaded: %u vertices.", buffer->count);
+    SDL_Log("Vertex buffer uploaded: %u vertices.", buffer->record_count());
     return validation_ok() ? std::move(buffer) : nullptr;
 }
 
@@ -98,10 +96,9 @@ std::unique_ptr<GraphicsPipeline> VulkanRenderer::create_graphics_pipeline(
     {
         return nullptr;
     }
-    auto pipeline = std::make_unique<VulkanGraphicsPipeline>();
+    auto pipeline = std::make_unique<VulkanGraphicsPipeline>(shaders.blend);
     pipeline->device = device_;
     pipeline->owner = this;
-    pipeline->blend = shaders.blend;
     VkPipelineLayoutCreateInfo layout{};
     layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     const VkPushConstantRange view{VK_SHADER_STAGE_VERTEX_BIT, 0, 2 * sizeof(std::uint32_t)};

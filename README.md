@@ -186,7 +186,7 @@ return exit code 1 before SDL initializes. Use the exact `--renderer=value`
 form; arguments are case sensitive. All arguments are validated even when
 `--help` is present.
 
-To run parser tests after building each configuration:
+To run the unit tests after building each configuration:
 
 ```powershell
 ctest --preset debug
@@ -199,7 +199,7 @@ In Visual Studio, open this repository with **File > Open > Folder**, select the
 right-click the executable in CMake Targets View and select **Add Debug
 Configuration**. Set `args` in the generated `launch.vs.json`, for example
 `"args": ["--renderer=vulkan"]`. Keep the generated target and executable fields.
-The local `.vs/` settings are ignored by Git. Run the `command_line` and `particle_controls` tests from
+The local `.vs/` settings are ignored by Git. Run the `command_line`, `particle_controls` and `draw_validation` tests from
 **Test > Test Explorer**, or run the CTest commands above in Developer PowerShell.
 
 For Vulkan Debug with a copy-only SDK, also add an `env` property to that launch

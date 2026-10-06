@@ -16,9 +16,8 @@ std::unique_ptr<ComputePipeline> D3D12Renderer::create_compute_pipeline(
         return nullptr;
     }
     const auto shader = d3d12_shader(program);
-    auto pipeline = std::make_unique<D3D12ComputePipeline>();
+    auto pipeline = std::make_unique<D3D12ComputePipeline>(*vertices);
     pipeline->owner = this;
-    pipeline->vertices = vertices;
     D3D12_ROOT_PARAMETER parameters[2]{};
     parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV;
     parameters[0].Descriptor.ShaderRegister = 0;

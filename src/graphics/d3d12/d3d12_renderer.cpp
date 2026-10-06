@@ -1,5 +1,6 @@
 #include "d3d12_renderer.hpp"
 #include "d3d12_resources.hpp"
+#include "../draw_validation.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -107,37 +108,17 @@ RenderResult D3D12Renderer::render(const DrawCommand& draw)
 {
     assert(swapchain_ && command_list_);
     const auto* vertices = dynamic_cast<const D3D12VertexBuffer*>(&draw.vertices);
-    if (!vertices || vertices->owner != this || draw.ranges.empty() ||
-        vertices->view.StrideInBytes != particle_layout::particle_stride)
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Draw requires an owned particle buffer and at least one range.");
-        return RenderResult::failed;
-    }
+    const auto* compute = draw.compute ? dynamic_cast<const D3D12ComputePipeline*>(&draw.compute->pipeline) : nullptr;
+    bool owned = vertices && vertices->owner == this && (!draw.compute || (compute && compute->owner == this));
     for (const auto& range : draw.ranges)
     {
         const auto* pipeline = dynamic_cast<const D3D12GraphicsPipeline*>(&range.pipeline);
-        if (!pipeline || pipeline->owner != this ||
-            range.record_count == 0 || range.first_record > vertices->count ||
-            range.record_count > vertices->count - range.first_record)
-        {
-            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Invalid draw range or resource ownership.");
-            return RenderResult::failed;
-        }
+        owned = owned && pipeline && pipeline->owner == this;
     }
-    if (half_smoke_ && (static_cast<const D3D12GraphicsPipeline&>(draw.ranges.front().pipeline).blend != BlendMode::premultiplied_alpha ||
-        std::count_if(draw.ranges.begin(), draw.ranges.end(), [](const auto& range) {
-            return static_cast<const D3D12GraphicsPipeline&>(range.pipeline).blend == BlendMode::premultiplied_alpha;
-        }) != 1))
+    const char* error = owned ? validate_draw(draw, half_smoke_) : "Draw uses resources from another graphics device.";
+    if (error)
     {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Half-resolution rendering requires one leading particle smoke range.");
-        return RenderResult::failed;
-    }
-    const auto* compute = draw.compute ? dynamic_cast<const D3D12ComputePipeline*>(&draw.compute->pipeline) : nullptr;
-    if (draw.compute && (!compute || compute->owner != this || compute->vertices != vertices ||
-        draw.compute->group_count == 0 || draw.compute->group_count > 65535 ||
-        draw.compute->constants[0] != vertices->count))
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Invalid compute dispatch or resource ownership.");
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "%s", error);
         return RenderResult::failed;
     }
     if (occluded_)
@@ -205,7 +186,7 @@ RenderResult D3D12Renderer::render(const DrawCommand& draw)
     for (const auto& range : draw.ranges)
     {
         const auto& pipeline = static_cast<const D3D12GraphicsPipeline&>(range.pipeline);
-        if (half_smoke_ && pipeline.blend == BlendMode::premultiplied_alpha)
+        if (half_smoke_ && pipeline.blend() == BlendMode::premultiplied_alpha)
             draw_smoke(range, *vertices, draw, rtv);
         else draw_range(range, *vertices, draw.aspect_ratio);
     }

@@ -21,9 +21,8 @@ std::unique_ptr<ComputePipeline> VulkanRenderer::create_compute_pipeline(
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Compute requires a buffer belonging to this Vulkan device.");
         return nullptr;
     }
-    auto pipeline = std::make_unique<VulkanComputePipeline>();
+    auto pipeline = std::make_unique<VulkanComputePipeline>(*vertices);
     pipeline->owner = this;
-    pipeline->vertices = vertices;
     pipeline->device = device_;
     const VkDescriptorSetLayoutBinding binding{0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
     VkDescriptorSetLayoutCreateInfo descriptors{};
@@ -53,7 +52,7 @@ std::unique_ptr<ComputePipeline> VulkanRenderer::create_compute_pipeline(
     {
         return nullptr;
     }
-    const VkDescriptorBufferInfo buffer{vertices->buffer, 0, static_cast<VkDeviceSize>(vertices->count) * vertices->stride};
+    const VkDescriptorBufferInfo buffer{vertices->buffer, 0, static_cast<VkDeviceSize>(vertices->record_count()) * vertices->stride()};
     VkWriteDescriptorSet write{};
     write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     write.dstSet = pipeline->descriptor;
