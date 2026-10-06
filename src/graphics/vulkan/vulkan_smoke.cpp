@@ -7,13 +7,8 @@
 
 namespace
 {
-#ifdef NDEBUG
-#include "vulkan/Release/smoke_composite_vs.hpp"
-#include "vulkan/Release/smoke_composite_ps.hpp"
-#else
-#include "vulkan/Debug/smoke_composite_vs.hpp"
-#include "vulkan/Debug/smoke_composite_ps.hpp"
-#endif
+#include "vulkan/smoke_composite_vs.hpp"
+#include "vulkan/smoke_composite_ps.hpp"
 }
 
 namespace pyroclast

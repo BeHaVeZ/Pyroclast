@@ -234,8 +234,8 @@ code 0. Loader messages from installed third-party overlays are logged as
 and `shaders/particles_compute.hlsl` (`cs_main`) for both backends.
 `shaders/explosion.hlsli` shares layer classification and deterministic spawn hashing:
 
-- DXIL and bytecode headers: `out/build/windows-x64/generated/shaders/d3d12/<configuration>/`
-- SPIR-V and bytecode headers: `out/build/windows-x64/generated/shaders/vulkan/<configuration>/`
+- DXIL and bytecode headers: `out/build/windows-x64/generated/shaders/<configuration>/d3d12/`
+- SPIR-V and bytecode headers: `out/build/windows-x64/generated/shaders/<configuration>/vulkan/`
 
 The particle workload uses 128 groups of 64 threads and two ordered draws totaling
 six vertices per slot.

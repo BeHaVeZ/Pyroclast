@@ -7,13 +7,8 @@
 
 namespace
 {
-#ifdef NDEBUG
-#include "d3d12/Release/smoke_composite_vs.hpp"
-#include "d3d12/Release/smoke_composite_ps.hpp"
-#else
-#include "d3d12/Debug/smoke_composite_vs.hpp"
-#include "d3d12/Debug/smoke_composite_ps.hpp"
-#endif
+#include "d3d12/smoke_composite_vs.hpp"
+#include "d3d12/smoke_composite_ps.hpp"
 }
 
 namespace pyroclast

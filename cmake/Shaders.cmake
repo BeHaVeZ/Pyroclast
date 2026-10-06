@@ -32,7 +32,7 @@ if(NOT shader_probe_result STREQUAL "0")
 endif()
 
 foreach(backend IN ITEMS d3d12 vulkan)
-    set(shader_output_dir "${CMAKE_CURRENT_BINARY_DIR}/generated/shaders/${backend}/$<CONFIG>")
+    set(shader_output_dir "${CMAKE_CURRENT_BINARY_DIR}/generated/shaders/$<CONFIG>/${backend}")
     if(backend STREQUAL "d3d12")
         set(shader_extension dxil)
         set(shader_options "$<$<CONFIG:Debug>:-Qembed_debug>")
@@ -75,5 +75,6 @@ foreach(backend IN ITEMS d3d12 vulkan)
     endforeach()
 endforeach()
 
+# Sources include "<backend>/<program>_<stage>.hpp"; the directory selects the configuration.
 target_include_directories(Pyroclast PRIVATE
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/shaders")
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/shaders/$<CONFIG>")

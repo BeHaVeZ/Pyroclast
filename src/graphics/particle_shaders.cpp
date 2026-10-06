@@ -4,27 +4,15 @@ namespace
 {
 namespace d3d12
 {
-#ifdef NDEBUG
-#include "d3d12/Release/particles_vs.hpp"
-#include "d3d12/Release/particles_ps.hpp"
-#include "d3d12/Release/particles_compute_cs.hpp"
-#else
-#include "d3d12/Debug/particles_vs.hpp"
-#include "d3d12/Debug/particles_ps.hpp"
-#include "d3d12/Debug/particles_compute_cs.hpp"
-#endif
+#include "d3d12/particles_vs.hpp"
+#include "d3d12/particles_ps.hpp"
+#include "d3d12/particles_compute_cs.hpp"
 }
 namespace vulkan
 {
-#ifdef NDEBUG
-#include "vulkan/Release/particles_vs.hpp"
-#include "vulkan/Release/particles_ps.hpp"
-#include "vulkan/Release/particles_compute_cs.hpp"
-#else
-#include "vulkan/Debug/particles_vs.hpp"
-#include "vulkan/Debug/particles_ps.hpp"
-#include "vulkan/Debug/particles_compute_cs.hpp"
-#endif
+#include "vulkan/particles_vs.hpp"
+#include "vulkan/particles_ps.hpp"
+#include "vulkan/particles_compute_cs.hpp"
 }
 }
 
