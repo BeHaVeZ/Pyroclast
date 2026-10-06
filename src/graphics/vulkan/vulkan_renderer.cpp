@@ -22,6 +22,7 @@ VulkanRenderer::~VulkanRenderer()
             vkDestroySemaphore(device_, frame.acquired, nullptr);
             vkDestroyFence(device_, frame.submitted, nullptr);
         }
+        vkDestroyQueryPool(device_, timestamps_, nullptr);
         vkDestroyDevice(device_, nullptr);
     }
     if (surface_)
@@ -76,11 +77,21 @@ bool VulkanRenderer::wait_idle()
 RenderResult VulkanRenderer::render(const DrawCommand& draw)
 {
     const auto* vertices = dynamic_cast<const VulkanVertexBuffer*>(&draw.vertices);
-    const auto* pipeline = dynamic_cast<const VulkanGraphicsPipeline*>(&draw.pipeline);
-    if (!vertices || !pipeline || vertices->owner != this || pipeline->owner != this || vertices->layout != pipeline->vertex_layout)
+    if (!vertices || vertices->owner != this || draw.ranges.empty())
     {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Draw resources do not belong to this Vulkan device.");
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Draw requires an owned vertex buffer and at least one range.");
         return RenderResult::failed;
+    }
+    for (const auto& range : draw.ranges)
+    {
+        const auto* pipeline = dynamic_cast<const VulkanGraphicsPipeline*>(&range.pipeline);
+        if (!pipeline || pipeline->owner != this || vertices->layout != pipeline->vertex_layout ||
+            range.record_count == 0 || range.first_record > vertices->count ||
+            range.record_count > vertices->count - range.first_record)
+        {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Invalid draw range or resource ownership.");
+            return RenderResult::failed;
+        }
     }
     const auto* compute = draw.compute ? dynamic_cast<const VulkanComputePipeline*>(&draw.compute->pipeline) : nullptr;
     if (draw.compute && (!compute || compute->owner != this || compute->vertices != vertices ||
@@ -101,7 +112,7 @@ RenderResult VulkanRenderer::render(const DrawCommand& draw)
     }
     auto& frame = frames_[frame_index_];
     if (!check(vkWaitForFences(device_, 1, &frame.submitted, VK_TRUE,
-        std::numeric_limits<std::uint64_t>::max()), "Wait for frame command buffer"))
+        std::numeric_limits<std::uint64_t>::max()), "Wait for frame command buffer") || !read_timestamps(frame_index_))
     {
         return RenderResult::failed;
     }
@@ -137,6 +148,12 @@ RenderResult VulkanRenderer::render(const DrawCommand& draw)
     {
         return RenderResult::failed;
     }
+    const auto query = static_cast<std::uint32_t>(frame_index_) * 4;
+    if (timestamps_)
+    {
+        vkCmdResetQueryPool(frame.command, timestamps_, query, 4);
+        vkCmdWriteTimestamp(frame.command, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamps_, query);
+    }
     if (compute)
     {
         VkBufferMemoryBarrier storage{};
@@ -160,6 +177,11 @@ RenderResult VulkanRenderer::render(const DrawCommand& draw)
         vkCmdPipelineBarrier(frame.command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
             VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 0, 0, nullptr, 1, &storage, 0, nullptr);
     }
+    if (timestamps_)
+    {
+        vkCmdWriteTimestamp(frame.command, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamps_, query + 1);
+        vkCmdWriteTimestamp(frame.command, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamps_, query + 2);
+    }
     VkClearValue clear{};
     std::copy(draw.clear_color.begin(), draw.clear_color.end(), clear.color.float32);
     VkRenderPassBeginInfo pass{};
@@ -175,19 +197,22 @@ RenderResult VulkanRenderer::render(const DrawCommand& draw)
     const VkRect2D scissor{{0, 0}, extent_};
     vkCmdSetViewport(frame.command, 0, 1, &viewport);
     vkCmdSetScissor(frame.command, 0, 1, &scissor);
-    vkCmdBindPipeline(frame.command, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->pipeline);
-    const VkDeviceSize offset = 0;
-    vkCmdBindVertexBuffers(frame.command, 0, 1, &vertices->buffer, &offset);
-    if (pipeline->vertex_layout == VertexLayout::particle)
+    for (const auto& range : draw.ranges)
     {
-        vkCmdPushConstants(frame.command, pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float), &draw.aspect_ratio);
-        vkCmdDraw(frame.command, 6, vertices->count, 0, 0);
-    }
-    else
-    {
-        vkCmdDraw(frame.command, vertices->count, 1, 0, 0);
+        const auto& pipeline = static_cast<const VulkanGraphicsPipeline&>(range.pipeline);
+        vkCmdBindPipeline(frame.command, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
+        const VkDeviceSize offset = static_cast<VkDeviceSize>(range.first_record) * vertex_stride(vertices->layout);
+        vkCmdBindVertexBuffers(frame.command, 0, 1, &vertices->buffer, &offset);
+        if (pipeline.vertex_layout == VertexLayout::particle)
+        {
+            vkCmdPushConstants(frame.command, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float), &draw.aspect_ratio);
+            vkCmdPushConstants(frame.command, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, sizeof(float), sizeof(std::uint32_t), &range.first_record);
+            vkCmdDraw(frame.command, 6, range.record_count, 0, 0);
+        }
+        else vkCmdDraw(frame.command, range.record_count, 1, 0, 0);
     }
     vkCmdEndRenderPass(frame.command);
+    if (timestamps_) vkCmdWriteTimestamp(frame.command, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamps_, query + 3);
     if (!check(vkEndCommandBuffer(frame.command), "End Vulkan command buffer") ||
         !check(vkResetFences(device_, 1, &frame.submitted), "Reset frame fence") ||
         !check(vkResetFences(device_, 1, &image.presented), "Reset presentation fence"))
@@ -208,6 +233,7 @@ RenderResult VulkanRenderer::render(const DrawCommand& draw)
     {
         return RenderResult::failed;
     }
+    frame.timestamps_pending = timestamps_ != VK_NULL_HANDLE;
     VkSwapchainPresentFenceInfoEXT fence{};
     fence.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT;
     fence.swapchainCount = 1;

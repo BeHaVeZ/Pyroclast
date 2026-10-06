@@ -5,7 +5,7 @@
 
 namespace pyroclast
 {
-GraphicsPipelineDescription particle_shaders(Renderer) { return {}; }
+GraphicsPipelineDescription particle_shaders(Renderer) { return {{}, {}, VertexLayout::particle, BlendMode::additive}; }
 std::span<const std::byte> particle_compute_shader(Renderer) { return {}; }
 }
 
@@ -28,9 +28,12 @@ public:
         return std::make_unique<TestBuffer>();
     }
     std::unique_ptr<pyroclast::GraphicsPipeline> create_graphics_pipeline(
-        const pyroclast::GraphicsPipelineDescription&) override
+        const pyroclast::GraphicsPipelineDescription& description) override
     {
-        return std::make_unique<pyroclast::GraphicsPipeline>();
+        auto pipeline = std::make_unique<pyroclast::GraphicsPipeline>();
+        if (description.blend == pyroclast::BlendMode::premultiplied_alpha) smoke = pipeline.get();
+        if (description.blend == pyroclast::BlendMode::additive) emissive = pipeline.get();
+        return pipeline;
     }
     std::unique_ptr<pyroclast::ComputePipeline> create_compute_pipeline(
         std::span<const std::byte>, const pyroclast::VertexBuffer&) override
@@ -39,14 +42,23 @@ public:
     }
     bool resize(int, int) override { return true; }
     bool wait_idle() override { return true; }
+    std::optional<pyroclast::GpuTimings> completed_gpu_timings() const override { return std::nullopt; }
     pyroclast::RenderResult render(const pyroclast::DrawCommand& draw) override
     {
+        valid_ranges = draw.ranges.size() == 2 &&
+            &draw.ranges[0].pipeline == smoke && &draw.ranges[1].pipeline == emissive &&
+            draw.ranges[0].first_record == pyroclast::ParticleSystem::emissive_particles &&
+            draw.ranges[0].record_count == pyroclast::ParticleSystem::capacity - pyroclast::ParticleSystem::emissive_particles &&
+            draw.ranges[1].first_record == 0 && draw.ranges[1].record_count == pyroclast::ParticleSystem::emissive_particles;
         constants = draw.compute->constants;
         groups = draw.compute->group_count;
         return result;
     }
 
     bool valid_upload = false;
+    bool valid_ranges = false;
+    const pyroclast::GraphicsPipeline* smoke = nullptr;
+    const pyroclast::GraphicsPipeline* emissive = nullptr;
     std::array<std::uint32_t, 4> constants{};
     std::uint32_t groups = 0;
     pyroclast::RenderResult result = pyroclast::RenderResult::submitted;
@@ -66,6 +78,7 @@ int main()
     system.render(device, 16.0f / 9.0f, 1.0 / 60);
     check(device.constants[0] == 8192 && device.groups == 128 && device.constants[2] == ParticleSystem::explosion_particles, "default dispatch");
     check(device.constants[1] == 1, "fixed simulation step");
+    check(device.valid_ranges, "smoke alpha draw precedes additive light and covers the bounded pool");
     system.toggle_pause();
     system.render(device, 1, 1.0 / 60);
     check(device.constants[1] == 0, "pause does not advance simulation");

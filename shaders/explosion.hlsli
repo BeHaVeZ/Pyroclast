@@ -1,4 +1,7 @@
 static const uint fireball_particles = 256;
+static const uint smoke_first = 2048;
+
+float smoke_temperature(float age) { return exp(-0.45 * age); }
 
 uint particle_hash(uint value)
 {

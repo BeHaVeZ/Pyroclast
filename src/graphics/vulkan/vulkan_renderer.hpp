@@ -17,7 +17,7 @@ public:
     VulkanRenderer(const VulkanRenderer&) = delete;
     VulkanRenderer& operator=(const VulkanRenderer&) = delete;
 
-    bool initialize(SDL_Window* window);
+    bool initialize(SDL_Window* window, bool gpu_timing = false);
     std::unique_ptr<VertexBuffer> create_vertex_buffer(std::span<const std::byte> vertices, VertexLayout layout) override;
     std::unique_ptr<GraphicsPipeline> create_graphics_pipeline(
         const GraphicsPipelineDescription& description) override;
@@ -26,10 +26,12 @@ public:
         std::span<const std::byte> shader, const VertexBuffer& vertices) override;
     RenderResult render(const DrawCommand& draw) override;
     bool wait_idle() override;
+    std::optional<GpuTimings> completed_gpu_timings() const override { return gpu_timings_; }
 
 private:
     struct Frame
     {
+        bool timestamps_pending = false;
         VkCommandPool pool = VK_NULL_HANDLE;
         VkCommandBuffer command = VK_NULL_HANDLE;
         VkSemaphore acquired = VK_NULL_HANDLE;
@@ -47,6 +49,8 @@ private:
 
     bool create_instance();
     bool create_device();
+    bool create_timestamps();
+    bool read_timestamps(std::size_t frame);
     bool create_frames();
     bool create_swapchain();
     void destroy_swapchain();
@@ -74,6 +78,11 @@ private:
     int width_ = 0;
     int height_ = 0;
     bool rebuild_ = false;
+    VkQueryPool timestamps_ = VK_NULL_HANDLE;
+    std::uint64_t timestamp_mask_ = 0;
+    double timestamp_period_ = 0;
+    std::optional<GpuTimings> gpu_timings_;
+    std::uint64_t timing_sample_id_ = 0;
     std::atomic_uint64_t validation_warnings_{0};
     std::atomic_uint64_t validation_errors_{0};
 };

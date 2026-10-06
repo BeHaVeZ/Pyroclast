@@ -23,7 +23,7 @@ public:
     D3D12Renderer(const D3D12Renderer&) = delete;
     D3D12Renderer& operator=(const D3D12Renderer&) = delete;
 
-    bool initialize(SDL_Window* window);
+    bool initialize(SDL_Window* window, bool gpu_timing = false);
     std::unique_ptr<VertexBuffer> create_vertex_buffer(std::span<const std::byte> vertices, VertexLayout layout) override;
     std::unique_ptr<GraphicsPipeline> create_graphics_pipeline(
         const GraphicsPipelineDescription& description) override;
@@ -32,6 +32,7 @@ public:
         std::span<const std::byte> shader, const VertexBuffer& vertices) override;
     RenderResult render(const DrawCommand& draw) override;
     bool wait_idle() override;
+    std::optional<GpuTimings> completed_gpu_timings() const override { return gpu_timings_; }
 
 private:
     static constexpr UINT frame_count = 2;
@@ -39,12 +40,15 @@ private:
 
     struct Frame
     {
+        bool timestamps_pending = false;
         Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
         Microsoft::WRL::ComPtr<ID3D12Resource> backbuffer;
         std::uint64_t fence_value = 0;
     };
 
     bool create_device();
+    bool create_timestamps();
+    bool read_timestamps(std::size_t frame);
     bool create_swapchain(SDL_Window* window);
     bool create_render_targets();
     bool wait_for_fence(std::uint64_t value);
@@ -68,6 +72,12 @@ private:
     int width_ = 0;
     int height_ = 0;
     bool occluded_ = false;
+    Microsoft::WRL::ComPtr<ID3D12QueryHeap> timestamps_;
+    Microsoft::WRL::ComPtr<ID3D12Resource> timestamp_readback_;
+    const std::uint64_t* mapped_timestamps_ = nullptr;
+    std::uint64_t timestamp_frequency_ = 0;
+    std::optional<GpuTimings> gpu_timings_;
+    std::uint64_t timing_sample_id_ = 0;
     std::uint64_t validation_warnings_ = 0;
     std::uint64_t validation_errors_ = 0;
 };

@@ -31,13 +31,22 @@ void cs_main(uint3 thread : SV_DispatchThreadID)
         {
             float angle = particle_random(id, 1) * 6.2831853;
             float2 direction = float2(cos(angle), sin(angle));
-            bool fireball = id < fireball_particles;
-            float speed = fireball ? 0.08 + particle_random(id, 2) * 0.25 : 0.35 + particle_random(id, 2) * 0.85;
-            motion = float4(float2(0, -0.15) + direction * particle_random(id, 3) * 0.025,
-                direction * speed + float2(0, fireball ? 0.05 : 0.25));
-            life = float3(0,
-                fireball ? 0.35 + particle_random(id, 4) * 0.45 : 1.0 + particle_random(id, 4) * 1.2,
-                fireball ? 0.04 + particle_random(id, 5) * 0.025 : 0.003 + particle_random(id, 5) * 0.004);
+            if (id >= smoke_first)
+            {
+                motion = float4(float2(0, -0.15) + direction * particle_random(id, 3) * 0.07,
+                    direction * (0.10 + particle_random(id, 2) * 0.15) + float2(0, 0.12));
+                life = float3(0, 6.0 + particle_random(id, 4) * 2.0, 0.04 + particle_random(id, 5) * 0.04);
+            }
+            else
+            {
+                bool fireball = id < fireball_particles;
+                float speed = fireball ? 0.08 + particle_random(id, 2) * 0.25 : 0.35 + particle_random(id, 2) * 0.85;
+                motion = float4(float2(0, -0.15) + direction * particle_random(id, 3) * 0.025,
+                    direction * speed + float2(0, fireball ? 0.05 : 0.25));
+                life = float3(0,
+                    fireball ? 0.35 + particle_random(id, 4) * 0.45 : 1.0 + particle_random(id, 4) * 1.2,
+                    fireball ? 0.04 + particle_random(id, 5) * 0.025 : 0.003 + particle_random(id, 5) * 0.004);
+            }
         }
     }
     const float dt = 1.0 / 60.0;
@@ -46,7 +55,13 @@ void cs_main(uint3 thread : SV_DispatchThreadID)
         if (life.y > 0)
         {
             life.x += dt;
-            if (id >= fireball_particles) motion.w -= 0.65 * dt;
+            if (id >= smoke_first)
+            {
+                float temperature = smoke_temperature(life.x);
+                motion.zw += (float2(0.08, 0) - motion.zw) * (1.4 * dt);
+                motion.w += 0.20 * temperature * dt;
+            }
+            else if (id >= fireball_particles) motion.w -= 0.65 * dt;
             motion.xy += motion.zw * dt;
             if (life.x >= life.y) life.y = 0;
         }

@@ -34,9 +34,9 @@ GraphicsPipelineDescription particle_shaders(Renderer renderer)
 {
     if (renderer == Renderer::vulkan)
     {
-        return {std::as_bytes(std::span(vulkan::particles_vs)), std::as_bytes(std::span(vulkan::particles_ps)), VertexLayout::particle};
+        return {std::as_bytes(std::span(vulkan::particles_vs)), std::as_bytes(std::span(vulkan::particles_ps)), VertexLayout::particle, BlendMode::additive};
     }
-    return {std::as_bytes(std::span(d3d12::particles_vs)), std::as_bytes(std::span(d3d12::particles_ps)), VertexLayout::particle};
+    return {std::as_bytes(std::span(d3d12::particles_vs)), std::as_bytes(std::span(d3d12::particles_ps)), VertexLayout::particle, BlendMode::additive};
 }
 
 std::span<const std::byte> particle_compute_shader(Renderer renderer)

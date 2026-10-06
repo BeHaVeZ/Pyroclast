@@ -176,12 +176,13 @@ bool D3D12Renderer::create_render_targets()
     return check_validation();
 }
 
-bool D3D12Renderer::initialize(SDL_Window* window)
+bool D3D12Renderer::initialize(SDL_Window* window, bool gpu_timing)
 {
     if (!create_device() || !create_swapchain(window) || !check_validation())
     {
         return false;
     }
+    if (gpu_timing && !create_timestamps()) return false;
     SDL_Log("D3D12 initialized: %dx%d, two backbuffers, VSync enabled.", width_, height_);
     return true;
 }

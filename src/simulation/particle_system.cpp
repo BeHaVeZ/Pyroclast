@@ -14,7 +14,10 @@ bool ParticleSystem::initialize(GraphicsDevice& device, Renderer renderer)
     const std::vector<Particle> initial(capacity);
     particles_ = device.create_vertex_buffer(std::as_bytes(std::span(initial)), VertexLayout::particle);
     graphics_ = device.create_graphics_pipeline(particle_shaders(renderer));
-    if (!particles_ || !graphics_)
+    auto smoke = particle_shaders(renderer);
+    smoke.blend = BlendMode::premultiplied_alpha;
+    smoke_graphics_ = device.create_graphics_pipeline(smoke);
+    if (!particles_ || !graphics_ || !smoke_graphics_)
     {
         return false;
     }
@@ -30,7 +33,7 @@ bool ParticleSystem::initialize(GraphicsDevice& device, Renderer renderer)
 
 RenderResult ParticleSystem::render(GraphicsDevice& device, float aspect_ratio, double elapsed_seconds)
 {
-    assert(particles_ && graphics_ && compute_);
+    assert(particles_ && graphics_ && smoke_graphics_ && compute_);
     assert(std::isfinite(elapsed_seconds) && elapsed_seconds >= 0);
     assert(std::isfinite(aspect_ratio) && aspect_ratio > 0);
     constexpr double fixed_step = 1.0 / 60.0;
@@ -42,7 +45,11 @@ RenderResult ParticleSystem::render(GraphicsDevice& device, float aspect_ratio, 
         static_cast<std::uint32_t>(std::floor(accumulator_ / fixed_step));
     const ComputeDispatch dispatch{*compute_,
         {capacity, steps, burst_count_, reset_epoch_}, (capacity + 63) / 64};
-    const auto result = device.render({*particles_, *graphics_, {0.04f, 0.07f, 0.12f, 1.0f}, &dispatch, aspect_ratio});
+    const DrawRange ranges[] = {
+        {*smoke_graphics_, emissive_particles, capacity - emissive_particles},
+        {*graphics_, 0, emissive_particles}
+    };
+    const auto result = device.render({*particles_, ranges, {0.04f, 0.07f, 0.12f, 1.0f}, &dispatch, aspect_ratio});
     if (result == RenderResult::submitted)
     {
         if (paused_) pending_steps_ -= steps;

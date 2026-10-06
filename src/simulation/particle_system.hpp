@@ -22,7 +22,9 @@ class ParticleSystem final
 {
 public:
     static constexpr std::uint32_t capacity = 8192;
-    static constexpr std::uint32_t explosion_particles = 2048;
+    static constexpr std::uint32_t emissive_particles = 2048;
+    static constexpr std::uint32_t smoke_particles = 512;
+    static constexpr std::uint32_t explosion_particles = emissive_particles + smoke_particles;
     static_assert(explosion_particles <= capacity);
     bool initialize(GraphicsDevice& device, Renderer renderer);
     RenderResult render(GraphicsDevice& device, float aspect_ratio, double elapsed_seconds);
@@ -35,6 +37,7 @@ private:
     void reset_pool(std::uint32_t burst_count);
     std::unique_ptr<VertexBuffer> particles_;
     std::unique_ptr<GraphicsPipeline> graphics_;
+    std::unique_ptr<GraphicsPipeline> smoke_graphics_;
     std::unique_ptr<ComputePipeline> compute_;
     std::uint32_t reset_epoch_ = 1;
     std::uint32_t pending_steps_ = 0;

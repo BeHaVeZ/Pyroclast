@@ -6,7 +6,7 @@
 
 Early development.
 
-The project currently runs a GPU explosion prototype on D3D12 and Vulkan. Smoke behavior, performance scaling, and tooling follow in later phases.
+The project currently runs a GPU explosion and smoke prototype on D3D12 and Vulkan. Performance scaling and tooling follow in later phases.
 
 ## Core question
 
@@ -53,20 +53,20 @@ It is not affiliated with Bohemia Interactive, Arma, Enfusion, or Blastcore, and
 
 ## Current milestone
 
-**Phase 8 - First explosion**
+**Phase 9 - Smoke behavior**
 
-Both backends run the same shared HLSL explosion: a brief expanding fireball and
-outward-moving ballistic sparks. A deterministic burst activates 2,048 particles
-(256 fireball particles and 1,792 sparks) in the existing 8,192-slot GPU pool.
-Particle state remains 256 KiB. The GPU handles spawning, movement, fading, and
-death without CPU particle updates or GPU readback.
+Both backends run the same shared HLSL explosion: a brief fireball, ballistic
+sparks, and longer-lived smoke. A deterministic burst activates 2,560 particles
+(256 fireball particles, 1,792 sparks, and 512 smoke particles) in an 8,192-slot
+GPU pool. Particle state remains 256 KiB. The GPU handles spawning, movement,
+cooling, expansion, fading, and death without CPU particle updates.
 
-The demo starts with one explosion. **Space** triggers another, replacing the
-previous burst. Each burst naturally expires; particles do not respawn. Simulation
-retains fixed 1/60-second steps and bounded catch-up independently of display
-refresh. The existing instanced draw, buffer layout, RHI, and native synchronization
-remain sufficient. Smoke, multiple overlapping explosions, culling, and indirect
-rendering follow in later phases.
+Smoke rises with cooling-dependent buoyancy, slows through drag, and drifts with
+a fixed wind. Its opacity builds and dissipates over its lifetime. Two ordered
+draw ranges use premultiplied alpha for smoke, then additive blending for light.
+The demo remains a small 2D behavior prototype. Space replaces the current burst;
+fixed 1/60-second simulation and bounded catch-up remain. Multiple explosions,
+culling, LOD, and indirect rendering belong to later phases.
 
 See `docs/ROADMAP.md`.
 
@@ -138,8 +138,8 @@ Controls:
 - **P:** pause or resume simulation.
 - **N:** advance one 1/60-second step while paused.
 
-Fireball particles last 0.35-0.8 seconds; sparks last 1-2.2 seconds, rounded to
-simulation ticks. The screen returns to the background after the burst dies.
+Fireball particles last 0.35-0.8 seconds; sparks last 1-2.2 seconds; smoke lasts
+6-8 seconds, rounded to simulation ticks. The screen returns to the background after the burst dies.
 Minimizing freezes simulation. Long stalls discard excess catch-up time to keep
 GPU work bounded. Resizing preserves state and corrects particle aspect ratio.
 
@@ -187,7 +187,8 @@ console and Visual Studio debugger, with a validation summary at shutdown.
 
 To check the explosion in Visual Studio, select your existing D3D12 or Vulkan
 launch entry and press **F5**. Press **Space** to trigger the burst and watch the
-fireball expand, sparks travel outward/fall, and all particles fade away.
+fireball expand, sparks travel outward/fall, and smoke rise, drift right, expand,
+and fade away. Allow eight seconds of simulation for complete particle death.
 Press **P**, then **R** to clear the paused pool. **Space** should show a frozen
 flash; **N** advances it one simulation tick. Repeat triggering and
 resize/minimize/restore checks, then close the window. A clean D3D12 Debug run
@@ -208,10 +209,11 @@ and `shaders/particles_compute.hlsl` (`cs_main`) for both backends.
 - SPIR-V and bytecode headers: `out/build/windows-x64/generated/shaders/vulkan/<configuration>/`
 
 The earlier triangle/compute proof sources remain as reference code. The particle
-workload uses 128 groups of 64 threads and one draw of six vertices per slot.
+workload uses 128 groups of 64 threads and two ordered draws totaling six vertices
+per slot.
 Each backend orders the previous simulation/draw before the next update, and
 compute writes before instance fetch. No per-frame descriptor allocation, particle
-upload, or GPU readback is needed.
+upload, or particle readback is needed.
 
 Debug disables shader optimization and includes debug information; Release uses
 `-O3`. SPIR-V targets Vulkan 1.1 and is validated by DXC. Shader warnings fail
@@ -228,12 +230,21 @@ For a small startup measurement, run **Release** and leave the default 1280 x 72
 window focused and untouched. After 120 warmup frames and 600 samples, the log
 reports average, median, and p99 CPU resize/render-call time, including GPU fence
 and VSync presentation waits. Controls, focus loss, minimize, resize, or skipped
-submissions discard this sample. The sample covers the startup explosion and its transition to an empty pool.
+submissions discard this sample. The sample covers the evolving startup explosion and smoke; it finishes before
+all smoke dies on a 240 Hz display.
 This is a presentation-paced consistency baseline, not GPU simulation time or a
 throughput comparison; GPU profiling is required
 before optimization claims.
 
-See `docs/PHASE1.md` through `docs/PHASE8.md` for ownership, synchronization,
+For optional GPU timing, append `--gpu-timing` to a Release launch (or add it to
+your existing local Visual Studio launch arguments). Leave the default window
+focused and untouched until the startup summary appears. It reports separate
+compute/draw timestamp-region averages after the same warmup/sample window.
+Results are read only after existing frame fences; normal runs allocate no query
+resources. These instrumented regions include synchronization and clear work,
+and do not replace a profiler or prove scaling performance.
+
+See `docs/PHASE1.md` through `docs/PHASE9.md` for ownership, synchronization,
 validation results, and current limitations.
 
 Build output stays under `out/`. Machine-specific overrides can go in the ignored

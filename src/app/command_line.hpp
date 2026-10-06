@@ -11,6 +11,7 @@ struct ApplicationOptions
 {
     Renderer renderer = Renderer::d3d12;
     bool show_help = false;
+    bool gpu_timing = false;
 };
 
 struct CommandLineResult

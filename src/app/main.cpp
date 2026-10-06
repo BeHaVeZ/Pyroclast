@@ -87,7 +87,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice* renderer,
                 {
                     const double milliseconds = 1000.0 * static_cast<double>(SDL_GetPerformanceCounter() - start) /
                         static_cast<double>(SDL_GetPerformanceFrequency());
-                    baseline.record(milliseconds);
+                    baseline.record(milliseconds, renderer->completed_gpu_timings());
                 }
                 else baseline.disable();
                 continue;
@@ -126,7 +126,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
         return 1;
     }
 
-    auto creation = pyroclast::create_graphics_device(options.renderer, window.get());
+    auto creation = pyroclast::create_graphics_device(options.renderer, window.get(), options.gpu_timing);
     if (!creation.error.empty())
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "%s", creation.error.c_str());
@@ -157,9 +157,10 @@ int main(int argc, char** argv)
     if (result.options.show_help)
     {
         std::puts(
-            "Usage: Pyroclast.exe [--renderer=d3d12|vulkan] [--help]\n"
+            "Usage: Pyroclast.exe [--renderer=d3d12|vulkan] [--gpu-timing] [--help]\n"
             "  --renderer=d3d12   Request Direct3D 12 (default).\n"
             "  --renderer=vulkan  Request Vulkan.\n"
+            "  --gpu-timing       Enable GPU timestamp measurements.\n"
             "  --help             Print usage and exit.\n"
             "Both renderers run the same GPU explosion effect.");
         return 0;

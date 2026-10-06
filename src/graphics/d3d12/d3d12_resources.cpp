@@ -37,7 +37,7 @@ std::unique_ptr<GraphicsPipeline> D3D12Renderer::create_graphics_pipeline(
     D3D12_ROOT_SIGNATURE_DESC root_description{};
     D3D12_ROOT_PARAMETER aspect{};
     aspect.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-    aspect.Constants.Num32BitValues = 1;
+    aspect.Constants.Num32BitValues = 2;
     aspect.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
     root_description.NumParameters = particles ? 1 : 0;
     root_description.pParameters = particles ? &aspect : nullptr;
@@ -86,12 +86,13 @@ std::unique_ptr<GraphicsPipeline> D3D12Renderer::create_graphics_pipeline(
     description.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
     description.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_ALWAYS;
     auto& blend = description.BlendState.RenderTarget[0];
-    blend.BlendEnable = particles;
-    blend.SrcBlend = particles ? D3D12_BLEND_SRC_ALPHA : D3D12_BLEND_ONE;
-    blend.DestBlend = particles ? D3D12_BLEND_ONE : D3D12_BLEND_ZERO;
+    blend.BlendEnable = shaders.blend != BlendMode::opaque;
+    blend.SrcBlend = D3D12_BLEND_ONE;
+    blend.DestBlend = shaders.blend == BlendMode::premultiplied_alpha ? D3D12_BLEND_INV_SRC_ALPHA :
+        shaders.blend == BlendMode::additive ? D3D12_BLEND_ONE : D3D12_BLEND_ZERO;
     blend.BlendOp = D3D12_BLEND_OP_ADD;
     blend.SrcBlendAlpha = D3D12_BLEND_ONE;
-    blend.DestBlendAlpha = D3D12_BLEND_ZERO;
+    blend.DestBlendAlpha = blend.DestBlend;
     blend.BlendOpAlpha = D3D12_BLEND_OP_ADD;
     blend.LogicOp = D3D12_LOGIC_OP_NOOP;
     blend.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;

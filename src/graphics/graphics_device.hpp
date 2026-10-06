@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 
@@ -52,23 +53,40 @@ struct ComputeDispatch
     std::uint32_t group_count;
 };
 
+enum class BlendMode { opaque, additive, premultiplied_alpha };
+
 struct GraphicsPipelineDescription
 {
     std::span<const std::byte> vertex_shader;
     std::span<const std::byte> pixel_shader;
     VertexLayout layout = VertexLayout::position_color;
+    BlendMode blend = BlendMode::opaque;
+};
+
+struct DrawRange
+{
+    const GraphicsPipeline& pipeline;
+    std::uint32_t first_record;
+    std::uint32_t record_count;
 };
 
 struct DrawCommand
 {
     const VertexBuffer& vertices;
-    const GraphicsPipeline& pipeline;
+    std::span<const DrawRange> ranges;
     std::array<float, 4> clear_color;
     const ComputeDispatch* compute = nullptr;
     float aspect_ratio = 1.0f;
 };
 
 enum class RenderResult { failed, skipped, submitted };
+
+struct GpuTimings
+{
+    double compute_ms;
+    double draw_ms;
+    std::uint64_t sample_id;
+};
 
 class GraphicsDevice
 {
@@ -87,6 +105,7 @@ public:
     virtual bool resize(int width, int height) = 0;
     virtual RenderResult render(const DrawCommand& draw) = 0;
     virtual bool wait_idle() = 0;
+    virtual std::optional<GpuTimings> completed_gpu_timings() const = 0;
 };
 
 struct GraphicsDeviceCreation
@@ -95,5 +114,5 @@ struct GraphicsDeviceCreation
     std::string error;
 };
 
-GraphicsDeviceCreation create_graphics_device(Renderer renderer, SDL_Window* window);
+GraphicsDeviceCreation create_graphics_device(Renderer renderer, SDL_Window* window, bool gpu_timing = false);
 }

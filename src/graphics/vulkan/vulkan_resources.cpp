@@ -128,7 +128,7 @@ std::unique_ptr<GraphicsPipeline> VulkanRenderer::create_graphics_pipeline(
     const bool particles = shaders.layout == VertexLayout::particle;
     VkPipelineLayoutCreateInfo layout{};
     layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    const VkPushConstantRange aspect{VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float)};
+    const VkPushConstantRange aspect{VK_SHADER_STAGE_VERTEX_BIT, 0, 2 * sizeof(std::uint32_t)};
     layout.pushConstantRangeCount = particles ? 1 : 0;
     layout.pPushConstantRanges = particles ? &aspect : nullptr;
     if (!check(vkCreatePipelineLayout(device_, &layout, nullptr, &pipeline->layout), "Create Vulkan pipeline layout"))
@@ -175,12 +175,13 @@ std::unique_ptr<GraphicsPipeline> VulkanRenderer::create_graphics_pipeline(
     samples.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     samples.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
     VkPipelineColorBlendAttachmentState attachment{};
-    attachment.blendEnable = particles;
-    attachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-    attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
+    attachment.blendEnable = shaders.blend != BlendMode::opaque;
+    attachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+    attachment.dstColorBlendFactor = shaders.blend == BlendMode::premultiplied_alpha ? VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA :
+        shaders.blend == BlendMode::additive ? VK_BLEND_FACTOR_ONE : VK_BLEND_FACTOR_ZERO;
     attachment.colorBlendOp = VK_BLEND_OP_ADD;
     attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-    attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+    attachment.dstAlphaBlendFactor = attachment.dstColorBlendFactor;
     attachment.alphaBlendOp = VK_BLEND_OP_ADD;
     attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
         VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;

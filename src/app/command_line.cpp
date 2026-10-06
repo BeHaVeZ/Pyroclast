@@ -16,6 +16,10 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
         {
             result.options.show_help = true;
         }
+        else if (option == "--gpu-timing")
+        {
+            result.options.gpu_timing = true;
+        }
         else if (option.starts_with("--renderer="))
         {
             if (renderer_specified)

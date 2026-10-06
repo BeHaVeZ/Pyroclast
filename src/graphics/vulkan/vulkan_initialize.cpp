@@ -42,7 +42,7 @@ bool VulkanRenderer::validation_ok() const
     return validation_errors_.load() == 0;
 }
 
-bool VulkanRenderer::initialize(SDL_Window* window)
+bool VulkanRenderer::initialize(SDL_Window* window, bool gpu_timing)
 {
     window_ = window;
     if (!create_instance())
@@ -59,6 +59,7 @@ bool VulkanRenderer::initialize(SDL_Window* window)
     {
         return false;
     }
+    if (gpu_timing && !create_timestamps()) return false;
     SDL_Log("Vulkan initialized: %ux%u, two frames in flight, VSync enabled.",
         extent_.width, extent_.height);
     return validation_ok();

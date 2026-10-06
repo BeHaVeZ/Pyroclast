@@ -106,11 +106,21 @@ RenderResult D3D12Renderer::render(const DrawCommand& draw)
 {
     assert(swapchain_ && command_list_);
     const auto* vertices = dynamic_cast<const D3D12VertexBuffer*>(&draw.vertices);
-    const auto* pipeline = dynamic_cast<const D3D12GraphicsPipeline*>(&draw.pipeline);
-    if (!vertices || !pipeline || vertices->owner != this || pipeline->owner != this || vertices->layout != pipeline->vertex_layout)
+    if (!vertices || vertices->owner != this || draw.ranges.empty())
     {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Draw resources must belong to this graphics device.");
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Draw requires an owned vertex buffer and at least one range.");
         return RenderResult::failed;
+    }
+    for (const auto& range : draw.ranges)
+    {
+        const auto* pipeline = dynamic_cast<const D3D12GraphicsPipeline*>(&range.pipeline);
+        if (!pipeline || pipeline->owner != this || vertices->layout != pipeline->vertex_layout ||
+            range.record_count == 0 || range.first_record > vertices->count ||
+            range.record_count > vertices->count - range.first_record)
+        {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Invalid draw range or resource ownership.");
+            return RenderResult::failed;
+        }
     }
     const auto* compute = draw.compute ? dynamic_cast<const D3D12ComputePipeline*>(&draw.compute->pipeline) : nullptr;
     if (draw.compute && (!compute || compute->owner != this || compute->vertices != vertices ||
@@ -137,13 +147,15 @@ RenderResult D3D12Renderer::render(const DrawCommand& draw)
     const UINT index = swapchain_->GetCurrentBackBufferIndex();
     auto& frame = frames_[index];
 
-    if (!wait_for_fence(frame.fence_value) ||
+    if (!wait_for_fence(frame.fence_value) || !read_timestamps(index) ||
         !check(frame.allocator->Reset(), "Reset frame command allocator") ||
         !check(command_list_->Reset(frame.allocator.Get(), nullptr), "Reset command list"))
     {
         return RenderResult::failed;
     }
 
+    const UINT query = index * 4;
+    if (timestamps_) command_list_->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query);
     if (compute)
     {
         D3D12_RESOURCE_BARRIER storage{};
@@ -162,6 +174,11 @@ RenderResult D3D12Renderer::render(const DrawCommand& draw)
         command_list_->ResourceBarrier(1, &storage);
     }
 
+    if (timestamps_)
+    {
+        command_list_->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query + 1);
+        command_list_->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query + 2);
+    }
     D3D12_RESOURCE_BARRIER barrier{};
     barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     barrier.Transition.pResource = frame.backbuffer.Get();
@@ -177,25 +194,36 @@ RenderResult D3D12Renderer::render(const DrawCommand& draw)
     const D3D12_VIEWPORT viewport{0.0f, 0.0f,
         static_cast<float>(width_), static_cast<float>(height_), 0.0f, 1.0f};
     const D3D12_RECT scissor{0, 0, width_, height_};
-    command_list_->SetPipelineState(pipeline->state.Get());
-    command_list_->SetGraphicsRootSignature(pipeline->root_signature.Get());
     command_list_->RSSetViewports(1, &viewport);
     command_list_->RSSetScissorRects(1, &scissor);
     command_list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    command_list_->IASetVertexBuffers(0, 1, &vertices->view);
-    if (pipeline->vertex_layout == VertexLayout::particle)
+    for (const auto& range : draw.ranges)
     {
-        command_list_->SetGraphicsRoot32BitConstants(0, 1, &draw.aspect_ratio, 0);
-        command_list_->DrawInstanced(6, vertices->vertex_count(), 0, 0);
-    }
-    else
-    {
-        command_list_->DrawInstanced(vertices->vertex_count(), 1, 0, 0);
+        const auto& pipeline = static_cast<const D3D12GraphicsPipeline&>(range.pipeline);
+        command_list_->SetPipelineState(pipeline.state.Get());
+        command_list_->SetGraphicsRootSignature(pipeline.root_signature.Get());
+        auto view = vertices->view;
+        view.BufferLocation += static_cast<UINT64>(range.first_record) * view.StrideInBytes;
+        view.SizeInBytes = range.record_count * view.StrideInBytes;
+        command_list_->IASetVertexBuffers(0, 1, &view);
+        if (pipeline.vertex_layout == VertexLayout::particle)
+        {
+            command_list_->SetGraphicsRoot32BitConstants(0, 1, &draw.aspect_ratio, 0);
+            command_list_->SetGraphicsRoot32BitConstants(0, 1, &range.first_record, 1);
+            command_list_->DrawInstanced(6, range.record_count, 0, 0);
+        }
+        else command_list_->DrawInstanced(range.record_count, 1, 0, 0);
     }
 
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
     command_list_->ResourceBarrier(1, &barrier);
+    if (timestamps_)
+    {
+        command_list_->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query + 3);
+        command_list_->ResolveQueryData(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query, 4,
+            timestamp_readback_.Get(), query * sizeof(std::uint64_t));
+    }
     if (!check(command_list_->Close(), "Close frame command list"))
     {
         return RenderResult::failed;
@@ -210,6 +238,7 @@ RenderResult D3D12Renderer::render(const DrawCommand& draw)
         return RenderResult::failed;
     }
     frame.fence_value = value;
+    frame.timestamps_pending = timestamps_ != nullptr;
     return check(present_result, "Present frame") && check_validation() ? RenderResult::submitted : RenderResult::failed;
 }
 
@@ -229,6 +258,7 @@ bool D3D12Renderer::resize(int width, int height)
     {
         frame.backbuffer.Reset();
         frame.fence_value = 0;
+        frame.timestamps_pending = false;
     }
     if (!check(swapchain_->ResizeBuffers(frame_count, static_cast<UINT>(width),
         static_cast<UINT>(height), backbuffer_format, 0), "Resize swapchain"))
@@ -250,6 +280,11 @@ D3D12Renderer::~D3D12Renderer()
     if (queue_ && fence_ && fence_event_.IsValid())
     {
         wait_idle();
+    }
+    if (mapped_timestamps_)
+    {
+        const D3D12_RANGE written{0, 0};
+        timestamp_readback_->Unmap(0, &written);
     }
     check_validation();
     if (info_queue_)

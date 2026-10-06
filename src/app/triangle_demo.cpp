@@ -28,7 +28,8 @@ bool TriangleDemo::initialize(GraphicsDevice& device, Renderer renderer)
 bool TriangleDemo::render(GraphicsDevice& device) const
 {
     const ComputeDispatch compute{*compute_, {vertices_->vertex_count(), color_phase_}, 1};
-    return device.render({*vertices_, *pipeline_, {0.04f, 0.07f, 0.12f, 1.0f}, &compute}) != RenderResult::failed;
+    const DrawRange range{*pipeline_, 0, vertices_->vertex_count()};
+    return device.render({*vertices_, {&range, 1}, {0.04f, 0.07f, 0.12f, 1.0f}, &compute}) != RenderResult::failed;
 }
 
 void TriangleDemo::toggle_colors()

@@ -13,6 +13,7 @@ struct TestCase
     pyroclast::Renderer renderer;
     bool show_help;
     std::string_view error_fragment;
+    bool gpu_timing = false;
 };
 }
 
@@ -20,6 +21,9 @@ int main()
 {
     using enum pyroclast::Renderer;
     const TestCase cases[] = {
+        {"GPU timing", {"--gpu-timing"}, d3d12, false, {}, true},
+        {"Vulkan GPU timing", {"--renderer=vulkan", "--gpu-timing"}, vulkan, false, {}, true},
+        {"invalid GPU timing value", {"--gpu-timing=true"}, d3d12, false, "Unknown argument"},
         {"default renderer", {}, d3d12, false, {}},
         {"explicit d3d12", {"--renderer=d3d12"}, d3d12, false, {}},
         {"explicit vulkan", {"--renderer=vulkan"}, vulkan, false, {}},
@@ -49,7 +53,7 @@ int main()
             {test.arguments.begin(), test.arguments.size()});
         const bool passed = test.error_fragment.empty()
             ? result.error.empty() && result.options.renderer == test.renderer &&
-                result.options.show_help == test.show_help
+                result.options.show_help == test.show_help && result.options.gpu_timing == test.gpu_timing
             : result.error.find(test.error_fragment) != std::string::npos;
         if (!passed)
         {
