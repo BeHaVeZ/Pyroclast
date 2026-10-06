@@ -26,9 +26,12 @@ public:
     std::unique_ptr<pyroclast::VertexBuffer> create_vertex_buffer(
         std::span<const std::byte> bytes, pyroclast::VertexLayout layout) override
     {
-        valid_upload = layout == pyroclast::VertexLayout::particle && bytes.size() >= 8192 * 32 && bytes.size() <= 256000 * 32;
+        constexpr std::size_t stride = pyroclast::particle_layout::particle_stride;
+        constexpr std::size_t largest_pool = pyroclast::maximum_explosions * pyroclast::ParticleSystem::explosion_particles;
+        valid_upload = layout == pyroclast::VertexLayout::particle &&
+            bytes.size() >= pyroclast::ParticleSystem::minimum_capacity * stride && bytes.size() <= largest_pool * stride;
         for (const auto byte : bytes) valid_upload &= byte == std::byte{0};
-        return std::make_unique<TestBuffer>(static_cast<std::uint32_t>(bytes.size() / 32));
+        return std::make_unique<TestBuffer>(static_cast<std::uint32_t>(bytes.size() / stride));
     }
     std::unique_ptr<pyroclast::GraphicsPipeline> create_graphics_pipeline(
         const pyroclast::GraphicsPipelineDescription& description) override
@@ -147,17 +150,19 @@ int main()
         ParticleSystem stress;
         check(stress.initialize(stress_device, Renderer::d3d12, count), "stress initialization");
         stress.render(stress_device, 1, 0);
-        const auto expected_capacity = count == 1 ? 8192u : count * 2560;
+        const auto burst = count * ParticleSystem::explosion_particles;
+        const auto expected_capacity = count == 1 ? ParticleSystem::minimum_capacity : burst;
         check(stress_device.valid_upload && stress.capacity() == expected_capacity &&
-            stress_device.constants[0] == expected_capacity && stress_device.constants[2] == count * 2560 &&
-            stress_device.groups == (expected_capacity + 63) / 64 && stress_device.valid_ranges,
+            stress_device.constants[0] == expected_capacity && stress_device.constants[2] == burst &&
+            stress_device.groups == (expected_capacity + particle_layout::simulation_group_size - 1) / particle_layout::simulation_group_size &&
+            stress_device.valid_ranges,
             "bounded stress dispatch and layer-contiguous ranges");
         stress.reset();
         stress.render(stress_device, 1, 0);
         check(stress_device.constants[2] == 0 && stress_device.valid_ranges, "clear retains scenario layout");
         stress.trigger_explosion();
         stress.render(stress_device, 1, 0);
-        check(stress_device.constants[2] == count * 2560, "restart restores selected group");
+        check(stress_device.constants[2] == burst, "restart restores selected group");
     }
     TestDevice profile_device;
     ParticleSystem profile;

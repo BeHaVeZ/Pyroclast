@@ -1,5 +1,6 @@
 #pragma once
 
+#include "explosion_scenarios.hpp"
 #include "../graphics/graphics_device.hpp"
 
 namespace pyroclast
@@ -13,19 +14,21 @@ struct Particle
     float size;
     std::uint32_t reset_epoch;
 };
-static_assert(sizeof(Particle) == vertex_stride(VertexLayout::particle) &&
-    offsetof(Particle, position) == 0 && offsetof(Particle, velocity) == 8 &&
-    offsetof(Particle, age) == 16 && offsetof(Particle, lifetime) == 20 &&
-    offsetof(Particle, size) == 24 && offsetof(Particle, reset_epoch) == 28);
+static_assert(sizeof(Particle) == particle_layout::particle_stride &&
+    offsetof(Particle, position) == particle_layout::particle_motion_offset &&
+    offsetof(Particle, velocity) == particle_layout::particle_motion_offset + 8 &&
+    offsetof(Particle, age) == particle_layout::particle_life_offset &&
+    offsetof(Particle, lifetime) == particle_layout::particle_life_offset + 4 &&
+    offsetof(Particle, size) == particle_layout::particle_life_offset + 8 &&
+    offsetof(Particle, reset_epoch) == particle_layout::particle_epoch_offset);
 
 class ParticleSystem final
 {
 public:
     static constexpr std::uint32_t minimum_capacity = 8192;
-    static constexpr std::uint32_t maximum_explosions = 100;
-    static constexpr std::uint32_t emissive_particles = 2048;
-    static constexpr std::uint32_t smoke_particles = 512;
-    static constexpr std::uint32_t explosion_particles = emissive_particles + smoke_particles;
+    static constexpr std::uint32_t emissive_particles = particle_layout::emissive_particles;
+    static constexpr std::uint32_t smoke_particles = particle_layout::smoke_particles;
+    static constexpr std::uint32_t explosion_particles = particle_layout::explosion_particles;
     static_assert(explosion_particles <= minimum_capacity);
     bool initialize(GraphicsDevice& device, Renderer renderer, std::uint32_t explosions = 1);
     std::uint32_t capacity() const { return capacity_; }

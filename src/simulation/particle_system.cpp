@@ -11,7 +11,7 @@ namespace pyroclast
 {
 bool ParticleSystem::initialize(GraphicsDevice& device, Renderer renderer, std::uint32_t explosions)
 {
-    if (explosions != 1 && explosions != 10 && explosions != 50 && explosions != maximum_explosions)
+    if (!is_explosion_scenario(explosions))
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Explosion scenario must contain 1, 10, 50, or 100 effects.");
         return false;
@@ -47,12 +47,13 @@ RenderResult ParticleSystem::render(GraphicsDevice& device, float aspect_ratio, 
     constexpr double fixed_step = 1.0 / 60.0;
     if (!paused_)
     {
-        accumulator_ = std::min(accumulator_ + elapsed_seconds, 4 * fixed_step);
+        accumulator_ = std::min(accumulator_ + elapsed_seconds, particle_layout::maximum_simulation_steps * fixed_step);
     }
     const auto steps = paused_ ? std::min(pending_steps_, 1u) :
         static_cast<std::uint32_t>(std::floor(accumulator_ / fixed_step));
+    constexpr auto group_size = particle_layout::simulation_group_size;
     const ComputeDispatch dispatch{*compute_,
-        {capacity_, steps, burst_count_, reset_epoch_}, (capacity_ + 63) / 64};
+        {capacity_, steps, burst_count_, reset_epoch_}, (capacity_ + group_size - 1) / group_size};
     const auto emissive_count = explosion_count_ * emissive_particles;
     const DrawRange ranges[] = {
         {*smoke_graphics_, emissive_count, capacity_ - emissive_count},

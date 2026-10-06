@@ -67,8 +67,10 @@ std::unique_ptr<GraphicsPipeline> D3D12Renderer::create_graphics_pipeline(
             static_cast<UINT>(offsetof(Vertex, color)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
     };
     const D3D12_INPUT_ELEMENT_DESC particle_layout[] = {
-        {"POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1},
-        {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1}
+        {"POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, particle_layout::particle_motion_offset,
+            D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1},
+        {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, particle_layout::particle_life_offset,
+            D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1}
     };
     D3D12_GRAPHICS_PIPELINE_STATE_DESC description{};
     description.pRootSignature = pipeline->root_signature.Get();

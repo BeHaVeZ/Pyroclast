@@ -160,8 +160,8 @@ std::unique_ptr<GraphicsPipeline> VulkanRenderer::create_graphics_pipeline(
         {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, position)},
         {1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, color)}};
     const VkVertexInputAttributeDescription particle_attributes[] = {
-        {0, 0, VK_FORMAT_R32G32_SFLOAT, 0},
-        {1, 0, VK_FORMAT_R32G32B32_SFLOAT, 16}};
+        {0, 0, VK_FORMAT_R32G32_SFLOAT, particle_layout::particle_motion_offset},
+        {1, 0, VK_FORMAT_R32G32B32_SFLOAT, particle_layout::particle_life_offset}};
     VkPipelineVertexInputStateCreateInfo input{};
     input.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     input.vertexBindingDescriptionCount = 1;

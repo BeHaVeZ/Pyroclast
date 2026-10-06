@@ -1,5 +1,7 @@
 #include "command_line.hpp"
 
+#include "../simulation/explosion_scenarios.hpp"
+
 #include <charconv>
 #include <string_view>
 
@@ -67,15 +69,14 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
             }
             explosions_specified = true;
             const auto value = option.substr(std::string_view("--explosions=").size());
-            if (value == "1") result.options.explosions = 1;
-            else if (value == "10") result.options.explosions = 10;
-            else if (value == "50") result.options.explosions = 50;
-            else if (value == "100") result.options.explosions = 100;
-            else
+            std::uint32_t explosions = 0;
+            const auto parsed = std::from_chars(value.data(), value.data() + value.size(), explosions);
+            if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() || !is_explosion_scenario(explosions))
             {
                 result.error = "Expected --explosions=1, 10, 50, or 100.";
                 return result;
             }
+            result.options.explosions = explosions;
         }
         else if (option.starts_with("--renderer="))
         {

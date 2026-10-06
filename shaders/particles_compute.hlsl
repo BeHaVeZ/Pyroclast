@@ -13,7 +13,7 @@ struct Parameters
 ConstantBuffer<Parameters> parameters : register(b0);
 RWByteAddressBuffer particles : register(u0);
 
-[numthreads(64, 1, 1)]
+[numthreads(simulation_group_size, 1, 1)]
 void cs_main(uint3 thread : SV_DispatchThreadID)
 {
     uint id = thread.x;
@@ -23,10 +23,10 @@ void cs_main(uint3 thread : SV_DispatchThreadID)
     bool smoke = id >= emissive_count;
     uint effect = smoke ? (id - emissive_count) / smoke_particles : id / emissive_particles;
     uint local = smoke ? emissive_particles + (id - emissive_count) % smoke_particles : id % emissive_particles;
-    uint address = id * 32;
-    float4 motion = asfloat(particles.Load4(address));
-    float3 life = asfloat(particles.Load3(address + 16));
-    uint epoch = particles.Load(address + 28);
+    uint address = id * particle_stride;
+    float4 motion = asfloat(particles.Load4(address + particle_motion_offset));
+    float3 life = asfloat(particles.Load3(address + particle_life_offset));
+    uint epoch = particles.Load(address + particle_epoch_offset);
     if (epoch != parameters.reset_epoch)
     {
         motion = 0;
@@ -55,7 +55,7 @@ void cs_main(uint3 thread : SV_DispatchThreadID)
         }
     }
     const float dt = 1.0 / 60.0;
-    for (uint step = 0; step < min(parameters.steps, 4); ++step)
+    for (uint step = 0; step < min(parameters.steps, maximum_simulation_steps); ++step)
     {
         if (life.y > 0)
         {
@@ -71,7 +71,7 @@ void cs_main(uint3 thread : SV_DispatchThreadID)
             if (life.x >= life.y) life.y = 0;
         }
     }
-    particles.Store4(address, asuint(motion));
-    particles.Store3(address + 16, asuint(life));
-    particles.Store(address + 28, epoch);
+    particles.Store4(address + particle_motion_offset, asuint(motion));
+    particles.Store3(address + particle_life_offset, asuint(life));
+    particles.Store(address + particle_epoch_offset, epoch);
 }

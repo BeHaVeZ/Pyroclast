@@ -1,6 +1,7 @@
 #pragma once
 
 #include "graphics_api.hpp"
+#include "particle_layout.hpp"
 
 #include <array>
 #include <cstddef>
@@ -24,7 +25,7 @@ static_assert(sizeof(Vertex) == 24 && offsetof(Vertex, color) == 12);
 enum class VertexLayout { position_color, particle };
 constexpr std::uint32_t vertex_stride(VertexLayout layout)
 {
-    return layout == VertexLayout::particle ? 32u : sizeof(Vertex);
+    return layout == VertexLayout::particle ? particle_layout::particle_stride : sizeof(Vertex);
 }
 
 class VertexBuffer
