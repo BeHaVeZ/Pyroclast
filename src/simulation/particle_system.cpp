@@ -67,6 +67,14 @@ RenderResult ParticleSystem::render(GraphicsDevice& device, float aspect_ratio, 
     return result;
 }
 
+void ParticleSystem::prepare_profile(std::uint32_t tick)
+{
+    assert(particles_ && reset_epoch_ == 1 && tick <= 480);
+    paused_ = true;
+    accumulator_ = 0;
+    pending_steps_ = tick;
+}
+
 void ParticleSystem::trigger_explosion()
 {
     reset_pool(explosion_count_ * explosion_particles);

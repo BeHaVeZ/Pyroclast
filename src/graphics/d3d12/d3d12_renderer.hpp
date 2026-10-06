@@ -23,7 +23,7 @@ public:
     D3D12Renderer(const D3D12Renderer&) = delete;
     D3D12Renderer& operator=(const D3D12Renderer&) = delete;
 
-    bool initialize(SDL_Window* window, bool gpu_timing = false);
+    bool initialize(SDL_Window* window, bool gpu_timing = false, bool vsync = true, bool half_smoke = false);
     std::unique_ptr<VertexBuffer> create_vertex_buffer(std::span<const std::byte> vertices, VertexLayout layout) override;
     std::unique_ptr<GraphicsPipeline> create_graphics_pipeline(
         const GraphicsPipelineDescription& description) override;
@@ -46,6 +46,11 @@ private:
         std::uint64_t fence_value = 0;
     };
 
+    bool create_smoke_pipeline();
+    bool create_smoke_target();
+    void draw_range(const DrawRange& range, const class D3D12VertexBuffer& vertices, float aspect);
+    void set_target(D3D12_CPU_DESCRIPTOR_HANDLE rtv, int width, int height);
+    void draw_smoke(const DrawRange& range, const class D3D12VertexBuffer& vertices, const DrawCommand& draw, D3D12_CPU_DESCRIPTOR_HANDLE backbuffer);
     bool create_device();
     bool create_timestamps();
     bool read_timestamps(std::size_t frame);
@@ -72,6 +77,13 @@ private:
     int width_ = 0;
     int height_ = 0;
     bool occluded_ = false;
+    bool vsync_ = true;
+    bool half_smoke_ = false;
+    Microsoft::WRL::ComPtr<ID3D12Resource> smoke_target_;
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> smoke_rtv_;
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> smoke_srv_;
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> smoke_root_;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> smoke_composite_;
     Microsoft::WRL::ComPtr<ID3D12QueryHeap> timestamps_;
     Microsoft::WRL::ComPtr<ID3D12Resource> timestamp_readback_;
     const std::uint64_t* mapped_timestamps_ = nullptr;

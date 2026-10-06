@@ -23,10 +23,10 @@ struct SdlCleanup final
 };
 
 int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice* renderer,
-    pyroclast::ParticleSystem& demo)
+    pyroclast::ParticleSystem& demo, std::optional<std::uint32_t> profile_tick)
 {
     const auto window_id = SDL_GetWindowID(window);
-    pyroclast::FrameBaseline baseline(demo.explosion_count(), demo.capacity());
+    pyroclast::FrameBaseline baseline(demo.explosion_count(), demo.capacity(), profile_tick);
     auto previous_time = SDL_GetPerformanceCounter();
     while (true)
     {
@@ -87,7 +87,8 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice* renderer,
                 {
                     const double milliseconds = 1000.0 * static_cast<double>(SDL_GetPerformanceCounter() - start) /
                         static_cast<double>(SDL_GetPerformanceFrequency());
-                    baseline.record(milliseconds, renderer->completed_gpu_timings());
+                    if (!profile_tick || !demo.has_pending_steps())
+                        baseline.record(milliseconds, renderer->completed_gpu_timings());
                 }
                 else baseline.disable();
                 continue;
@@ -126,20 +127,27 @@ int run_application(const pyroclast::ApplicationOptions& options)
         return 1;
     }
 
-    auto creation = pyroclast::create_graphics_device(options.renderer, window.get(), options.gpu_timing);
+    auto creation = pyroclast::create_graphics_device(options.renderer, window.get(),
+        options.gpu_timing || options.profile_tick.has_value(), !options.profile_tick, options.half_smoke);
     if (!creation.error.empty())
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "%s", creation.error.c_str());
         return 1;
     }
+    SDL_Log("Smoke resolution: %s.", options.half_smoke ? "half" : "full");
     pyroclast::ParticleSystem demo;
     if (creation.device && !demo.initialize(*creation.device, options.renderer, options.explosions))
     {
         return 1;
     }
+    if (options.profile_tick)
+    {
+        demo.prepare_profile(*options.profile_tick);
+        SDL_Log("Fixed-state profile: tick=%u; VSync off; timestamps on; zero integration steps after preparation.", *options.profile_tick);
+    }
     SDL_SetWindowTitle(window.get(), "Pyroclast - Explosion | Space: trigger | R: clear | P: pause | N: step");
     SDL_Log("Explosion demo ready. Space: trigger, R: clear, P: pause, N: single step.");
-    const int exit_code = run_event_loop(window.get(), creation.device.get(), demo);
+    const int exit_code = run_event_loop(window.get(), creation.device.get(), demo, options.profile_tick);
     return !creation.device || creation.device->wait_idle() ? exit_code : 1;
 }
 }
@@ -157,10 +165,12 @@ int main(int argc, char** argv)
     if (result.options.show_help)
     {
         std::puts(
-            "Usage: Pyroclast.exe [--renderer=d3d12|vulkan] [--explosions=1|10|50|100] [--gpu-timing] [--help]\n"
+            "Usage: Pyroclast.exe [--renderer=d3d12|vulkan] [--explosions=1|10|50|100] [--gpu-timing] [--profile-tick=N] [--smoke-resolution=full|half] [--help]\n"
             "  --renderer=d3d12   Request Direct3D 12 (default).\n"
             "  --renderer=vulkan  Request Vulkan.\n"
             "  --explosions=N     Simultaneous explosion group (1, 10, 50, 100; default 1).\n"
+            "  --profile-tick=N   Freeze at tick 0-480; enable timestamps and disable VSync.\n"
+            "  --smoke-resolution=full|half  Select smoke rendering resolution (default full).\n"
             "  --gpu-timing       Enable GPU timestamp measurements.\n"
             "  --help             Print usage and exit.\n"
             "Both renderers run the same GPU explosion effect.");

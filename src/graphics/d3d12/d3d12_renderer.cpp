@@ -4,6 +4,7 @@
 #include <SDL3/SDL.h>
 
 #include <cassert>
+#include <algorithm>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -122,6 +123,14 @@ RenderResult D3D12Renderer::render(const DrawCommand& draw)
             return RenderResult::failed;
         }
     }
+    if (half_smoke_ && (static_cast<const D3D12GraphicsPipeline&>(draw.ranges.front().pipeline).blend != BlendMode::premultiplied_alpha ||
+        vertices->layout != VertexLayout::particle || std::count_if(draw.ranges.begin(), draw.ranges.end(), [](const auto& range) {
+            return static_cast<const D3D12GraphicsPipeline&>(range.pipeline).blend == BlendMode::premultiplied_alpha;
+        }) != 1))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Half-resolution rendering requires one leading particle smoke range.");
+        return RenderResult::failed;
+    }
     const auto* compute = draw.compute ? dynamic_cast<const D3D12ComputePipeline*>(&draw.compute->pipeline) : nullptr;
     if (draw.compute && (!compute || compute->owner != this || compute->vertices != vertices ||
         draw.compute->group_count == 0 || draw.compute->group_count > 65535 ||
@@ -190,29 +199,14 @@ RenderResult D3D12Renderer::render(const DrawCommand& draw)
     auto rtv = rtv_heap_->GetCPUDescriptorHandleForHeapStart();
     rtv.ptr += static_cast<SIZE_T>(index) * rtv_stride_;
     command_list_->ClearRenderTargetView(rtv, draw.clear_color.data(), 0, nullptr);
-    command_list_->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
-    const D3D12_VIEWPORT viewport{0.0f, 0.0f,
-        static_cast<float>(width_), static_cast<float>(height_), 0.0f, 1.0f};
-    const D3D12_RECT scissor{0, 0, width_, height_};
-    command_list_->RSSetViewports(1, &viewport);
-    command_list_->RSSetScissorRects(1, &scissor);
+    set_target(rtv, width_, height_);
     command_list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     for (const auto& range : draw.ranges)
     {
         const auto& pipeline = static_cast<const D3D12GraphicsPipeline&>(range.pipeline);
-        command_list_->SetPipelineState(pipeline.state.Get());
-        command_list_->SetGraphicsRootSignature(pipeline.root_signature.Get());
-        auto view = vertices->view;
-        view.BufferLocation += static_cast<UINT64>(range.first_record) * view.StrideInBytes;
-        view.SizeInBytes = range.record_count * view.StrideInBytes;
-        command_list_->IASetVertexBuffers(0, 1, &view);
-        if (pipeline.vertex_layout == VertexLayout::particle)
-        {
-            command_list_->SetGraphicsRoot32BitConstants(0, 1, &draw.aspect_ratio, 0);
-            command_list_->SetGraphicsRoot32BitConstants(0, 1, &range.first_record, 1);
-            command_list_->DrawInstanced(6, range.record_count, 0, 0);
-        }
-        else command_list_->DrawInstanced(range.record_count, 1, 0, 0);
+        if (half_smoke_ && pipeline.vertex_layout == VertexLayout::particle && pipeline.blend == BlendMode::premultiplied_alpha)
+            draw_smoke(range, *vertices, draw, rtv);
+        else draw_range(range, *vertices, draw.aspect_ratio);
     }
 
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
@@ -230,7 +224,7 @@ RenderResult D3D12Renderer::render(const DrawCommand& draw)
     }
     ID3D12CommandList* lists[] = {command_list_.Get()};
     queue_->ExecuteCommandLists(1, lists);
-    const HRESULT present_result = swapchain_->Present(1, 0);
+    const HRESULT present_result = swapchain_->Present(vsync_ ? 1 : 0, 0);
     occluded_ = present_result == DXGI_STATUS_OCCLUDED;
     const auto value = next_fence_value_++;
     if (!check(queue_->Signal(fence_.Get(), value), "Signal frame fence"))
@@ -267,6 +261,7 @@ bool D3D12Renderer::resize(int width, int height)
     }
     width_ = width;
     height_ = height;
+    if (half_smoke_ && !create_smoke_target()) return false;
     if (!create_render_targets())
     {
         return false;

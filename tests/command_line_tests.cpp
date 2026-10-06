@@ -15,6 +15,8 @@ struct TestCase
     std::string_view error_fragment;
     bool gpu_timing = false;
     std::uint32_t explosions = 1;
+    std::optional<std::uint32_t> profile_tick;
+    bool half_smoke = false;
 };
 }
 
@@ -22,6 +24,18 @@ int main()
 {
     using enum pyroclast::Renderer;
     const TestCase cases[] = {
+        {"half smoke", {"--smoke-resolution=half"}, d3d12, false, {}, false, 1, {}, true},
+        {"full smoke", {"--smoke-resolution=full"}, d3d12, false, {}},
+        {"invalid smoke resolution", {"--smoke-resolution=quarter"}, d3d12, false, "Expected --smoke-resolution"},
+        {"duplicate smoke resolution", {"--smoke-resolution=full", "--smoke-resolution=half"}, d3d12, false, "only once"},
+        {"profile tick zero", {"--profile-tick=0"}, d3d12, false, {}, false, 1, 0},
+        {"profile tick death", {"--profile-tick=480"}, d3d12, false, {}, false, 1, 480},
+        {"profile tick overflow", {"--profile-tick=4294967296"}, d3d12, false, "Expected --profile-tick"},
+        {"profile tick out of range", {"--profile-tick=481"}, d3d12, false, "Expected --profile-tick"},
+        {"profile tick negative", {"--profile-tick=-1"}, d3d12, false, "Expected --profile-tick"},
+        {"profile tick empty", {"--profile-tick="}, d3d12, false, "Expected --profile-tick"},
+        {"profile tick trailing text", {"--profile-tick=180x"}, d3d12, false, "Expected --profile-tick"},
+        {"profile tick duplicate", {"--profile-tick=180", "--profile-tick=60"}, d3d12, false, "only once"},
         {"ten explosions", {"--explosions=10"}, d3d12, false, {}, false, 10},
         {"fifty explosions", {"--explosions=50"}, d3d12, false, {}, false, 50},
         {"hundred Vulkan explosions", {"--renderer=vulkan", "--explosions=100", "--gpu-timing"}, vulkan, false, {}, true, 100},
@@ -62,7 +76,7 @@ int main()
             {test.arguments.begin(), test.arguments.size()});
         const bool passed = test.error_fragment.empty()
             ? result.error.empty() && result.options.renderer == test.renderer &&
-                result.options.show_help == test.show_help && result.options.gpu_timing == test.gpu_timing && result.options.explosions == test.explosions
+                result.options.show_help == test.show_help && result.options.gpu_timing == test.gpu_timing && result.options.explosions == test.explosions && result.options.profile_tick == test.profile_tick && result.options.half_smoke == test.half_smoke
             : result.error.find(test.error_fragment) != std::string::npos;
         if (!passed)
         {

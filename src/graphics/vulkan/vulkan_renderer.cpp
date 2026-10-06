@@ -15,6 +15,12 @@ VulkanRenderer::~VulkanRenderer()
     {
         wait_idle();
         destroy_swapchain();
+        vkDestroyPipeline(device_, smoke_composite_, nullptr);
+        vkDestroyPipelineLayout(device_, smoke_layout_, nullptr);
+        vkDestroyDescriptorPool(device_, smoke_pool_, nullptr);
+        vkDestroyDescriptorSetLayout(device_, smoke_descriptors_, nullptr);
+        vkDestroySampler(device_, smoke_sampler_, nullptr);
+        vkDestroyRenderPass(device_, smoke_pass_, nullptr);
         vkDestroyRenderPass(device_, render_pass_, nullptr);
         for (const auto& frame : frames_)
         {
@@ -93,6 +99,14 @@ RenderResult VulkanRenderer::render(const DrawCommand& draw)
             return RenderResult::failed;
         }
     }
+    if (half_smoke_ && (static_cast<const VulkanGraphicsPipeline&>(draw.ranges.front().pipeline).blend != BlendMode::premultiplied_alpha ||
+        vertices->layout != VertexLayout::particle || std::count_if(draw.ranges.begin(), draw.ranges.end(), [](const auto& range) {
+            return static_cast<const VulkanGraphicsPipeline&>(range.pipeline).blend == BlendMode::premultiplied_alpha;
+        }) != 1))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Half-resolution rendering requires one leading particle smoke range.");
+        return RenderResult::failed;
+    }
     const auto* compute = draw.compute ? dynamic_cast<const VulkanComputePipeline*>(&draw.compute->pipeline) : nullptr;
     if (draw.compute && (!compute || compute->owner != this || compute->vertices != vertices ||
         draw.compute->group_count == 0 || draw.compute->group_count > 65535 ||
@@ -153,6 +167,8 @@ RenderResult VulkanRenderer::render(const DrawCommand& draw)
     {
         vkCmdResetQueryPool(frame.command, timestamps_, query, 4);
         vkCmdWriteTimestamp(frame.command, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamps_, query);
+        vkCmdPipelineBarrier(frame.command, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+            0, 0, nullptr, 0, nullptr, 0, nullptr);
     }
     if (compute)
     {
@@ -181,7 +197,10 @@ RenderResult VulkanRenderer::render(const DrawCommand& draw)
     {
         vkCmdWriteTimestamp(frame.command, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamps_, query + 1);
         vkCmdWriteTimestamp(frame.command, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamps_, query + 2);
+        vkCmdPipelineBarrier(frame.command, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+            0, 0, nullptr, 0, nullptr, 0, nullptr);
     }
+    if (half_smoke_) render_smoke(frame.command, draw);
     VkClearValue clear{};
     std::copy(draw.clear_color.begin(), draw.clear_color.end(), clear.color.float32);
     VkRenderPassBeginInfo pass{};
@@ -192,25 +211,15 @@ RenderResult VulkanRenderer::render(const DrawCommand& draw)
     pass.clearValueCount = 1;
     pass.pClearValues = &clear;
     vkCmdBeginRenderPass(frame.command, &pass, VK_SUBPASS_CONTENTS_INLINE);
-    const VkViewport viewport{0.0f, static_cast<float>(extent_.height),
-        static_cast<float>(extent_.width), -static_cast<float>(extent_.height), 0.0f, 1.0f};
-    const VkRect2D scissor{{0, 0}, extent_};
-    vkCmdSetViewport(frame.command, 0, 1, &viewport);
-    vkCmdSetScissor(frame.command, 0, 1, &scissor);
-    for (const auto& range : draw.ranges)
+    set_viewport(frame.command, extent_);
+    if (half_smoke_)
     {
-        const auto& pipeline = static_cast<const VulkanGraphicsPipeline&>(range.pipeline);
-        vkCmdBindPipeline(frame.command, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
-        const VkDeviceSize offset = static_cast<VkDeviceSize>(range.first_record) * vertex_stride(vertices->layout);
-        vkCmdBindVertexBuffers(frame.command, 0, 1, &vertices->buffer, &offset);
-        if (pipeline.vertex_layout == VertexLayout::particle)
-        {
-            vkCmdPushConstants(frame.command, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float), &draw.aspect_ratio);
-            vkCmdPushConstants(frame.command, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, sizeof(float), sizeof(std::uint32_t), &range.first_record);
-            vkCmdDraw(frame.command, 6, range.record_count, 0, 0);
-        }
-        else vkCmdDraw(frame.command, range.record_count, 1, 0, 0);
+        vkCmdBindPipeline(frame.command, VK_PIPELINE_BIND_POINT_GRAPHICS, smoke_composite_);
+        vkCmdBindDescriptorSets(frame.command, VK_PIPELINE_BIND_POINT_GRAPHICS, smoke_layout_, 0, 1, &smoke_set_, 0, nullptr);
+        vkCmdDraw(frame.command, 3, 1, 0, 0);
     }
+    const auto ranges = half_smoke_ ? draw.ranges.subspan(1) : draw.ranges;
+    for (const auto& range : ranges) draw_range(frame.command, range, *vertices, draw.aspect_ratio);
     vkCmdEndRenderPass(frame.command);
     if (timestamps_) vkCmdWriteTimestamp(frame.command, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamps_, query + 3);
     if (!check(vkEndCommandBuffer(frame.command), "End Vulkan command buffer") ||

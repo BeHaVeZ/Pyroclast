@@ -37,12 +37,14 @@ add_executable(Pyroclast
     src/graphics/d3d12/d3d12_renderer.cpp
     src/graphics/d3d12/d3d12_resources.cpp
     src/graphics/d3d12/d3d12_timing.cpp
+    src/graphics/d3d12/d3d12_smoke.cpp
     src/graphics/d3d12/d3d12_compute.cpp
     src/graphics/vulkan/vulkan_initialize.cpp
     src/graphics/vulkan/vulkan_renderer.cpp
     src/graphics/vulkan/vulkan_swapchain.cpp
     src/graphics/vulkan/vulkan_resources.cpp
     src/graphics/vulkan/vulkan_timing.cpp
+    src/graphics/vulkan/vulkan_smoke.cpp
     src/graphics/vulkan/vulkan_compute.cpp
 )
 target_compile_definitions(Pyroclast PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)

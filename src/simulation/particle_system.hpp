@@ -31,6 +31,8 @@ public:
     std::uint32_t capacity() const { return capacity_; }
     std::uint32_t explosion_count() const { return explosion_count_; }
     RenderResult render(GraphicsDevice& device, float aspect_ratio, double elapsed_seconds);
+    void prepare_profile(std::uint32_t tick);
+    bool has_pending_steps() const { return pending_steps_ != 0; }
     void trigger_explosion();
     void reset();
     void toggle_pause();

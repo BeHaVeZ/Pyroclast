@@ -21,6 +21,7 @@ std::unique_ptr<GraphicsPipeline> D3D12Renderer::create_graphics_pipeline(
     auto pipeline = std::make_unique<D3D12GraphicsPipeline>();
     pipeline->owner = this;
     pipeline->vertex_layout = shaders.layout;
+    pipeline->blend = shaders.blend;
     const bool particles = shaders.layout == VertexLayout::particle;
     D3D12_FEATURE_DATA_SHADER_MODEL shader_model{D3D_SHADER_MODEL_6_0};
     if (!check(device_->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL,

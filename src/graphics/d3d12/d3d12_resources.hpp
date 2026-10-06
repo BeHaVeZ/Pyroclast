@@ -26,6 +26,7 @@ class D3D12GraphicsPipeline final : public GraphicsPipeline
 public:
     const D3D12Renderer* owner = nullptr;
     VertexLayout vertex_layout = VertexLayout::position_color;
+    BlendMode blend = BlendMode::opaque;
     Microsoft::WRL::ComPtr<ID3D12RootSignature> root_signature;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> state;
 };

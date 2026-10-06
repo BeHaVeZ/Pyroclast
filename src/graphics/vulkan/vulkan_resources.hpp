@@ -29,6 +29,7 @@ public:
     ~VulkanGraphicsPipeline() override;
     const VulkanRenderer* owner = nullptr;
     VertexLayout vertex_layout = VertexLayout::position_color;
+    BlendMode blend = BlendMode::opaque;
     VkDevice device = VK_NULL_HANDLE;
     VkPipelineLayout layout = VK_NULL_HANDLE;
     VkPipeline pipeline = VK_NULL_HANDLE;

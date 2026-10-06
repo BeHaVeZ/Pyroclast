@@ -109,6 +109,22 @@ bool VulkanRenderer::create_swapchain()
         }
     }
     info.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+    if (!vsync_)
+    {
+        std::uint32_t mode_count = 0;
+        if (!check(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_, surface_, &mode_count, nullptr),
+            "Query Vulkan present modes")) return false;
+        std::vector<VkPresentModeKHR> modes(mode_count);
+        if (!check(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_, surface_, &mode_count, modes.data()),
+            "Read Vulkan present modes")) return false;
+        if (std::find(modes.begin(), modes.end(), VK_PRESENT_MODE_IMMEDIATE_KHR) == modes.end())
+        {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Fixed-state profiling requires Vulkan IMMEDIATE presentation.");
+            return false;
+        }
+        info.presentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+    }
+    SDL_Log("Vulkan presentation mode: %s.", vsync_ ? "FIFO" : "IMMEDIATE");
     info.clipped = VK_TRUE;
     if (!check(vkCreateSwapchainKHR(device_, &info, nullptr, &swapchain_), "Create Vulkan swapchain") ||
         !check(vkGetSwapchainImagesKHR(device_, swapchain_, &count, nullptr), "Count Vulkan swapchain images"))
@@ -155,11 +171,13 @@ bool VulkanRenderer::create_swapchain()
         }
     }
     rebuild_ = false;
+    if (half_smoke_ && ((!smoke_pass_ && !create_smoke_pipeline()) || !create_smoke_target())) return false;
     return validation_ok();
 }
 
 void VulkanRenderer::destroy_swapchain()
 {
+    destroy_smoke_target();
     for (auto& image : images_)
     {
         vkDestroyFramebuffer(device_, image.framebuffer, nullptr);

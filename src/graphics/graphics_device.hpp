@@ -114,5 +114,5 @@ struct GraphicsDeviceCreation
     std::string error;
 };
 
-GraphicsDeviceCreation create_graphics_device(Renderer renderer, SDL_Window* window, bool gpu_timing = false);
+GraphicsDeviceCreation create_graphics_device(Renderer renderer, SDL_Window* window, bool gpu_timing = false, bool vsync = true, bool half_smoke = false);
 }

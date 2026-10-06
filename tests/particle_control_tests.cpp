@@ -159,6 +159,22 @@ int main()
         stress.render(stress_device, 1, 0);
         check(stress_device.constants[2] == count * 2560, "restart restores selected group");
     }
+    TestDevice profile_device;
+    ParticleSystem profile;
+    profile.initialize(profile_device, Renderer::d3d12);
+    profile.prepare_profile(180);
+    profile_device.result = RenderResult::skipped;
+    profile.render(profile_device, 1, 1);
+    check(profile.has_pending_steps(), "skipped profile preparation retains ticks");
+    profile_device.result = RenderResult::submitted;
+    for (int tick = 0; tick < 180; ++tick)
+    {
+        profile.render(profile_device, 1, 1);
+        check(profile_device.constants[1] == 1, "profile preparation advances one fixed tick");
+    }
+    check(!profile.has_pending_steps(), "profile reaches target tick exactly");
+    profile.render(profile_device, 1, 1);
+    check(profile_device.constants[1] == 0, "profile state stays frozen regardless of elapsed time");
     ParticleSystem invalid;
     check(!invalid.initialize(device, Renderer::d3d12, 0) &&
         !invalid.initialize(device, Renderer::d3d12, 101), "invalid scenarios fail before allocation");

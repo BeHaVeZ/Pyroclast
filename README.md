@@ -6,7 +6,7 @@
 
 Early development.
 
-The project currently runs a GPU explosion and smoke prototype on D3D12 and Vulkan. Performance scaling and tooling follow in later phases.
+The project currently runs a GPU explosion and smoke prototype on D3D12 and Vulkan. Scaling investigations are underway; tooling follows in later phases.
 
 ## Core question
 
@@ -53,7 +53,7 @@ It is not affiliated with Bohemia Interactive, Arma, Enfusion, or Blastcore, and
 
 ## Current milestone
 
-**Phase 10 - Scaling baseline**
+**Phase 10 - Profiling and measured smoke optimizations**
 
 Both backends run the same shared HLSL explosion: a brief fireball, ballistic
 sparks, and longer-lived smoke. The default single burst activates 2,560 particles
@@ -272,8 +272,52 @@ Results are read only after existing frame fences; normal runs allocate no query
 resources. These instrumented regions include synchronization and clear work,
 and do not replace a profiler or prove scaling performance.
 
-See `docs/PHASE1.md` through `docs/PHASE10.md` for ownership, synchronization,
-validation results, and current limitations.
+For a controlled fixed-state measurement, append `--profile-tick=180` (any integer
+0-480 is accepted). This automatically enables timestamps and requests VSync off.
+The application advances to that tick, freezes, then warms up 120 frames and
+samples 600. At tick 180 only smoke remains; tick 480 checks the drained pool.
+The measured compute dispatch has **zero integration steps** but still reads and
+writes all records. This isolates pool/rendering costs rather than force costs.
+Input, focus loss, resize, minimize, or skipped frames invalidate the sample.
+D3D12 uses Present interval zero; Vulkan requires IMMEDIATE presentation and
+reports a useful error if unavailable. Desktop compositing can still affect CPU
+presentation time, so the output separates CPU call times from GPU regions.
+
+```powershell
+.\out\build\windows-x64\Release\Pyroclast.exe --renderer=vulkan --explosions=100 --profile-tick=180
+```
+
+In Visual Studio, add `"--profile-tick=180"` to your existing profile's `args`.
+The frozen plume is intentional. Remove that argument to restore normal playback.
+Vulkan logs its selected buffer memory type and prefers device-local,
+host-visible coherent memory for the GPU-owned pool when compatible. It retains
+the prior host-visible fallback on devices without that combination. The first
+measured Phase 10 optimization changes memory placement; it adds no particle LOD,
+culling, compaction, indirect rendering, or ImGui.
+
+For the optional half-resolution smoke experiment, add
+`"--smoke-resolution=half"` to your Visual Studio launch `args`. Full resolution
+remains the default; use `"--smoke-resolution=full"` for the comparison. Both APIs
+render smoke into a reusable target with half the width and height, upscale with
+the same linear-filtered HLSL shader, then draw fireball and sparks at full
+resolution. Particle simulation, counts, and draw ranges are unchanged.
+
+```powershell
+.\out\build\windows-x64\Release\Pyroclast.exe --renderer=d3d12 --explosions=100 --profile-tick=180 --smoke-resolution=half
+```
+
+Compare full and half at the same frozen tick and window size. Check plume
+coverage, opacity and edge softness; remove `--profile-tick` for normal playback
+and verify the flash, sparks, smoke drift and dissipation. Repeat resize and
+minimize/restore in Debug on both APIs. The half target rounds odd dimensions
+up and retains the full-window aspect ratio. This prototype composites smoke
+with its solid clear background; rendering over scene geometry will require
+a different compositing path. Reduced detail and an extra pass are explicit
+trade-offs, so half resolution is optional.
+
+See `docs/PHASE1.md` through `docs/PHASE10.md`, `docs/PHASE10_PROFILING.md`,
+and `docs/PHASE10_SMOKE_RESOLUTION.md`
+for ownership, synchronization, measurements, validation, and current limitations.
 
 Build output stays under `out/`. Machine-specific overrides can go in the ignored
 `CMakeUserPresets.json`; shared presets contain no local installation paths.

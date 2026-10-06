@@ -51,8 +51,12 @@ std::unique_ptr<VertexBuffer> VulkanRenderer::create_vertex_buffer(std::span<con
         if ((requirements.memoryTypeBits & (1u << index)) &&
             (properties.memoryTypes[index].propertyFlags & required) == required)
         {
-            memory_type = index;
-            break;
+            if (memory_type == properties.memoryTypeCount) memory_type = index;
+            if (properties.memoryTypes[index].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+            {
+                memory_type = index;
+                break;
+            }
         }
     }
     if (memory_type == properties.memoryTypeCount)
@@ -60,6 +64,11 @@ std::unique_ptr<VertexBuffer> VulkanRenderer::create_vertex_buffer(std::span<con
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Vulkan adapter lacks host-visible coherent vertex memory.");
         return nullptr;
     }
+    const auto& memory = properties.memoryTypes[memory_type];
+    SDL_Log("Vulkan vertex memory: type=%u, heap=%u, flags=0x%X, device-local=%s, bytes=%llu.",
+        memory_type, memory.heapIndex, memory.propertyFlags,
+        (memory.propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) ? "yes" : "no",
+        static_cast<unsigned long long>(requirements.size));
     VkMemoryAllocateInfo allocation{};
     allocation.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocation.allocationSize = requirements.size;
@@ -125,6 +134,7 @@ std::unique_ptr<GraphicsPipeline> VulkanRenderer::create_graphics_pipeline(
     pipeline->device = device_;
     pipeline->owner = this;
     pipeline->vertex_layout = shaders.layout;
+    pipeline->blend = shaders.blend;
     const bool particles = shaders.layout == VertexLayout::particle;
     VkPipelineLayoutCreateInfo layout{};
     layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;

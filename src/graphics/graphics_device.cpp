@@ -6,19 +6,19 @@
 
 namespace pyroclast
 {
-GraphicsDeviceCreation create_graphics_device(Renderer renderer, SDL_Window* window, bool gpu_timing)
+GraphicsDeviceCreation create_graphics_device(Renderer renderer, SDL_Window* window, bool gpu_timing, bool vsync, bool half_smoke)
 {
     if (renderer == Renderer::vulkan)
     {
         auto device = std::make_unique<VulkanRenderer>();
-        if (!device->initialize(window, gpu_timing))
+        if (!device->initialize(window, gpu_timing, vsync, half_smoke))
         {
             return {nullptr, "Vulkan initialization failed; see the backend diagnostics."};
         }
         return {std::move(device), {}};
     }
     auto device = std::make_unique<D3D12Renderer>();
-    if (!device->initialize(window, gpu_timing))
+    if (!device->initialize(window, gpu_timing, vsync, half_smoke))
     {
         return {nullptr, "Graphics initialization failed; see the backend diagnostics."};
     }
