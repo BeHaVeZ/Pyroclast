@@ -28,11 +28,9 @@ add_executable(Pyroclast
     src/app/main.cpp
     src/app/frame_baseline.cpp
     src/app/command_line.cpp
-    src/app/triangle_demo.cpp
     src/simulation/particle_system.cpp
     src/graphics/particle_shaders.cpp
     src/graphics/graphics_device.cpp
-    src/graphics/triangle_shaders.cpp
     src/graphics/d3d12/d3d12_initialize.cpp
     src/graphics/d3d12/d3d12_renderer.cpp
     src/graphics/d3d12/d3d12_resources.cpp

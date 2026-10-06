@@ -237,9 +237,8 @@ and `shaders/particles_compute.hlsl` (`cs_main`) for both backends.
 - DXIL and bytecode headers: `out/build/windows-x64/generated/shaders/d3d12/<configuration>/`
 - SPIR-V and bytecode headers: `out/build/windows-x64/generated/shaders/vulkan/<configuration>/`
 
-The earlier triangle/compute proof sources remain as reference code. The particle
-workload uses 128 groups of 64 threads and two ordered draws totaling six vertices
-per slot.
+The particle workload uses 128 groups of 64 threads and two ordered draws totaling
+six vertices per slot.
 Each backend orders the previous simulation/draw before the next update, and
 compute writes before instance fetch. No per-frame descriptor allocation, particle
 upload, or particle readback is needed.

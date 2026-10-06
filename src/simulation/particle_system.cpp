@@ -20,7 +20,7 @@ bool ParticleSystem::initialize(GraphicsDevice& device, Renderer renderer, std::
     burst_count_ = explosion_count_ * explosion_particles;
     capacity_ = std::max(minimum_capacity, burst_count_);
     const std::vector<Particle> initial(capacity_);
-    particles_ = device.create_vertex_buffer(std::as_bytes(std::span(initial)), VertexLayout::particle);
+    particles_ = device.create_vertex_buffer(std::as_bytes(std::span(initial)), sizeof(Particle));
     graphics_ = device.create_graphics_pipeline(particle_shaders(renderer));
     auto smoke = particle_shaders(renderer);
     smoke.blend = BlendMode::premultiplied_alpha;

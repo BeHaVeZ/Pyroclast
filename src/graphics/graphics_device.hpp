@@ -15,19 +15,6 @@ struct SDL_Window;
 
 namespace pyroclast
 {
-struct Vertex
-{
-    float position[3];
-    float color[3];
-};
-static_assert(sizeof(Vertex) == 24 && offsetof(Vertex, color) == 12);
-
-enum class VertexLayout { position_color, particle };
-constexpr std::uint32_t vertex_stride(VertexLayout layout)
-{
-    return layout == VertexLayout::particle ? particle_layout::particle_stride : sizeof(Vertex);
-}
-
 class VertexBuffer
 {
 public:
@@ -60,7 +47,6 @@ struct GraphicsPipelineDescription
 {
     std::span<const std::byte> vertex_shader;
     std::span<const std::byte> pixel_shader;
-    VertexLayout layout = VertexLayout::position_color;
     BlendMode blend = BlendMode::opaque;
 };
 
@@ -94,11 +80,7 @@ class GraphicsDevice
 public:
     virtual ~GraphicsDevice() = default;
     virtual std::unique_ptr<VertexBuffer> create_vertex_buffer(
-        std::span<const std::byte> records, VertexLayout layout) = 0;
-    std::unique_ptr<VertexBuffer> create_vertex_buffer(std::span<const Vertex> vertices)
-    {
-        return create_vertex_buffer(std::as_bytes(vertices), VertexLayout::position_color);
-    }
+        std::span<const std::byte> records, std::uint32_t stride) = 0;
     virtual std::unique_ptr<GraphicsPipeline> create_graphics_pipeline(
         const GraphicsPipelineDescription& description) = 0;
     virtual std::unique_ptr<ComputePipeline> create_compute_pipeline(

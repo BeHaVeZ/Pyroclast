@@ -5,7 +5,7 @@
 
 namespace pyroclast
 {
-GraphicsPipelineDescription particle_shaders(Renderer) { return {{}, {}, VertexLayout::particle, BlendMode::additive}; }
+GraphicsPipelineDescription particle_shaders(Renderer) { return {{}, {}, BlendMode::additive}; }
 std::span<const std::byte> particle_compute_shader(Renderer) { return {}; }
 }
 
@@ -24,11 +24,11 @@ class TestDevice final : public pyroclast::GraphicsDevice
 {
 public:
     std::unique_ptr<pyroclast::VertexBuffer> create_vertex_buffer(
-        std::span<const std::byte> bytes, pyroclast::VertexLayout layout) override
+        std::span<const std::byte> bytes, std::uint32_t record_stride) override
     {
         constexpr std::size_t stride = pyroclast::particle_layout::particle_stride;
         constexpr std::size_t largest_pool = pyroclast::maximum_explosions * pyroclast::ParticleSystem::explosion_particles;
-        valid_upload = layout == pyroclast::VertexLayout::particle &&
+        valid_upload = record_stride == stride &&
             bytes.size() >= pyroclast::ParticleSystem::minimum_capacity * stride && bytes.size() <= largest_pool * stride;
         for (const auto byte : bytes) valid_upload &= byte == std::byte{0};
         return std::make_unique<TestBuffer>(static_cast<std::uint32_t>(bytes.size() / stride));

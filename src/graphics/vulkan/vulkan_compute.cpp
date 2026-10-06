@@ -60,7 +60,7 @@ std::unique_ptr<ComputePipeline> VulkanRenderer::create_compute_pipeline(
     {
         return nullptr;
     }
-    const VkDescriptorBufferInfo buffer{vertices->buffer, 0, static_cast<VkDeviceSize>(vertices->count) * vertex_stride(vertices->layout)};
+    const VkDescriptorBufferInfo buffer{vertices->buffer, 0, static_cast<VkDeviceSize>(vertices->count) * vertices->stride};
     VkWriteDescriptorSet write{};
     write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     write.dstSet = pipeline->descriptor;

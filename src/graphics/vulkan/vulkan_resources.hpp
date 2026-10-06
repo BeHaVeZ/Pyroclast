@@ -17,7 +17,7 @@ public:
     VkBuffer buffer = VK_NULL_HANDLE;
     VkDeviceMemory memory = VK_NULL_HANDLE;
     std::uint32_t count = 0;
-    VertexLayout layout = VertexLayout::position_color;
+    std::uint32_t stride = 0;
 };
 
 class VulkanGraphicsPipeline final : public GraphicsPipeline
@@ -28,7 +28,6 @@ public:
     VulkanGraphicsPipeline& operator=(const VulkanGraphicsPipeline&) = delete;
     ~VulkanGraphicsPipeline() override;
     const VulkanRenderer* owner = nullptr;
-    VertexLayout vertex_layout = VertexLayout::position_color;
     BlendMode blend = BlendMode::opaque;
     VkDevice device = VK_NULL_HANDLE;
     VkPipelineLayout layout = VK_NULL_HANDLE;

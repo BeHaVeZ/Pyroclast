@@ -107,15 +107,16 @@ RenderResult D3D12Renderer::render(const DrawCommand& draw)
 {
     assert(swapchain_ && command_list_);
     const auto* vertices = dynamic_cast<const D3D12VertexBuffer*>(&draw.vertices);
-    if (!vertices || vertices->owner != this || draw.ranges.empty())
+    if (!vertices || vertices->owner != this || draw.ranges.empty() ||
+        vertices->view.StrideInBytes != particle_layout::particle_stride)
     {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Draw requires an owned vertex buffer and at least one range.");
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Draw requires an owned particle buffer and at least one range.");
         return RenderResult::failed;
     }
     for (const auto& range : draw.ranges)
     {
         const auto* pipeline = dynamic_cast<const D3D12GraphicsPipeline*>(&range.pipeline);
-        if (!pipeline || pipeline->owner != this || vertices->layout != pipeline->vertex_layout ||
+        if (!pipeline || pipeline->owner != this ||
             range.record_count == 0 || range.first_record > vertices->count ||
             range.record_count > vertices->count - range.first_record)
         {
@@ -124,7 +125,7 @@ RenderResult D3D12Renderer::render(const DrawCommand& draw)
         }
     }
     if (half_smoke_ && (static_cast<const D3D12GraphicsPipeline&>(draw.ranges.front().pipeline).blend != BlendMode::premultiplied_alpha ||
-        vertices->layout != VertexLayout::particle || std::count_if(draw.ranges.begin(), draw.ranges.end(), [](const auto& range) {
+        std::count_if(draw.ranges.begin(), draw.ranges.end(), [](const auto& range) {
             return static_cast<const D3D12GraphicsPipeline&>(range.pipeline).blend == BlendMode::premultiplied_alpha;
         }) != 1))
     {
@@ -204,7 +205,7 @@ RenderResult D3D12Renderer::render(const DrawCommand& draw)
     for (const auto& range : draw.ranges)
     {
         const auto& pipeline = static_cast<const D3D12GraphicsPipeline&>(range.pipeline);
-        if (half_smoke_ && pipeline.vertex_layout == VertexLayout::particle && pipeline.blend == BlendMode::premultiplied_alpha)
+        if (half_smoke_ && pipeline.blend == BlendMode::premultiplied_alpha)
             draw_smoke(range, *vertices, draw, rtv);
         else draw_range(range, *vertices, draw.aspect_ratio);
     }

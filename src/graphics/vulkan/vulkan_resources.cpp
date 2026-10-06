@@ -19,18 +19,18 @@ VulkanGraphicsPipeline::~VulkanGraphicsPipeline()
     vkDestroyPipelineLayout(device, layout, nullptr);
 }
 
-std::unique_ptr<VertexBuffer> VulkanRenderer::create_vertex_buffer(std::span<const std::byte> vertices, VertexLayout layout)
+std::unique_ptr<VertexBuffer> VulkanRenderer::create_vertex_buffer(std::span<const std::byte> vertices, std::uint32_t stride)
 {
-    if (vertices.empty() || vertices.size() % vertex_stride(layout) != 0 || vertices.size() > std::numeric_limits<std::uint32_t>::max())
+    if (vertices.empty() || stride == 0 || vertices.size() % stride != 0 || vertices.size() > std::numeric_limits<std::uint32_t>::max())
     {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Vertex buffer requires a nonempty, bounded vertex span.");
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Vertex buffer requires a nonempty, bounded span of whole records.");
         return nullptr;
     }
     auto buffer = std::make_unique<VulkanVertexBuffer>();
     buffer->owner = this;
     buffer->device = device_;
-    buffer->count = static_cast<std::uint32_t>(vertices.size() / vertex_stride(layout));
-    buffer->layout = layout;
+    buffer->count = static_cast<std::uint32_t>(vertices.size() / stride);
+    buffer->stride = stride;
     VkBufferCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     info.size = vertices.size_bytes();
@@ -133,14 +133,12 @@ std::unique_ptr<GraphicsPipeline> VulkanRenderer::create_graphics_pipeline(
     auto pipeline = std::make_unique<VulkanGraphicsPipeline>();
     pipeline->device = device_;
     pipeline->owner = this;
-    pipeline->vertex_layout = shaders.layout;
     pipeline->blend = shaders.blend;
-    const bool particles = shaders.layout == VertexLayout::particle;
     VkPipelineLayoutCreateInfo layout{};
     layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    const VkPushConstantRange aspect{VK_SHADER_STAGE_VERTEX_BIT, 0, 2 * sizeof(std::uint32_t)};
-    layout.pushConstantRangeCount = particles ? 1 : 0;
-    layout.pPushConstantRanges = particles ? &aspect : nullptr;
+    const VkPushConstantRange view{VK_SHADER_STAGE_VERTEX_BIT, 0, 2 * sizeof(std::uint32_t)};
+    layout.pushConstantRangeCount = 1;
+    layout.pPushConstantRanges = &view;
     if (!check(vkCreatePipelineLayout(device_, &layout, nullptr, &pipeline->layout), "Create Vulkan pipeline layout"))
     {
         return nullptr;
@@ -154,12 +152,8 @@ std::unique_ptr<GraphicsPipeline> VulkanRenderer::create_graphics_pipeline(
     stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
     stages[1].module = modules.pixel;
     stages[1].pName = "ps_main";
-    const VkVertexInputBindingDescription binding{0, vertex_stride(shaders.layout),
-        particles ? VK_VERTEX_INPUT_RATE_INSTANCE : VK_VERTEX_INPUT_RATE_VERTEX};
+    const VkVertexInputBindingDescription binding{0, particle_layout::particle_stride, VK_VERTEX_INPUT_RATE_INSTANCE};
     const VkVertexInputAttributeDescription attributes[] = {
-        {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, position)},
-        {1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, color)}};
-    const VkVertexInputAttributeDescription particle_attributes[] = {
         {0, 0, VK_FORMAT_R32G32_SFLOAT, particle_layout::particle_motion_offset},
         {1, 0, VK_FORMAT_R32G32B32_SFLOAT, particle_layout::particle_life_offset}};
     VkPipelineVertexInputStateCreateInfo input{};
@@ -167,7 +161,7 @@ std::unique_ptr<GraphicsPipeline> VulkanRenderer::create_graphics_pipeline(
     input.vertexBindingDescriptionCount = 1;
     input.pVertexBindingDescriptions = &binding;
     input.vertexAttributeDescriptionCount = 2;
-    input.pVertexAttributeDescriptions = particles ? particle_attributes : attributes;
+    input.pVertexAttributeDescriptions = attributes;
     VkPipelineInputAssemblyStateCreateInfo assembly{};
     assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
     assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
@@ -178,7 +172,7 @@ std::unique_ptr<GraphicsPipeline> VulkanRenderer::create_graphics_pipeline(
     VkPipelineRasterizationStateCreateInfo raster{};
     raster.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
     raster.polygonMode = VK_POLYGON_MODE_FILL;
-    raster.cullMode = particles ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT;
+    raster.cullMode = VK_CULL_MODE_NONE;
     raster.frontFace = VK_FRONT_FACE_CLOCKWISE;
     raster.lineWidth = 1.0f;
     VkPipelineMultisampleStateCreateInfo samples{};

@@ -18,7 +18,7 @@ public:
     VulkanRenderer& operator=(const VulkanRenderer&) = delete;
 
     bool initialize(SDL_Window* window, const GraphicsDeviceOptions& options);
-    std::unique_ptr<VertexBuffer> create_vertex_buffer(std::span<const std::byte> vertices, VertexLayout layout) override;
+    std::unique_ptr<VertexBuffer> create_vertex_buffer(std::span<const std::byte> vertices, std::uint32_t stride) override;
     std::unique_ptr<GraphicsPipeline> create_graphics_pipeline(
         const GraphicsPipelineDescription& description) override;
     bool resize(int width, int height) override;
