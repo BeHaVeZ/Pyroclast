@@ -30,7 +30,8 @@ public:
     bool resize(int width, int height) override;
     std::unique_ptr<ComputePipeline> create_compute_pipeline(
         Shader shader, const VertexBuffer& vertices) override;
-    RenderResult render(const DrawCommand& draw) override;
+    std::unique_ptr<RenderTarget> create_render_target(const RenderTargetDescription& description) override;
+    RenderResult render(const Frame& frame) override;
     bool wait_idle() override;
     std::optional<GpuTimings> completed_gpu_timings() const override { return gpu_timings_; }
 
@@ -38,7 +39,7 @@ private:
     static constexpr UINT frame_count = 2;
     static constexpr DXGI_FORMAT backbuffer_format = DXGI_FORMAT_R8G8B8A8_UNORM;
 
-    struct Frame
+    struct FrameSlot
     {
         bool timestamps_pending = false;
         Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
@@ -46,11 +47,11 @@ private:
         std::uint64_t fence_value = 0;
     };
 
-    bool create_smoke_pipeline();
-    bool create_smoke_target();
+    bool create_upscale_pipeline();
+    bool size_target(class D3D12RenderTarget& target);
+    void upscale(const class D3D12RenderTarget& source);
     void draw_range(const DrawRange& range, const class D3D12VertexBuffer& vertices, float aspect);
     void set_target(D3D12_CPU_DESCRIPTOR_HANDLE rtv, int width, int height);
-    void draw_smoke(const DrawRange& range, const class D3D12VertexBuffer& vertices, const DrawCommand& draw, D3D12_CPU_DESCRIPTOR_HANDLE backbuffer);
     bool create_device();
     bool create_timestamps();
     bool read_timestamps(std::size_t frame);
@@ -68,7 +69,7 @@ private:
     Microsoft::WRL::Wrappers::Event fence_event_;
     Microsoft::WRL::ComPtr<IDXGISwapChain3> swapchain_;
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> rtv_heap_;
-    std::array<Frame, frame_count> frames_;
+    std::array<FrameSlot, frame_count> frames_;
     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> command_list_;
     Microsoft::WRL::ComPtr<ID3D12Resource> upload_staging_;
     Microsoft::WRL::ComPtr<ID3D12Resource> pending_upload_buffer_;
@@ -78,12 +79,8 @@ private:
     int height_ = 0;
     bool occluded_ = false;
     bool vsync_ = true;
-    bool half_smoke_ = false;
-    Microsoft::WRL::ComPtr<ID3D12Resource> smoke_target_;
-    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> smoke_rtv_;
-    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> smoke_srv_;
-    Microsoft::WRL::ComPtr<ID3D12RootSignature> smoke_root_;
-    Microsoft::WRL::ComPtr<ID3D12PipelineState> smoke_composite_;
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> upscale_root_;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> upscale_pipeline_;
     Microsoft::WRL::ComPtr<ID3D12QueryHeap> timestamps_;
     Microsoft::WRL::ComPtr<ID3D12Resource> timestamp_readback_;
     const std::uint64_t* mapped_timestamps_ = nullptr;

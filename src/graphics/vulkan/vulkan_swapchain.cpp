@@ -171,13 +171,11 @@ bool VulkanRenderer::create_swapchain()
         }
     }
     rebuild_ = false;
-    if (half_smoke_ && ((!smoke_pass_ && !create_smoke_pipeline()) || !create_smoke_target())) return false;
     return validation_ok();
 }
 
 void VulkanRenderer::destroy_swapchain()
 {
-    destroy_smoke_target();
     for (auto& image : images_)
     {
         vkDestroyFramebuffer(device_, image.framebuffer, nullptr);

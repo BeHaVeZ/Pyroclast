@@ -7,7 +7,7 @@ enum class Shader
     particle_vertex,
     particle_pixel,
     particle_simulation,
-    smoke_composite_vertex,
-    smoke_composite_pixel
+    upscale_vertex,
+    upscale_pixel
 };
 }

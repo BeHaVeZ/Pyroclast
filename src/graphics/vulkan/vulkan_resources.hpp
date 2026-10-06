@@ -40,6 +40,24 @@ public:
     VkPipeline pipeline = VK_NULL_HANDLE;
 };
 
+class VulkanRenderTarget final : public RenderTarget
+{
+public:
+    using RenderTarget::RenderTarget;
+    VulkanRenderTarget(const VulkanRenderTarget&) = delete;
+    VulkanRenderTarget& operator=(const VulkanRenderTarget&) = delete;
+    ~VulkanRenderTarget() override;
+    const VulkanRenderer* owner = nullptr;
+    VkDevice device = VK_NULL_HANDLE;
+    VkImage image = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    VkImageView view = VK_NULL_HANDLE;
+    VkFramebuffer framebuffer = VK_NULL_HANDLE;
+    VkExtent2D extent{};
+    VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
+    VkDescriptorSet descriptor = VK_NULL_HANDLE;
+};
+
 class VulkanComputePipeline final : public ComputePipeline
 {
 public:

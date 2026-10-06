@@ -1,4 +1,4 @@
-Texture2D<float4> smoke : register(t0);
+Texture2D<float4> source : register(t0);
 #ifdef __spirv__
 [[vk::binding(1, 0)]]
 #endif
@@ -20,5 +20,5 @@ PixelInput vs_main(uint vertex : SV_VertexID)
 
 float4 ps_main(PixelInput input) : SV_Target
 {
-    return smoke.SampleLevel(linear_clamp, input.uv, 0);
+    return source.SampleLevel(linear_clamp, input.uv, 0);
 }

@@ -29,6 +29,19 @@ public:
     Microsoft::WRL::ComPtr<ID3D12PipelineState> state;
 };
 
+class D3D12RenderTarget final : public RenderTarget
+{
+public:
+    using RenderTarget::RenderTarget;
+
+    const D3D12Renderer* owner = nullptr;
+    Microsoft::WRL::ComPtr<ID3D12Resource> texture;
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> render_view;
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> shader_view;
+    int width = 0;
+    int height = 0;
+};
+
 class D3D12ComputePipeline final : public ComputePipeline
 {
 public:

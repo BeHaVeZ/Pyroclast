@@ -22,8 +22,8 @@ struct SdlCleanup final
     }
 };
 
-int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice* renderer,
-    pyroclast::ParticleSystem& demo, const pyroclast::ApplicationOptions& options)
+int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice* renderer, pyroclast::ParticleSystem& demo,
+    pyroclast::ExplosionRenderer& explosions, const pyroclast::ApplicationOptions& options)
 {
     const auto window_id = SDL_GetWindowID(window);
     const auto profile_tick = options.profile_tick;
@@ -83,7 +83,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice* renderer,
                 const double elapsed = static_cast<double>(start - previous_time) /
                     static_cast<double>(SDL_GetPerformanceFrequency());
                 previous_time = start;
-                const auto result = pyroclast::render_explosions(*renderer, demo,
+                const auto result = explosions.render(*renderer, demo,
                     static_cast<float>(width) / static_cast<float>(height), elapsed);
                 if (result == pyroclast::RenderResult::failed) return 1;
                 if (result == pyroclast::RenderResult::submitted)
@@ -132,8 +132,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
 
     const pyroclast::GraphicsDeviceOptions device_options{
         .gpu_timing = options.gpu_timing || options.profile_tick.has_value(),
-        .vsync = !options.profile_tick.has_value(),
-        .half_resolution_smoke = options.half_smoke};
+        .vsync = !options.profile_tick.has_value()};
     auto creation = pyroclast::create_graphics_device(options.renderer, window.get(), device_options);
     if (!creation.error.empty())
     {
@@ -142,7 +141,9 @@ int run_application(const pyroclast::ApplicationOptions& options)
     }
     SDL_Log("Smoke resolution: %s.", options.half_smoke ? "half" : "full");
     pyroclast::ParticleSystem demo;
-    if (creation.device && !demo.initialize(*creation.device, options.explosions))
+    pyroclast::ExplosionRenderer explosions;
+    if (creation.device && (!demo.initialize(*creation.device, options.explosions) ||
+        !explosions.initialize(*creation.device, options.half_smoke)))
     {
         return 1;
     }
@@ -153,7 +154,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
     }
     SDL_SetWindowTitle(window.get(), "Pyroclast - Explosion | Space: trigger | R: clear | P: pause | N: step");
     SDL_Log("Explosion demo ready. Space: trigger, R: clear, P: pause, N: single step.");
-    const int exit_code = run_event_loop(window.get(), creation.device.get(), demo, options);
+    const int exit_code = run_event_loop(window.get(), creation.device.get(), demo, explosions, options);
     return !creation.device || creation.device->wait_idle() ? exit_code : 1;
 }
 }

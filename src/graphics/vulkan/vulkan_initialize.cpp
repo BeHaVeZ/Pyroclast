@@ -45,7 +45,6 @@ bool VulkanRenderer::validation_ok() const
 bool VulkanRenderer::initialize(SDL_Window* window, const GraphicsDeviceOptions& options)
 {
     vsync_ = options.vsync;
-    half_smoke_ = options.half_resolution_smoke;
     window_ = window;
     if (!create_instance())
     {

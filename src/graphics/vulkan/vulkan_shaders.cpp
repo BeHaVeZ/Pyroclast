@@ -8,8 +8,8 @@ namespace
 #include "vulkan/particles_vs.hpp"
 #include "vulkan/particles_ps.hpp"
 #include "vulkan/particles_compute_cs.hpp"
-#include "vulkan/smoke_composite_vs.hpp"
-#include "vulkan/smoke_composite_ps.hpp"
+#include "vulkan/upscale_vs.hpp"
+#include "vulkan/upscale_ps.hpp"
 
 std::span<const unsigned char> spirv(pyroclast::Shader shader)
 {
@@ -19,8 +19,8 @@ std::span<const unsigned char> spirv(pyroclast::Shader shader)
     case Shader::particle_vertex: return particles_vs;
     case Shader::particle_pixel: return particles_ps;
     case Shader::particle_simulation: return particles_compute_cs;
-    case Shader::smoke_composite_vertex: return smoke_composite_vs;
-    case Shader::smoke_composite_pixel: return smoke_composite_ps;
+    case Shader::upscale_vertex: return upscale_vs;
+    case Shader::upscale_pixel: return upscale_ps;
     }
     return {};
 }

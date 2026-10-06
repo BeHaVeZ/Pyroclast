@@ -75,10 +75,34 @@ struct DrawRange
     std::uint32_t layer;
 };
 
-struct DrawCommand
+struct RenderTargetDescription
+{
+    std::uint32_t divisor = 1;
+    std::array<float, 4> clear_color{};
+};
+
+class RenderTarget
+{
+public:
+    explicit RenderTarget(const RenderTargetDescription& description) : description_(description) {}
+    virtual ~RenderTarget() = default;
+    const RenderTargetDescription& description() const { return description_; }
+
+private:
+    RenderTargetDescription description_;
+};
+
+struct Pass
+{
+    RenderTarget* target = nullptr;
+    const RenderTarget* background = nullptr;
+    std::span<const DrawRange> draws;
+};
+
+struct Frame
 {
     const VertexBuffer& vertices;
-    std::span<const DrawRange> ranges;
+    std::span<const Pass> passes;
     std::array<float, 4> clear_color;
     const ComputeDispatch* compute = nullptr;
     float aspect_ratio = 1.0f;
@@ -103,8 +127,9 @@ public:
         const GraphicsPipelineDescription& description) = 0;
     virtual std::unique_ptr<ComputePipeline> create_compute_pipeline(
         Shader shader, const VertexBuffer& vertices) = 0;
+    virtual std::unique_ptr<RenderTarget> create_render_target(const RenderTargetDescription& description) = 0;
     virtual bool resize(int width, int height) = 0;
-    virtual RenderResult render(const DrawCommand& draw) = 0;
+    virtual RenderResult render(const Frame& frame) = 0;
     virtual bool wait_idle() = 0;
     virtual std::optional<GpuTimings> completed_gpu_timings() const = 0;
 };
@@ -119,7 +144,6 @@ struct GraphicsDeviceOptions
 {
     bool gpu_timing = false;
     bool vsync = true;
-    bool half_resolution_smoke = false;
 };
 
 GraphicsDeviceCreation create_graphics_device(Renderer renderer, SDL_Window* window, const GraphicsDeviceOptions& options = {});

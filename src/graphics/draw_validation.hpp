@@ -4,5 +4,5 @@
 
 namespace pyroclast
 {
-const char* validate_draw(const DrawCommand& draw, bool half_resolution_smoke);
+const char* validate_frame(const Frame& frame);
 }

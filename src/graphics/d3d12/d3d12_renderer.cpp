@@ -104,18 +104,49 @@ bool D3D12Renderer::wait_idle()
         wait_for_fence(value) && check_validation();
 }
 
-RenderResult D3D12Renderer::render(const DrawCommand& draw)
+void D3D12Renderer::set_target(D3D12_CPU_DESCRIPTOR_HANDLE rtv, int width, int height)
+{
+    command_list_->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+    const D3D12_VIEWPORT viewport{0, 0, static_cast<float>(width), static_cast<float>(height), 0, 1};
+    const D3D12_RECT scissor{0, 0, width, height};
+    command_list_->RSSetViewports(1, &viewport);
+    command_list_->RSSetScissorRects(1, &scissor);
+}
+
+void D3D12Renderer::draw_range(const DrawRange& range, const D3D12VertexBuffer& vertices, float aspect)
+{
+    const auto& pipeline = static_cast<const D3D12GraphicsPipeline&>(range.pipeline);
+    command_list_->SetPipelineState(pipeline.state.Get());
+    command_list_->SetGraphicsRootSignature(pipeline.root_signature.Get());
+    auto view = vertices.view;
+    view.BufferLocation += static_cast<UINT64>(range.first_record) * view.StrideInBytes;
+    view.SizeInBytes = range.record_count * view.StrideInBytes;
+    command_list_->IASetVertexBuffers(0, 1, &view);
+    command_list_->SetGraphicsRoot32BitConstants(0, 1, &aspect, 0);
+    command_list_->SetGraphicsRoot32BitConstants(0, 1, &range.layer, 1);
+    command_list_->DrawInstanced(6, range.record_count, 0, 0);
+}
+
+RenderResult D3D12Renderer::render(const Frame& frame)
 {
     assert(swapchain_ && command_list_);
-    const auto* vertices = dynamic_cast<const D3D12VertexBuffer*>(&draw.vertices);
-    const auto* compute = draw.compute ? dynamic_cast<const D3D12ComputePipeline*>(&draw.compute->pipeline) : nullptr;
-    bool owned = vertices && vertices->owner == this && (!draw.compute || (compute && compute->owner == this));
-    for (const auto& range : draw.ranges)
+    const auto* vertices = dynamic_cast<const D3D12VertexBuffer*>(&frame.vertices);
+    const auto* compute = frame.compute ? dynamic_cast<const D3D12ComputePipeline*>(&frame.compute->pipeline) : nullptr;
+    bool owned = vertices && vertices->owner == this && (!frame.compute || (compute && compute->owner == this));
+    const auto owns_target = [this](const RenderTarget* target) {
+        const auto* native = dynamic_cast<const D3D12RenderTarget*>(target);
+        return target == nullptr || (native && native->owner == this);
+    };
+    for (const auto& pass : frame.passes)
     {
-        const auto* pipeline = dynamic_cast<const D3D12GraphicsPipeline*>(&range.pipeline);
-        owned = owned && pipeline && pipeline->owner == this;
+        owned = owned && owns_target(pass.target) && owns_target(pass.background);
+        for (const auto& range : pass.draws)
+        {
+            const auto* pipeline = dynamic_cast<const D3D12GraphicsPipeline*>(&range.pipeline);
+            owned = owned && pipeline && pipeline->owner == this;
+        }
     }
-    const char* error = owned ? validate_draw(draw, half_smoke_) : "Draw uses resources from another graphics device.";
+    const char* error = owned ? validate_frame(frame) : "Frame uses resources from another graphics device.";
     if (error)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "%s", error);
@@ -135,12 +166,19 @@ RenderResult D3D12Renderer::render(const DrawCommand& draw)
         }
         occluded_ = false;
     }
+    for (const auto& pass : frame.passes)
+    {
+        if (pass.target && !size_target(static_cast<D3D12RenderTarget&>(*pass.target)))
+        {
+            return RenderResult::failed;
+        }
+    }
     const UINT index = swapchain_->GetCurrentBackBufferIndex();
-    auto& frame = frames_[index];
+    auto& slot = frames_[index];
 
-    if (!wait_for_fence(frame.fence_value) || !read_timestamps(index) ||
-        !check(frame.allocator->Reset(), "Reset frame command allocator") ||
-        !check(command_list_->Reset(frame.allocator.Get(), nullptr), "Reset command list"))
+    if (!wait_for_fence(slot.fence_value) || !read_timestamps(index) ||
+        !check(slot.allocator->Reset(), "Reset frame command allocator") ||
+        !check(command_list_->Reset(slot.allocator.Get(), nullptr), "Reset command list"))
     {
         return RenderResult::failed;
     }
@@ -159,8 +197,8 @@ RenderResult D3D12Renderer::render(const DrawCommand& draw)
         command_list_->SetPipelineState(compute->state.Get());
         command_list_->SetComputeRootSignature(compute->root_signature.Get());
         command_list_->SetComputeRootUnorderedAccessView(0, vertices->resource->GetGPUVirtualAddress());
-        command_list_->SetComputeRoot32BitConstants(1, 4, draw.compute->constants.data(), 0);
-        command_list_->Dispatch(draw.compute->group_count, 1, 1);
+        command_list_->SetComputeRoot32BitConstants(1, 4, frame.compute->constants.data(), 0);
+        command_list_->Dispatch(frame.compute->group_count, 1, 1);
         std::swap(storage.Transition.StateBefore, storage.Transition.StateAfter);
         command_list_->ResourceBarrier(1, &storage);
     }
@@ -170,30 +208,32 @@ RenderResult D3D12Renderer::render(const DrawCommand& draw)
         command_list_->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query + 1);
         command_list_->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query + 2);
     }
-    D3D12_RESOURCE_BARRIER barrier{};
-    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    barrier.Transition.pResource = frame.backbuffer.Get();
-    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-    command_list_->ResourceBarrier(1, &barrier);
-
-    auto rtv = rtv_heap_->GetCPUDescriptorHandleForHeapStart();
-    rtv.ptr += static_cast<SIZE_T>(index) * rtv_stride_;
-    command_list_->ClearRenderTargetView(rtv, draw.clear_color.data(), 0, nullptr);
-    set_target(rtv, width_, height_);
+    auto backbuffer_view = rtv_heap_->GetCPUDescriptorHandleForHeapStart();
+    backbuffer_view.ptr += static_cast<SIZE_T>(index) * rtv_stride_;
     command_list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    for (const auto& range : draw.ranges)
+    for (const auto& pass : frame.passes)
     {
-        const auto& pipeline = static_cast<const D3D12GraphicsPipeline&>(range.pipeline);
-        if (half_smoke_ && pipeline.blend() == BlendMode::premultiplied_alpha)
-            draw_smoke(range, *vertices, draw, rtv);
-        else draw_range(range, *vertices, draw.aspect_ratio);
-    }
+        const auto* target = static_cast<const D3D12RenderTarget*>(pass.target);
+        const auto resting_state = target ? D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE : D3D12_RESOURCE_STATE_PRESENT;
+        D3D12_RESOURCE_BARRIER barrier{};
+        barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barrier.Transition.pResource = target ? target->texture.Get() : slot.backbuffer.Get();
+        barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        barrier.Transition.StateBefore = resting_state;
+        barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        command_list_->ResourceBarrier(1, &barrier);
 
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
-    command_list_->ResourceBarrier(1, &barrier);
+        const auto view = target ? target->render_view->GetCPUDescriptorHandleForHeapStart() : backbuffer_view;
+        set_target(view, target ? target->width : width_, target ? target->height : height_);
+        const auto& clear_color = target ? target->description().clear_color : frame.clear_color;
+        command_list_->ClearRenderTargetView(view, clear_color.data(), 0, nullptr);
+        if (pass.background) upscale(static_cast<const D3D12RenderTarget&>(*pass.background));
+        for (const auto& range : pass.draws) draw_range(range, *vertices, frame.aspect_ratio);
+
+        barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        barrier.Transition.StateAfter = resting_state;
+        command_list_->ResourceBarrier(1, &barrier);
+    }
     if (timestamps_)
     {
         command_list_->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query + 3);
@@ -213,8 +253,8 @@ RenderResult D3D12Renderer::render(const DrawCommand& draw)
     {
         return RenderResult::failed;
     }
-    frame.fence_value = value;
-    frame.timestamps_pending = timestamps_ != nullptr;
+    slot.fence_value = value;
+    slot.timestamps_pending = timestamps_ != nullptr;
     return check(present_result, "Present frame") && check_validation() ? RenderResult::submitted : RenderResult::failed;
 }
 
@@ -243,7 +283,6 @@ bool D3D12Renderer::resize(int width, int height)
     }
     width_ = width;
     height_ = height;
-    if (half_smoke_ && !create_smoke_target()) return false;
     if (!create_render_targets())
     {
         return false;

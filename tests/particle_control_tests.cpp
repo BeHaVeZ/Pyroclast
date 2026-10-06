@@ -31,18 +31,37 @@ public:
     {
         return std::make_unique<pyroclast::ComputePipeline>(buffer);
     }
+    std::unique_ptr<pyroclast::RenderTarget> create_render_target(const pyroclast::RenderTargetDescription& description) override
+    {
+        auto created = std::make_unique<pyroclast::RenderTarget>(description);
+        target = created.get();
+        return created;
+    }
     bool resize(int, int) override { return true; }
     bool wait_idle() override { return true; }
     std::optional<pyroclast::GpuTimings> completed_gpu_timings() const override { return std::nullopt; }
-    pyroclast::RenderResult render(const pyroclast::DrawCommand& draw) override
+    pyroclast::RenderResult render(const pyroclast::Frame& frame) override
     {
-        valid_frame = pyroclast::validate_draw(draw, true) == nullptr && draw.ranges.size() == 2 &&
-            &draw.ranges[0].pipeline == smoke && &draw.ranges[1].pipeline == emissive && draw.compute;
+        valid_frame = pyroclast::validate_frame(frame) == nullptr && frame.compute;
+        const auto draws = [](const pyroclast::Pass& pass, std::initializer_list<const pyroclast::GraphicsPipeline*> pipelines) {
+            if (pass.draws.size() != pipelines.size()) return false;
+            std::size_t index = 0;
+            for (const auto* pipeline : pipelines) if (&pass.draws[index++].pipeline != pipeline) return false;
+            return true;
+        };
+        const auto& passes = frame.passes;
+        one_pass = passes.size() == 1 && !passes[0].background && draws(passes[0], {smoke, emissive});
+        smoke_then_light_passes = passes.size() == 2 && target &&
+            passes[0].target == target && !passes[0].background && draws(passes[0], {smoke}) &&
+            !passes[1].target && passes[1].background == target && draws(passes[1], {emissive});
         return result;
     }
 
     bool valid_upload = false;
     bool valid_frame = false;
+    bool one_pass = false;
+    bool smoke_then_light_passes = false;
+    pyroclast::RenderTarget* target = nullptr;
     const pyroclast::GraphicsPipeline* smoke = nullptr;
     const pyroclast::GraphicsPipeline* emissive = nullptr;
     pyroclast::RenderResult result = pyroclast::RenderResult::submitted;
@@ -156,16 +175,25 @@ int main()
 
     ParticleSystem rendered;
     rendered.initialize(device);
-    check(render_explosions(device, rendered, 16.0f / 9.0f, 1.0 / 60) == RenderResult::submitted && device.valid_frame,
-        "rendered frame is valid: smoke alpha draw precedes additive light");
+    ExplosionRenderer full_resolution;
+    check(full_resolution.initialize(device, false) && !device.target, "full resolution creates no render target");
+    check(full_resolution.render(device, rendered, 16.0f / 9.0f, 1.0 / 60) == RenderResult::submitted &&
+        device.valid_frame && device.one_pass, "full resolution draws smoke then light in one backbuffer pass");
     rendered.toggle_pause();
     rendered.step();
     device.result = RenderResult::skipped;
-    check(render_explosions(device, rendered, 1, 1.0 / 60) == RenderResult::skipped && rendered.has_pending_steps(),
+    check(full_resolution.render(device, rendered, 1, 1.0 / 60) == RenderResult::skipped && rendered.has_pending_steps(),
         "skipped frame is reported and keeps its queued step");
     device.result = RenderResult::submitted;
-    render_explosions(device, rendered, 1, 1.0 / 60);
+    full_resolution.render(device, rendered, 1, 1.0 / 60);
     check(!rendered.has_pending_steps(), "submitted frame consumes its queued step");
+
+    ExplosionRenderer half_resolution;
+    check(half_resolution.initialize(device, true) && device.target && device.target->description().divisor == 2,
+        "half resolution creates a half-size target");
+    check(half_resolution.render(device, rendered, 16.0f / 9.0f, 1.0 / 60) == RenderResult::submitted &&
+        device.valid_frame && device.smoke_then_light_passes,
+        "half resolution draws smoke into the target, then stretches it under full-resolution light");
 
     return failures == 0 ? 0 : 1;
 }

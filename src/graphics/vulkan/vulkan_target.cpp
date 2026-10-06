@@ -2,11 +2,19 @@
 #include "vulkan_resources.hpp"
 
 #include <SDL3/SDL.h>
-#include <algorithm>
 
 namespace pyroclast
 {
-bool VulkanRenderer::create_smoke_pipeline()
+VulkanRenderTarget::~VulkanRenderTarget()
+{
+    vkDestroyFramebuffer(device, framebuffer, nullptr);
+    vkDestroyImageView(device, view, nullptr);
+    vkDestroyImage(device, image, nullptr);
+    vkFreeMemory(device, memory, nullptr);
+    vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
+}
+
+bool VulkanRenderer::create_upscale_pipeline()
 {
     VkFormatProperties properties{};
     vkGetPhysicalDeviceFormatProperties(physical_, format_, &properties);
@@ -14,7 +22,7 @@ bool VulkanRenderer::create_smoke_pipeline()
         VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
     if ((properties.optimalTilingFeatures & required) != required)
     {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Vulkan color format cannot render and linearly sample smoke.");
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Vulkan color format cannot be rendered to and linearly sampled.");
         return false;
     }
     VkAttachmentDescription attachment{};
@@ -43,45 +51,32 @@ bool VulkanRenderer::create_smoke_pipeline()
     pass.pSubpasses = &subpass;
     pass.dependencyCount = 1;
     pass.pDependencies = &dependency;
-    if (!check(vkCreateRenderPass(device_, &pass, nullptr, &smoke_pass_), "Create smoke render pass")) return false;
+    if (!check(vkCreateRenderPass(device_, &pass, nullptr, &offscreen_pass_), "Create offscreen render pass")) return false;
 
     VkSamplerCreateInfo sampler{};
     sampler.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
     sampler.magFilter = sampler.minFilter = VK_FILTER_LINEAR;
     sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
     sampler.addressModeU = sampler.addressModeV = sampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    if (!check(vkCreateSampler(device_, &sampler, nullptr, &smoke_sampler_), "Create smoke sampler")) return false;
+    if (!check(vkCreateSampler(device_, &sampler, nullptr, &upscale_sampler_), "Create upscale sampler")) return false;
     const VkDescriptorSetLayoutBinding bindings[] = {
         {0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-        {1, VK_DESCRIPTOR_TYPE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, &smoke_sampler_}};
+        {1, VK_DESCRIPTOR_TYPE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, &upscale_sampler_}};
     VkDescriptorSetLayoutCreateInfo descriptors{};
     descriptors.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     descriptors.bindingCount = 2;
     descriptors.pBindings = bindings;
-    if (!check(vkCreateDescriptorSetLayout(device_, &descriptors, nullptr, &smoke_descriptors_), "Create smoke descriptors")) return false;
-    const VkDescriptorPoolSize sizes[] = {{VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1}, {VK_DESCRIPTOR_TYPE_SAMPLER, 1}};
-    VkDescriptorPoolCreateInfo pool{};
-    pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    pool.maxSets = 1;
-    pool.poolSizeCount = 2;
-    pool.pPoolSizes = sizes;
-    if (!check(vkCreateDescriptorPool(device_, &pool, nullptr, &smoke_pool_), "Create smoke descriptor pool")) return false;
-    VkDescriptorSetAllocateInfo set{};
-    set.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    set.descriptorPool = smoke_pool_;
-    set.descriptorSetCount = 1;
-    set.pSetLayouts = &smoke_descriptors_;
-    if (!check(vkAllocateDescriptorSets(device_, &set, &smoke_set_), "Allocate smoke descriptor")) return false;
+    if (!check(vkCreateDescriptorSetLayout(device_, &descriptors, nullptr, &upscale_descriptors_), "Create upscale descriptors")) return false;
     VkPipelineLayoutCreateInfo layout{};
     layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     layout.setLayoutCount = 1;
-    layout.pSetLayouts = &smoke_descriptors_;
-    if (!check(vkCreatePipelineLayout(device_, &layout, nullptr, &smoke_layout_), "Create smoke composite layout")) return false;
+    layout.pSetLayouts = &upscale_descriptors_;
+    if (!check(vkCreatePipelineLayout(device_, &layout, nullptr, &upscale_layout_), "Create upscale layout")) return false;
 
     VulkanShaderModule vertex;
     VulkanShaderModule pixel;
-    if (!create_shader_module(Shader::smoke_composite_vertex, vertex) ||
-        !create_shader_module(Shader::smoke_composite_pixel, pixel)) return false;
+    if (!create_shader_module(Shader::upscale_vertex, vertex) ||
+        !create_shader_module(Shader::upscale_pixel, pixel)) return false;
     VkPipelineShaderStageCreateInfo stages[2]{};
     stages[0].sType = stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
@@ -128,26 +123,71 @@ bool VulkanRenderer::create_smoke_pipeline()
     pipeline.pMultisampleState = &samples;
     pipeline.pColorBlendState = &blend;
     pipeline.pDynamicState = &dynamic;
-    pipeline.layout = smoke_layout_;
+    pipeline.layout = upscale_layout_;
     pipeline.renderPass = render_pass_;
-    return check(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pipeline, nullptr, &smoke_composite_), "Create smoke composite pipeline");
+    return check(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pipeline, nullptr, &upscale_pipeline_), "Create upscale pipeline");
 }
 
-bool VulkanRenderer::create_smoke_target()
+std::unique_ptr<RenderTarget> VulkanRenderer::create_render_target(const RenderTargetDescription& description)
 {
-    smoke_extent_ = {(extent_.width + 1) / 2, (extent_.height + 1) / 2};
+    if (description.divisor == 0)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Render target divisor must be at least one.");
+        return nullptr;
+    }
+    if (!upscale_pipeline_ && !create_upscale_pipeline()) return nullptr;
+    auto target = std::make_unique<VulkanRenderTarget>(description);
+    target->owner = this;
+    target->device = device_;
+    const VkDescriptorPoolSize sizes[] = {{VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1}, {VK_DESCRIPTOR_TYPE_SAMPLER, 1}};
+    VkDescriptorPoolCreateInfo pool{};
+    pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    pool.maxSets = 1;
+    pool.poolSizeCount = 2;
+    pool.pPoolSizes = sizes;
+    if (!check(vkCreateDescriptorPool(device_, &pool, nullptr, &target->descriptor_pool), "Create render target descriptor pool")) return nullptr;
+    VkDescriptorSetAllocateInfo set{};
+    set.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    set.descriptorPool = target->descriptor_pool;
+    set.descriptorSetCount = 1;
+    set.pSetLayouts = &upscale_descriptors_;
+    if (!check(vkAllocateDescriptorSets(device_, &set, &target->descriptor), "Allocate render target descriptor")) return nullptr;
+    return validation_ok() ? std::move(target) : nullptr;
+}
+
+bool VulkanRenderer::size_target(VulkanRenderTarget& target)
+{
+    const auto divisor = target.description().divisor;
+    const VkExtent2D extent{(extent_.width + divisor - 1) / divisor, (extent_.height + divisor - 1) / divisor};
+    if (target.image && target.extent.width == extent.width && target.extent.height == extent.height)
+    {
+        return true;
+    }
+    if (!wait_idle())
+    {
+        return false;
+    }
+    vkDestroyFramebuffer(device_, target.framebuffer, nullptr);
+    vkDestroyImageView(device_, target.view, nullptr);
+    vkDestroyImage(device_, target.image, nullptr);
+    vkFreeMemory(device_, target.memory, nullptr);
+    target.framebuffer = VK_NULL_HANDLE;
+    target.view = VK_NULL_HANDLE;
+    target.image = VK_NULL_HANDLE;
+    target.memory = VK_NULL_HANDLE;
+
     VkImageCreateInfo texture{};
     texture.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     texture.imageType = VK_IMAGE_TYPE_2D;
     texture.format = format_;
-    texture.extent = {smoke_extent_.width, smoke_extent_.height, 1};
+    texture.extent = {extent.width, extent.height, 1};
     texture.mipLevels = texture.arrayLayers = 1;
     texture.samples = VK_SAMPLE_COUNT_1_BIT;
     texture.tiling = VK_IMAGE_TILING_OPTIMAL;
     texture.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-    if (!check(vkCreateImage(device_, &texture, nullptr, &smoke_image_), "Create half-resolution smoke image")) return false;
+    if (!check(vkCreateImage(device_, &texture, nullptr, &target.image), "Create render target image")) return false;
     VkMemoryRequirements requirements{};
-    vkGetImageMemoryRequirements(device_, smoke_image_, &requirements);
+    vkGetImageMemoryRequirements(device_, target.image, &requirements);
     VkPhysicalDeviceMemoryProperties properties{};
     vkGetPhysicalDeviceMemoryProperties(physical_, &properties);
     std::uint32_t type = properties.memoryTypeCount;
@@ -162,107 +202,48 @@ bool VulkanRenderer::create_smoke_target()
     }
     if (type == properties.memoryTypeCount)
     {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Vulkan adapter lacks device-local smoke image memory.");
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Vulkan adapter lacks device-local render target memory.");
         return false;
     }
     VkMemoryAllocateInfo memory{};
     memory.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     memory.allocationSize = requirements.size;
     memory.memoryTypeIndex = type;
-    if (!check(vkAllocateMemory(device_, &memory, nullptr, &smoke_memory_), "Allocate smoke image memory") ||
-        !check(vkBindImageMemory(device_, smoke_image_, smoke_memory_, 0), "Bind smoke image memory")) return false;
+    if (!check(vkAllocateMemory(device_, &memory, nullptr, &target.memory), "Allocate render target memory") ||
+        !check(vkBindImageMemory(device_, target.image, target.memory, 0), "Bind render target memory")) return false;
     VkImageViewCreateInfo view{};
     view.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    view.image = smoke_image_;
+    view.image = target.image;
     view.viewType = VK_IMAGE_VIEW_TYPE_2D;
     view.format = format_;
     view.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    if (!check(vkCreateImageView(device_, &view, nullptr, &smoke_view_), "Create smoke image view")) return false;
+    if (!check(vkCreateImageView(device_, &view, nullptr, &target.view), "Create render target view")) return false;
     VkFramebufferCreateInfo framebuffer{};
     framebuffer.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-    framebuffer.renderPass = smoke_pass_;
+    framebuffer.renderPass = offscreen_pass_;
     framebuffer.attachmentCount = 1;
-    framebuffer.pAttachments = &smoke_view_;
-    framebuffer.width = smoke_extent_.width;
-    framebuffer.height = smoke_extent_.height;
+    framebuffer.pAttachments = &target.view;
+    framebuffer.width = extent.width;
+    framebuffer.height = extent.height;
     framebuffer.layers = 1;
-    if (!check(vkCreateFramebuffer(device_, &framebuffer, nullptr, &smoke_framebuffer_), "Create smoke framebuffer")) return false;
-    const VkDescriptorImageInfo image{VK_NULL_HANDLE, smoke_view_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+    if (!check(vkCreateFramebuffer(device_, &framebuffer, nullptr, &target.framebuffer), "Create render target framebuffer")) return false;
+    const VkDescriptorImageInfo image{VK_NULL_HANDLE, target.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
     VkWriteDescriptorSet write{};
     write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    write.dstSet = smoke_set_;
+    write.dstSet = target.descriptor;
     write.descriptorCount = 1;
     write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
     write.pImageInfo = &image;
     vkUpdateDescriptorSets(device_, 1, &write, 0, nullptr);
-    SDL_Log("Vulkan smoke target: %ux%u, UNORM8; includes clear background.", smoke_extent_.width, smoke_extent_.height);
+    target.extent = extent;
+    SDL_Log("Vulkan render target: %ux%u, UNORM8.", extent.width, extent.height);
     return validation_ok();
 }
 
-void VulkanRenderer::destroy_smoke_target()
+void VulkanRenderer::upscale(VkCommandBuffer command, const VulkanRenderTarget& source)
 {
-    vkDestroyFramebuffer(device_, smoke_framebuffer_, nullptr);
-    vkDestroyImageView(device_, smoke_view_, nullptr);
-    vkDestroyImage(device_, smoke_image_, nullptr);
-    vkFreeMemory(device_, smoke_memory_, nullptr);
-    smoke_framebuffer_ = VK_NULL_HANDLE;
-    smoke_view_ = VK_NULL_HANDLE;
-    smoke_image_ = VK_NULL_HANDLE;
-    smoke_memory_ = VK_NULL_HANDLE;
-}
-
-void VulkanRenderer::set_viewport(VkCommandBuffer command, VkExtent2D extent)
-{
-    const VkViewport viewport{0, static_cast<float>(extent.height), static_cast<float>(extent.width),
-        -static_cast<float>(extent.height), 0, 1};
-    const VkRect2D scissor{{0, 0}, extent};
-    vkCmdSetViewport(command, 0, 1, &viewport);
-    vkCmdSetScissor(command, 0, 1, &scissor);
-}
-
-void VulkanRenderer::draw_range(VkCommandBuffer command, const DrawRange& range, const VertexBuffer& buffer, float aspect)
-{
-    const auto& vertices = static_cast<const VulkanVertexBuffer&>(buffer);
-    const auto& pipeline = static_cast<const VulkanGraphicsPipeline&>(range.pipeline);
-    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
-    const VkDeviceSize offset = static_cast<VkDeviceSize>(range.first_record) * vertices.stride();
-    vkCmdBindVertexBuffers(command, 0, 1, &vertices.buffer, &offset);
-    vkCmdPushConstants(command, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float), &aspect);
-    vkCmdPushConstants(command, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, sizeof(float), sizeof(std::uint32_t), &range.layer);
-    vkCmdDraw(command, 6, range.record_count, 0, 0);
-}
-
-void VulkanRenderer::render_smoke(VkCommandBuffer command, const DrawCommand& draw)
-{
-    VkImageMemoryBarrier barrier{};
-    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image = smoke_image_;
-    barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        0, 0, nullptr, 0, nullptr, 1, &barrier);
-    VkClearValue clear{};
-    std::copy(draw.clear_color.begin(), draw.clear_color.end(), clear.color.float32);
-    VkRenderPassBeginInfo pass{};
-    pass.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    pass.renderPass = smoke_pass_;
-    pass.framebuffer = smoke_framebuffer_;
-    pass.renderArea.extent = smoke_extent_;
-    pass.clearValueCount = 1;
-    pass.pClearValues = &clear;
-    vkCmdBeginRenderPass(command, &pass, VK_SUBPASS_CONTENTS_INLINE);
-    set_viewport(command, smoke_extent_);
-    draw_range(command, draw.ranges.front(), draw.vertices, draw.aspect_ratio);
-    vkCmdEndRenderPass(command);
-    barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-        0, 0, nullptr, 0, nullptr, 1, &barrier);
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, upscale_pipeline_);
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, upscale_layout_, 0, 1, &source.descriptor, 0, nullptr);
+    vkCmdDraw(command, 3, 1, 0, 0);
 }
 }
