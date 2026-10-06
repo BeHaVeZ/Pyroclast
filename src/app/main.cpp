@@ -22,7 +22,7 @@ struct SdlCleanup final
     }
 };
 
-int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice* renderer, pyroclast::ParticleSystem& demo,
+int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, pyroclast::ParticleSystem& demo,
     pyroclast::ExplosionRenderer& explosions, const pyroclast::ApplicationOptions& options)
 {
     const auto window_id = SDL_GetWindowID(window);
@@ -62,7 +62,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice* renderer, pyro
         }
 
         const bool minimized = (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED) != 0;
-        if (renderer && !minimized)
+        if (!minimized)
         {
             int width = 0;
             int height = 0;
@@ -76,14 +76,14 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice* renderer, pyro
             {
                 if (width != 1280 || height != 720) baseline.disable();
                 const auto start = SDL_GetPerformanceCounter();
-                if (!renderer->resize(width, height))
+                if (!renderer.resize(width, height))
                 {
                     return 1;
                 }
                 const double elapsed = static_cast<double>(start - previous_time) /
                     static_cast<double>(SDL_GetPerformanceFrequency());
                 previous_time = start;
-                const auto result = explosions.render(*renderer, demo,
+                const auto result = explosions.render(renderer, demo,
                     static_cast<float>(width) / static_cast<float>(height), elapsed);
                 if (result == pyroclast::RenderResult::failed) return 1;
                 if (result == pyroclast::RenderResult::submitted)
@@ -91,7 +91,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice* renderer, pyro
                     const double milliseconds = 1000.0 * static_cast<double>(SDL_GetPerformanceCounter() - start) /
                         static_cast<double>(SDL_GetPerformanceFrequency());
                     if (!profile_tick || !demo.has_pending_steps())
-                        baseline.record(milliseconds, renderer->completed_gpu_timings());
+                        baseline.record(milliseconds, renderer.completed_gpu_timings());
                 }
                 else baseline.disable();
                 continue;
@@ -134,16 +134,16 @@ int run_application(const pyroclast::ApplicationOptions& options)
         .gpu_timing = options.gpu_timing || options.profile_tick.has_value(),
         .vsync = !options.profile_tick.has_value()};
     auto creation = pyroclast::create_graphics_device(options.renderer, window.get(), device_options);
-    if (!creation.error.empty())
+    if (!creation.device)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "%s", creation.error.c_str());
         return 1;
     }
+    auto& device = *creation.device;
     SDL_Log("Smoke resolution: %s.", options.half_smoke ? "half" : "full");
     pyroclast::ParticleSystem demo;
     pyroclast::ExplosionRenderer explosions;
-    if (creation.device && (!demo.initialize(*creation.device, options.explosions) ||
-        !explosions.initialize(*creation.device, options.half_smoke)))
+    if (!demo.initialize(device, options.explosions) || !explosions.initialize(device, options.half_smoke))
     {
         return 1;
     }
@@ -154,8 +154,8 @@ int run_application(const pyroclast::ApplicationOptions& options)
     }
     SDL_SetWindowTitle(window.get(), "Pyroclast - Explosion | Space: trigger | R: clear | P: pause | N: step");
     SDL_Log("Explosion demo ready. Space: trigger, R: clear, P: pause, N: single step.");
-    const int exit_code = run_event_loop(window.get(), creation.device.get(), demo, explosions, options);
-    return !creation.device || creation.device->wait_idle() ? exit_code : 1;
+    const int exit_code = run_event_loop(window.get(), device, demo, explosions, options);
+    return device.wait_idle() ? exit_code : 1;
 }
 }
 
