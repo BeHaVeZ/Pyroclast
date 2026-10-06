@@ -108,6 +108,7 @@ std::unique_ptr<VertexBuffer> D3D12Renderer::create_vertex_buffer(std::span<cons
     description.MipLevels = 1;
     description.SampleDesc.Count = 1;
     description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    description.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 
     D3D12_HEAP_PROPERTIES heap{};
     heap.Type = D3D12_HEAP_TYPE_DEFAULT;
@@ -120,6 +121,7 @@ std::unique_ptr<VertexBuffer> D3D12Renderer::create_vertex_buffer(std::span<cons
         return nullptr;
     }
     heap.Type = D3D12_HEAP_TYPE_UPLOAD;
+    description.Flags = D3D12_RESOURCE_FLAG_NONE;
     if (!check(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE,
         &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
         IID_PPV_ARGS(&upload_staging_)), "Create upload buffer"))

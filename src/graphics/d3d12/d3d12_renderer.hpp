@@ -28,6 +28,8 @@ public:
     std::unique_ptr<GraphicsPipeline> create_graphics_pipeline(
         const GraphicsPipelineDescription& description) override;
     bool resize(int width, int height) override;
+    std::unique_ptr<ComputePipeline> create_compute_pipeline(
+        std::span<const std::byte> shader, const VertexBuffer& vertices) override;
     bool render(const DrawCommand& draw) override;
     bool wait_idle() override;
 

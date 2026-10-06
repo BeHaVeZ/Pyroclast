@@ -27,4 +27,13 @@ public:
     Microsoft::WRL::ComPtr<ID3D12RootSignature> root_signature;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> state;
 };
+
+class D3D12ComputePipeline final : public ComputePipeline
+{
+public:
+    const D3D12Renderer* owner = nullptr;
+    const D3D12VertexBuffer* vertices = nullptr;
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> root_signature;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> state;
+};
 }

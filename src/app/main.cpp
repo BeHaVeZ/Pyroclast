@@ -22,7 +22,7 @@ struct SdlCleanup final
 };
 
 int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice* renderer,
-    const pyroclast::TriangleDemo& demo)
+    pyroclast::TriangleDemo& demo)
 {
     const auto window_id = SDL_GetWindowID(window);
     while (true)
@@ -30,6 +30,11 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice* renderer,
         SDL_Event event{};
         while (SDL_PollEvent(&event))
         {
+            if (event.type == SDL_EVENT_KEY_DOWN && event.key.windowID == window_id &&
+                event.key.key == SDLK_SPACE && !event.key.repeat)
+            {
+                demo.toggle_colors();
+            }
             if (event.type == SDL_EVENT_QUIT ||
                 (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED &&
                     event.window.windowID == window_id))
@@ -80,7 +85,8 @@ int run_application(const pyroclast::ApplicationOptions& options)
     }
 
     const std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> window(
-        SDL_CreateWindow("Pyroclast", 1280, 720, SDL_WINDOW_RESIZABLE),
+        SDL_CreateWindow("Pyroclast", 1280, 720, SDL_WINDOW_RESIZABLE |
+            (options.renderer == pyroclast::Renderer::vulkan ? SDL_WINDOW_VULKAN : 0)),
         &SDL_DestroyWindow);
     if (!window)
     {
@@ -96,10 +102,12 @@ int run_application(const pyroclast::ApplicationOptions& options)
         return 1;
     }
     pyroclast::TriangleDemo demo;
-    if (creation.device && !demo.initialize(*creation.device))
+    if (creation.device && !demo.initialize(*creation.device, options.renderer))
     {
         return 1;
     }
+    SDL_SetWindowTitle(window.get(), "Pyroclast - Space: toggle triangle colors");
+    SDL_Log("Compute color demo ready: 3 vertices, one dispatch per frame. Space toggles colors.");
     const int exit_code = run_event_loop(window.get(), creation.device.get(), demo);
     return !creation.device || creation.device->wait_idle() ? exit_code : 1;
 }
@@ -122,7 +130,7 @@ int main(int argc, char** argv)
             "  --renderer=d3d12   Request Direct3D 12 (default).\n"
             "  --renderer=vulkan  Request Vulkan.\n"
             "  --help             Print usage and exit.\n"
-            "D3D12 draws a triangle; Vulkan currently runs the SDL window shell.");
+            "Both renderers draw the same triangle.");
         return 0;
     }
 

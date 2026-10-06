@@ -1,0 +1,112 @@
+#include "vulkan_resources.hpp"
+
+#include <SDL3/SDL.h>
+
+#include <cstring>
+
+namespace pyroclast
+{
+VulkanComputePipeline::~VulkanComputePipeline()
+{
+    vkDestroyPipeline(device, pipeline, nullptr);
+    vkDestroyPipelineLayout(device, layout, nullptr);
+    vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
+    vkDestroyDescriptorSetLayout(device, descriptor_layout, nullptr);
+}
+
+std::unique_ptr<ComputePipeline> VulkanRenderer::create_compute_pipeline(
+    std::span<const std::byte> shader, const VertexBuffer& resource)
+{
+    const auto* vertices = dynamic_cast<const VulkanVertexBuffer*>(&resource);
+    std::uint32_t magic = 0;
+    if (shader.size() >= sizeof(magic))
+    {
+        std::memcpy(&magic, shader.data(), sizeof(magic));
+    }
+    if (!vertices || vertices->owner != this || shader.size() < 20 || shader.size() % 4 != 0 || magic != 0x07230203)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Compute requires SPIR-V and a buffer belonging to this Vulkan device.");
+        return nullptr;
+    }
+    auto pipeline = std::make_unique<VulkanComputePipeline>();
+    pipeline->owner = this;
+    pipeline->vertices = vertices;
+    pipeline->device = device_;
+    const VkDescriptorSetLayoutBinding binding{0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+    VkDescriptorSetLayoutCreateInfo descriptors{};
+    descriptors.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    descriptors.bindingCount = 1;
+    descriptors.pBindings = &binding;
+    if (!check(vkCreateDescriptorSetLayout(device_, &descriptors, nullptr, &pipeline->descriptor_layout), "Create compute descriptor layout"))
+    {
+        return nullptr;
+    }
+    const VkDescriptorPoolSize pool_size{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1};
+    VkDescriptorPoolCreateInfo pool{};
+    pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    pool.maxSets = 1;
+    pool.poolSizeCount = 1;
+    pool.pPoolSizes = &pool_size;
+    if (!check(vkCreateDescriptorPool(device_, &pool, nullptr, &pipeline->descriptor_pool), "Create compute descriptor pool"))
+    {
+        return nullptr;
+    }
+    VkDescriptorSetAllocateInfo allocation{};
+    allocation.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocation.descriptorPool = pipeline->descriptor_pool;
+    allocation.descriptorSetCount = 1;
+    allocation.pSetLayouts = &pipeline->descriptor_layout;
+    if (!check(vkAllocateDescriptorSets(device_, &allocation, &pipeline->descriptor), "Allocate compute descriptor"))
+    {
+        return nullptr;
+    }
+    const VkDescriptorBufferInfo buffer{vertices->buffer, 0, static_cast<VkDeviceSize>(vertices->count) * sizeof(Vertex)};
+    VkWriteDescriptorSet write{};
+    write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    write.dstSet = pipeline->descriptor;
+    write.dstBinding = 0;
+    write.descriptorCount = 1;
+    write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    write.pBufferInfo = &buffer;
+    vkUpdateDescriptorSets(device_, 1, &write, 0, nullptr);
+    const VkPushConstantRange constants{VK_SHADER_STAGE_COMPUTE_BIT, 0, 2 * sizeof(std::uint32_t)};
+    VkPipelineLayoutCreateInfo layout{};
+    layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    layout.setLayoutCount = 1;
+    layout.pSetLayouts = &pipeline->descriptor_layout;
+    layout.pushConstantRangeCount = 1;
+    layout.pPushConstantRanges = &constants;
+    if (!check(vkCreatePipelineLayout(device_, &layout, nullptr, &pipeline->layout), "Create compute pipeline layout"))
+    {
+        return nullptr;
+    }
+    struct Module
+    {
+        VkDevice device;
+        VkShaderModule handle = VK_NULL_HANDLE;
+        ~Module() { vkDestroyShaderModule(device, handle, nullptr); }
+    } module{device_};
+    std::vector<std::uint32_t> words(shader.size() / sizeof(std::uint32_t));
+    std::memcpy(words.data(), shader.data(), shader.size());
+    VkShaderModuleCreateInfo code{};
+    code.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    code.codeSize = shader.size();
+    code.pCode = words.data();
+    if (!check(vkCreateShaderModule(device_, &code, nullptr, &module.handle), "Create compute shader module"))
+    {
+        return nullptr;
+    }
+    VkComputePipelineCreateInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    info.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    info.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    info.stage.module = module.handle;
+    info.stage.pName = "cs_main";
+    info.layout = pipeline->layout;
+    if (!check(vkCreateComputePipelines(device_, VK_NULL_HANDLE, 1, &info, nullptr, &pipeline->pipeline), "Create compute pipeline"))
+    {
+        return nullptr;
+    }
+    return validation_ok() ? std::move(pipeline) : nullptr;
+}
+}

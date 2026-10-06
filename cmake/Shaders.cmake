@@ -40,34 +40,40 @@ foreach(backend IN ITEMS d3d12 vulkan)
         set(shader_extension spv)
         set(shader_options -spirv -fspv-target-env=vulkan1.1)
     endif()
-    foreach(stage IN ITEMS vs ps)
-        set(shader_header "${shader_output_dir}/triangle_${stage}.hpp")
-        set(shader_binary "${shader_output_dir}/triangle_${stage}.${shader_extension}")
-        set(shader_depfile "${shader_output_dir}/triangle_${stage}.d")
-        add_custom_command(
-            OUTPUT "${shader_header}" "${shader_binary}"
-            COMMAND ${CMAKE_COMMAND} -E make_directory "${shader_output_dir}"
-            COMMAND "${PYROCLAST_DXC}"
-                -T "${stage}_6_0" -E "${stage}_main" -HV 2021 -Ges -WX
-                -fdiagnostics-format=msvc
-                "$<IF:$<CONFIG:Debug>,-Od,-O3>" "$<$<CONFIG:Debug>:-Zi>"
-                ${shader_options}
-                -Fo "${shader_binary}" -Fh "${shader_header}" -Vn "triangle_${stage}"
-                "${CMAKE_CURRENT_SOURCE_DIR}/shaders/triangle.hlsl"
-            # DXC's combined -MD/SPIR-V path crashes; preprocessing separately works.
-            COMMAND "${PYROCLAST_DXC}" -T "${stage}_6_0" -E "${stage}_main" -HV 2021
-                -M -MF "${shader_depfile}" -Fo "${shader_binary}"
-                "${CMAKE_CURRENT_SOURCE_DIR}/shaders/triangle.hlsl"
-            DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/shaders/triangle.hlsl" "${PYROCLAST_DXC}"
-            DEPFILE "${shader_depfile}"
-            COMMENT "Compiling triangle ${stage} for ${backend}"
-            COMMAND_EXPAND_LISTS
-            VERBATIM
-        )
-        target_sources(Pyroclast PRIVATE "${shader_header}" "${shader_binary}")
+    foreach(program IN ITEMS triangle colors_compute)
+        if(program STREQUAL "triangle")
+            set(shader_stages vs ps)
+        else()
+            set(shader_stages cs)
+        endif()
+        foreach(stage IN LISTS shader_stages)
+            set(shader_header "${shader_output_dir}/${program}_${stage}.hpp")
+            set(shader_binary "${shader_output_dir}/${program}_${stage}.${shader_extension}")
+            set(shader_depfile "${shader_output_dir}/${program}_${stage}.d")
+            add_custom_command(
+                OUTPUT "${shader_header}" "${shader_binary}"
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${shader_output_dir}"
+                COMMAND "${PYROCLAST_DXC}"
+                    -T "${stage}_6_0" -E "${stage}_main" -HV 2021 -Ges -WX
+                    -fdiagnostics-format=msvc
+                    "$<IF:$<CONFIG:Debug>,-Od,-O3>" "$<$<CONFIG:Debug>:-Zi>"
+                    ${shader_options}
+                    -Fo "${shader_binary}" -Fh "${shader_header}" -Vn "${program}_${stage}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/${program}.hlsl"
+                # DXC's combined -MD/SPIR-V path crashes; preprocessing separately works.
+                COMMAND "${PYROCLAST_DXC}" -T "${stage}_6_0" -E "${stage}_main" -HV 2021
+                    -M -MF "${shader_depfile}" -Fo "${shader_binary}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/${program}.hlsl"
+                DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/shaders/${program}.hlsl" "${PYROCLAST_DXC}"
+                DEPFILE "${shader_depfile}"
+                COMMENT "Compiling ${program} ${stage} for ${backend}"
+                COMMAND_EXPAND_LISTS
+                VERBATIM
+            )
+            target_sources(Pyroclast PRIVATE "${shader_header}" "${shader_binary}")
+        endforeach()
     endforeach()
 endforeach()
 
-# Only the implemented backend's bytecode is consumed by the demo today.
 target_include_directories(Pyroclast PRIVATE
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/shaders/d3d12/$<CONFIG>")
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/shaders")

@@ -5,6 +5,7 @@
 
 #include <cassert>
 #include <limits>
+#include <utility>
 #include <vector>
 
 namespace pyroclast
@@ -111,6 +112,14 @@ bool D3D12Renderer::render(const DrawCommand& draw)
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Draw resources must belong to this graphics device.");
         return false;
     }
+    const auto* compute = draw.compute ? dynamic_cast<const D3D12ComputePipeline*>(&draw.compute->pipeline) : nullptr;
+    if (draw.compute && (!compute || compute->owner != this || compute->vertices != vertices ||
+        draw.compute->group_count == 0 || draw.compute->group_count > 65535 ||
+        draw.compute->constants[0] != vertices->count))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Invalid compute dispatch or resource ownership.");
+        return false;
+    }
     if (occluded_)
     {
         SDL_Delay(50);
@@ -133,6 +142,24 @@ bool D3D12Renderer::render(const DrawCommand& draw)
         !check(command_list_->Reset(frame.allocator.Get(), nullptr), "Reset command list"))
     {
         return false;
+    }
+
+    if (compute)
+    {
+        D3D12_RESOURCE_BARRIER storage{};
+        storage.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        storage.Transition.pResource = vertices->resource.Get();
+        storage.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        storage.Transition.StateBefore = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
+        storage.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        command_list_->ResourceBarrier(1, &storage);
+        command_list_->SetPipelineState(compute->state.Get());
+        command_list_->SetComputeRootSignature(compute->root_signature.Get());
+        command_list_->SetComputeRootUnorderedAccessView(0, vertices->resource->GetGPUVirtualAddress());
+        command_list_->SetComputeRoot32BitConstants(1, 2, draw.compute->constants.data(), 0);
+        command_list_->Dispatch(draw.compute->group_count, 1, 1);
+        std::swap(storage.Transition.StateBefore, storage.Transition.StateAfter);
+        command_list_->ResourceBarrier(1, &storage);
     }
 
     D3D12_RESOURCE_BARRIER barrier{};

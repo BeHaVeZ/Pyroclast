@@ -33,6 +33,19 @@ public:
     virtual ~GraphicsPipeline() = default;
 };
 
+class ComputePipeline
+{
+public:
+    virtual ~ComputePipeline() = default;
+};
+
+struct ComputeDispatch
+{
+    const ComputePipeline& pipeline;
+    std::array<std::uint32_t, 2> constants;
+    std::uint32_t group_count;
+};
+
 struct GraphicsPipelineDescription
 {
     std::span<const std::byte> vertex_shader;
@@ -44,6 +57,7 @@ struct DrawCommand
     const VertexBuffer& vertices;
     const GraphicsPipeline& pipeline;
     std::array<float, 4> clear_color;
+    const ComputeDispatch* compute = nullptr;
 };
 
 class GraphicsDevice
@@ -53,6 +67,8 @@ public:
     virtual std::unique_ptr<VertexBuffer> create_vertex_buffer(std::span<const Vertex> vertices) = 0;
     virtual std::unique_ptr<GraphicsPipeline> create_graphics_pipeline(
         const GraphicsPipelineDescription& description) = 0;
+    virtual std::unique_ptr<ComputePipeline> create_compute_pipeline(
+        std::span<const std::byte> shader, const VertexBuffer& vertices) = 0;
     virtual bool resize(int width, int height) = 0;
     virtual bool render(const DrawCommand& draw) = 0;
     virtual bool wait_idle() = 0;
