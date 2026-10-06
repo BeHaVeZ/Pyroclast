@@ -6,7 +6,7 @@
 
 Early development.
 
-The project currently runs a bounded GPU particle emitter on D3D12 and Vulkan. Explosion effects, smoke behavior, performance scaling, and tooling follow in later phases.
+The project currently runs a GPU explosion prototype on D3D12 and Vulkan. Smoke behavior, performance scaling, and tooling follow in later phases.
 
 ## Core question
 
@@ -53,17 +53,20 @@ It is not affiliated with Bohemia Interactive, Arma, Enfusion, or Blastcore, and
 
 ## Current milestone
 
-**Phase 7 ? Baseline GPU particle system**
+**Phase 8 - First explosion**
 
-Both backends run the same HLSL simulation and render a simple blue particle
-fountain. A fixed pool holds 8,192 particles in 256 KiB of state. Compute handles
-staggered spawning, velocity, gravity, aging, death, and slot reuse. The CPU sends
-only simulation controls; particle state stays on the GPU.
+Both backends run the same shared HLSL explosion: a brief expanding fireball and
+outward-moving ballistic sparks. A deterministic burst activates 2,048 particles
+(256 fireball particles and 1,792 sparks) in the existing 8,192-slot GPU pool.
+Particle state remains 256 KiB. The GPU handles spawning, movement, fading, and
+death without CPU particle updates or GPU readback.
 
-Simulation uses 1/60-second steps independently of display refresh, with at most
-four steps per submission. Instanced quads draw every slot; inactive slots collapse
-to zero-size geometry. This deliberately simple baseline precedes explosions,
-smoke physics, culling, compaction, indirect rendering, and adaptive budgets.
+The demo starts with one explosion. **Space** triggers another, replacing the
+previous burst. Each burst naturally expires; particles do not respawn. Simulation
+retains fixed 1/60-second steps and bounded catch-up independently of display
+refresh. The existing instanced draw, buffer layout, RHI, and native synchronization
+remain sufficient. Smoke, multiple overlapping explosions, culling, and indirect
+rendering follow in later phases.
 
 See `docs/ROADMAP.md`.
 
@@ -125,18 +128,20 @@ statically, so no SDL DLL needs to be copied beside the executable. Its GPU and
 The executable opens a resizable 1280 x 720 window and waits for events while
 idle. Close the window to exit. Startup, failures, and shutdown are logged to the
 console; startup and rendering failures return a nonzero exit code. The default
-D3D12 renderer draws the particle emitter over dark blue with VSync enabled. Minimized
+D3D12 renderer draws the explosion effect over dark blue with VSync enabled. Minimized
 windows pause rendering and wait for events.
 
 Controls:
 
-- **Space:** toggle emission. Existing particles die in about four simulation seconds.
-- **R:** reset the pool with the same deterministic seed; retain pause/emission settings.
+- **Space:** trigger/restart the deterministic explosion, including while paused.
+- **R:** clear the pool; retain the pause setting.
 - **P:** pause or resume simulation.
 - **N:** advance one 1/60-second step while paused.
 
+Fireball particles last 0.35-0.8 seconds; sparks last 1-2.2 seconds, rounded to
+simulation ticks. The screen returns to the background after the burst dies.
 Minimizing freezes simulation. Long stalls discard excess catch-up time to keep
-GPU work bounded. Resizing preserves particle state and corrects quad aspect ratio.
+GPU work bounded. Resizing preserves state and corrects particle aspect ratio.
 
 Renderer selection happens at startup and defaults to D3D12:
 
@@ -147,7 +152,7 @@ Renderer selection happens at startup and defaults to D3D12:
 ```
 
 Both renderer options initialize their selected backend, log the selected GPU,
-and draw the same particle emitter. `--help` prints usage and exits without opening a window.
+and draw the same explosion effect. `--help` prints usage and exits without opening a window.
 Unknown arguments, invalid renderer values, and repeated renderer selections
 return exit code 1 before SDL initializes. Use the exact `--renderer=value`
 form; arguments are case sensitive. All arguments are validated even when
@@ -180,22 +185,24 @@ the debug layer is unavailable, startup fails with an installation hint rather
 than running without validation. Debug-layer warnings/errors are logged to the
 console and Visual Studio debugger, with a validation summary at shutdown.
 
-To check particles in Visual Studio, select your existing D3D12 or Vulkan launch
-entry and press **F5**. Verify that the fountain moves, **Space** drains it to an
-empty background, and **Space** again resumes spawning. Press **P**, then **R**:
-the paused pool should be empty. Press **N** repeatedly to spawn and move particles.
-Repeat resize/minimize/restore checks, then close the window. A clean D3D12 Debug
-run logs `D3D12 validation summary: 0 warnings, 0 errors` and exit code 0.
+To check the explosion in Visual Studio, select your existing D3D12 or Vulkan
+launch entry and press **F5**. Press **Space** to trigger the burst and watch the
+fireball expand, sparks travel outward/fall, and all particles fade away.
+Press **P**, then **R** to clear the paused pool. **Space** should show a frozen
+flash; **N** advances it one simulation tick. Repeat triggering and
+resize/minimize/restore checks, then close the window. A clean D3D12 Debug run
+logs `D3D12 validation summary: 0 warnings, 0 errors` and exit code 0.
 Breakpoints on validation errors are enabled when a debugger is attached.
 
 Debug Vulkan requires `VK_LAYER_KHRONOS_validation` and enables synchronization
 validation. Startup fails with an installation/path hint if the layer is absent.
-Repeat the particle and resize/minimize checks with `--renderer=vulkan`; a clean
+Repeat the explosion and resize/minimize checks with `--renderer=vulkan`; a clean
 Debug run logs `Vulkan validation summary: 0 warnings, 0 errors` and exits with
 code 0. Loader warnings from installed third-party overlays are also logged.
 
 `cmake/Shaders.cmake` compiles `shaders/particles.hlsl` (`vs_main`, `ps_main`)
-and `shaders/particles_compute.hlsl` (`cs_main`) for both backends:
+and `shaders/particles_compute.hlsl` (`cs_main`) for both backends.
+`shaders/explosion.hlsli` shares layer classification and deterministic spawn hashing:
 
 - DXIL and bytecode headers: `out/build/windows-x64/generated/shaders/d3d12/<configuration>/`
 - SPIR-V and bytecode headers: `out/build/windows-x64/generated/shaders/vulkan/<configuration>/`
@@ -221,11 +228,12 @@ For a small startup measurement, run **Release** and leave the default 1280 x 72
 window focused and untouched. After 120 warmup frames and 600 samples, the log
 reports average, median, and p99 CPU resize/render-call time, including GPU fence
 and VSync presentation waits. Controls, focus loss, minimize, resize, or skipped
-submissions discard this sample. This is a presentation-paced consistency baseline,
-not GPU simulation time or a throughput comparison; GPU profiling is required
+submissions discard this sample. The sample covers the startup explosion and its transition to an empty pool.
+This is a presentation-paced consistency baseline, not GPU simulation time or a
+throughput comparison; GPU profiling is required
 before optimization claims.
 
-See `docs/PHASE1.md` through `docs/PHASE7.md` for ownership, synchronization,
+See `docs/PHASE1.md` through `docs/PHASE8.md` for ownership, synchronization,
 validation results, and current limitations.
 
 Build output stays under `out/`. Machine-specific overrides can go in the ignored

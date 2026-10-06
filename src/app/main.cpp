@@ -43,7 +43,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice* renderer,
             if (event.type == SDL_EVENT_KEY_DOWN && event.key.windowID == window_id &&
                 event.key.key == SDLK_SPACE && !event.key.repeat)
             {
-                demo.toggle_emission();
+                demo.trigger_explosion();
             }
             if (event.type == SDL_EVENT_KEY_DOWN && event.key.windowID == window_id && !event.key.repeat)
             {
@@ -137,8 +137,8 @@ int run_application(const pyroclast::ApplicationOptions& options)
     {
         return 1;
     }
-    SDL_SetWindowTitle(window.get(), "Pyroclast - GPU particles | Space: emission | R: reset | P: pause | N: step");
-    SDL_Log("GPU particle baseline ready. Space: emission, R: reset, P: pause, N: single step.");
+    SDL_SetWindowTitle(window.get(), "Pyroclast - Explosion | Space: trigger | R: clear | P: pause | N: step");
+    SDL_Log("Explosion demo ready. Space: trigger, R: clear, P: pause, N: single step.");
     const int exit_code = run_event_loop(window.get(), creation.device.get(), demo);
     return !creation.device || creation.device->wait_idle() ? exit_code : 1;
 }
@@ -161,7 +161,7 @@ int main(int argc, char** argv)
             "  --renderer=d3d12   Request Direct3D 12 (default).\n"
             "  --renderer=vulkan  Request Vulkan.\n"
             "  --help             Print usage and exit.\n"
-            "Both renderers run the same GPU particle emitter.");
+            "Both renderers run the same GPU explosion effect.");
         return 0;
     }
 

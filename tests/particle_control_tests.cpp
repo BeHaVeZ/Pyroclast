@@ -64,7 +64,7 @@ int main()
     };
     check(system.initialize(device, Renderer::d3d12) && device.valid_upload, "bounded zero-initialized pool");
     system.render(device, 16.0f / 9.0f, 1.0 / 60);
-    check(device.constants[0] == 8192 && device.groups == 128 && device.constants[2] == 1, "default dispatch");
+    check(device.constants[0] == 8192 && device.groups == 128 && device.constants[2] == ParticleSystem::explosion_particles, "default dispatch");
     check(device.constants[1] == 1, "fixed simulation step");
     system.toggle_pause();
     system.render(device, 1, 1.0 / 60);
@@ -86,12 +86,25 @@ int main()
     system.render(device, 1, 1.0 / 60);
     check(epoch == 2 && device.constants[3] == epoch && device.constants[1] == 0,
         "reset persists across skipped frames and clears queued steps");
-    system.toggle_emission();
+    check(device.constants[2] == 0, "clear requests no new particles");
+    system.step();
+    system.trigger_explosion();
+    device.result = RenderResult::skipped;
     system.render(device, 1, 1.0 / 60);
-    check(device.constants[2] == 0, "emission can stop independently of simulation");
+    const auto trigger_epoch = device.constants[3];
+    device.result = RenderResult::submitted;
+    system.render(device, 1, 1.0 / 60);
+    check(device.constants[2] == ParticleSystem::explosion_particles && device.constants[3] == trigger_epoch &&
+        device.constants[1] == 0, "trigger survives skipped submission, retains pause, clears pending steps");
+    system.render(device, 1, 1.0 / 60);
+    check(device.constants[3] == trigger_epoch, "trigger epoch does not advance each frame");
+    for (int trigger = 0; trigger < 10; ++trigger) system.trigger_explosion();
+    system.render(device, 1, 1.0 / 60);
+    check(device.constants[2] == ParticleSystem::explosion_particles && device.constants[3] == trigger_epoch + 10,
+        "repeated triggers replace the burst without growing particle count");
     system.toggle_pause();
     system.render(device, 1, 1.0 / 60);
-    check(device.constants[1] != 0 && device.constants[2] == 0, "drain continues after resuming");
+    check(device.constants[1] == 1, "triggered burst advances after resuming");
     ParticleSystem timed;
     timed.initialize(device, Renderer::d3d12);
     std::uint32_t ticks = 0;

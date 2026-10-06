@@ -19,9 +19,13 @@ bool ParticleSystem::initialize(GraphicsDevice& device, Renderer renderer)
         return false;
     }
     compute_ = device.create_compute_pipeline(particle_compute_shader(renderer), *particles_);
-    SDL_Log("Particle baseline: capacity=%u, state=%zu bytes, fixed step=1/60 s, seed=0x12345678.",
-        capacity, initial.size() * sizeof(Particle));
-    return compute_ != nullptr;
+    if (!compute_)
+    {
+        return false;
+    }
+    SDL_Log("Explosion ready: capacity=%u, burst=%u, state=%zu bytes, fixed step=1/60 s, seed=0x12345678.",
+        capacity, explosion_particles, initial.size() * sizeof(Particle));
+    return true;
 }
 
 RenderResult ParticleSystem::render(GraphicsDevice& device, float aspect_ratio, double elapsed_seconds)
@@ -37,7 +41,7 @@ RenderResult ParticleSystem::render(GraphicsDevice& device, float aspect_ratio, 
     const auto steps = paused_ ? std::min(pending_steps_, 1u) :
         static_cast<std::uint32_t>(std::floor(accumulator_ / fixed_step));
     const ComputeDispatch dispatch{*compute_,
-        {capacity, steps, emitting_ ? 1u : 0u, reset_epoch_}, (capacity + 63) / 64};
+        {capacity, steps, burst_count_, reset_epoch_}, (capacity + 63) / 64};
     const auto result = device.render({*particles_, *graphics_, {0.04f, 0.07f, 0.12f, 1.0f}, &dispatch, aspect_ratio});
     if (result == RenderResult::submitted)
     {
@@ -47,18 +51,25 @@ RenderResult ParticleSystem::render(GraphicsDevice& device, float aspect_ratio, 
     return result;
 }
 
-void ParticleSystem::toggle_emission()
+void ParticleSystem::trigger_explosion()
 {
-    emitting_ = !emitting_;
-    SDL_Log("Particle emission: %s", emitting_ ? "on" : "off (existing particles drain)");
+    reset_pool(explosion_particles);
+    SDL_Log("Explosion triggered: %u particles; replaces the previous burst.", explosion_particles);
 }
 
 void ParticleSystem::reset()
 {
+    reset_pool(0);
+    SDL_Log("Particle pool cleared.");
+}
+
+void ParticleSystem::reset_pool(std::uint32_t burst_count)
+{
+    assert(burst_count <= capacity);
     ++reset_epoch_;
+    burst_count_ = burst_count;
     pending_steps_ = 0;
     accumulator_ = 0;
-    SDL_Log("Particle pool reset requested.");
 }
 
 void ParticleSystem::toggle_pause()

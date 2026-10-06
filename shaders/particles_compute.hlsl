@@ -1,8 +1,10 @@
+#include "explosion.hlsli"
+
 struct Parameters
 {
     uint capacity;
     uint steps;
-    uint emitting;
+    uint burst_count;
     uint reset_epoch;
 };
 #ifdef __spirv__
@@ -10,20 +12,6 @@ struct Parameters
 #endif
 ConstantBuffer<Parameters> parameters : register(b0);
 RWByteAddressBuffer particles : register(u0);
-
-uint hash(uint value)
-{
-    value ^= value >> 16;
-    value *= 0x7feb352d;
-    value ^= value >> 15;
-    value *= 0x846ca68b;
-    return value ^ (value >> 16);
-}
-
-float random(uint id, uint salt)
-{
-    return float(hash(id ^ salt ^ 0x12345678) & 0xffff) / 65535.0;
-}
 
 [numthreads(64, 1, 1)]
 void cs_main(uint3 thread : SV_DispatchThreadID)
@@ -37,8 +25,20 @@ void cs_main(uint3 thread : SV_DispatchThreadID)
     if (epoch != parameters.reset_epoch)
     {
         motion = 0;
-        life = float3(-random(id, 1) * 2.0 - 0.016667, 0, 0);
+        life = 0;
         epoch = parameters.reset_epoch;
+        if (id < min(parameters.burst_count, parameters.capacity))
+        {
+            float angle = particle_random(id, 1) * 6.2831853;
+            float2 direction = float2(cos(angle), sin(angle));
+            bool fireball = id < fireball_particles;
+            float speed = fireball ? 0.08 + particle_random(id, 2) * 0.25 : 0.35 + particle_random(id, 2) * 0.85;
+            motion = float4(float2(0, -0.15) + direction * particle_random(id, 3) * 0.025,
+                direction * speed + float2(0, fireball ? 0.05 : 0.25));
+            life = float3(0,
+                fireball ? 0.35 + particle_random(id, 4) * 0.45 : 1.0 + particle_random(id, 4) * 1.2,
+                fireball ? 0.04 + particle_random(id, 5) * 0.025 : 0.003 + particle_random(id, 5) * 0.004);
+        }
     }
     const float dt = 1.0 / 60.0;
     for (uint step = 0; step < min(parameters.steps, 4); ++step)
@@ -46,20 +46,10 @@ void cs_main(uint3 thread : SV_DispatchThreadID)
         if (life.y > 0)
         {
             life.x += dt;
-            motion.w -= 0.35 * dt;
+            if (id >= fireball_particles) motion.w -= 0.65 * dt;
             motion.xy += motion.zw * dt;
             if (life.x >= life.y) life.y = 0;
         }
-        else if (parameters.emitting != 0)
-        {
-            life.x += dt;
-            if (life.x >= 0)
-            {
-                motion = float4(0, -0.75, (random(id, 2) - 0.5) * 0.65, 0.7 + random(id, 3) * 0.45);
-                life = float3(0, 2.0 + random(id, 4) * 2.0, 0.006 + random(id, 5) * 0.008);
-            }
-        }
-        if (life.y == 0 && life.x > 0) life.x = 0;
     }
     particles.Store4(address, asuint(motion));
     particles.Store3(address + 16, asuint(life));
