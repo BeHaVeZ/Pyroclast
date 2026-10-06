@@ -26,8 +26,11 @@ find_package(Vulkan 1.1 REQUIRED)
 
 add_executable(Pyroclast
     src/app/main.cpp
+    src/app/frame_baseline.cpp
     src/app/command_line.cpp
     src/app/triangle_demo.cpp
+    src/simulation/particle_system.cpp
+    src/graphics/particle_shaders.cpp
     src/graphics/graphics_device.cpp
     src/graphics/triangle_shaders.cpp
     src/graphics/d3d12/d3d12_initialize.cpp
@@ -52,6 +55,11 @@ if(BUILD_TESTING)
     target_include_directories(CommandLineTests PRIVATE src)
     add_test(NAME command_line COMMAND CommandLineTests)
     list(APPEND project_targets CommandLineTests)
+    add_executable(ParticleControlTests tests/particle_control_tests.cpp src/simulation/particle_system.cpp)
+    target_include_directories(ParticleControlTests PRIVATE src)
+    target_link_libraries(ParticleControlTests PRIVATE SDL3::SDL3-static)
+    add_test(NAME particle_controls COMMAND ParticleControlTests)
+    list(APPEND project_targets ParticleControlTests)
 endif()
 
 foreach(target IN LISTS project_targets)

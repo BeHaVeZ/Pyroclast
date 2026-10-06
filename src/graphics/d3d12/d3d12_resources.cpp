@@ -20,6 +20,8 @@ std::unique_ptr<GraphicsPipeline> D3D12Renderer::create_graphics_pipeline(
     }
     auto pipeline = std::make_unique<D3D12GraphicsPipeline>();
     pipeline->owner = this;
+    pipeline->vertex_layout = shaders.layout;
+    const bool particles = shaders.layout == VertexLayout::particle;
     D3D12_FEATURE_DATA_SHADER_MODEL shader_model{D3D_SHADER_MODEL_6_0};
     if (!check(device_->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL,
         &shader_model, sizeof(shader_model)), "Query shader model support"))
@@ -33,6 +35,12 @@ std::unique_ptr<GraphicsPipeline> D3D12Renderer::create_graphics_pipeline(
     }
 
     D3D12_ROOT_SIGNATURE_DESC root_description{};
+    D3D12_ROOT_PARAMETER aspect{};
+    aspect.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+    aspect.Constants.Num32BitValues = 1;
+    aspect.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+    root_description.NumParameters = particles ? 1 : 0;
+    root_description.pParameters = particles ? &aspect : nullptr;
     root_description.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
     Microsoft::WRL::ComPtr<ID3DBlob> serialized_root;
     Microsoft::WRL::ComPtr<ID3DBlob> errors;
@@ -57,25 +65,30 @@ std::unique_ptr<GraphicsPipeline> D3D12Renderer::create_graphics_pipeline(
         {"COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,
             static_cast<UINT>(offsetof(Vertex, color)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
     };
+    const D3D12_INPUT_ELEMENT_DESC particle_layout[] = {
+        {"POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1},
+        {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1}
+    };
     D3D12_GRAPHICS_PIPELINE_STATE_DESC description{};
     description.pRootSignature = pipeline->root_signature.Get();
     description.VS = {shaders.vertex_shader.data(), shaders.vertex_shader.size()};
     description.PS = {shaders.pixel_shader.data(), shaders.pixel_shader.size()};
-    description.InputLayout = {input_layout, 2};
+    description.InputLayout = {particles ? particle_layout : input_layout, 2};
     description.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     description.NumRenderTargets = 1;
     description.RTVFormats[0] = backbuffer_format;
     description.SampleDesc.Count = 1;
     description.SampleMask = std::numeric_limits<UINT>::max();
     description.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
-    description.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
+    description.RasterizerState.CullMode = particles ? D3D12_CULL_MODE_NONE : D3D12_CULL_MODE_BACK;
     description.RasterizerState.DepthClipEnable = TRUE;
     description.DepthStencilState.DepthEnable = FALSE;
     description.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
     description.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_ALWAYS;
     auto& blend = description.BlendState.RenderTarget[0];
-    blend.SrcBlend = D3D12_BLEND_ONE;
-    blend.DestBlend = D3D12_BLEND_ZERO;
+    blend.BlendEnable = particles;
+    blend.SrcBlend = particles ? D3D12_BLEND_SRC_ALPHA : D3D12_BLEND_ONE;
+    blend.DestBlend = particles ? D3D12_BLEND_ONE : D3D12_BLEND_ZERO;
     blend.BlendOp = D3D12_BLEND_OP_ADD;
     blend.SrcBlendAlpha = D3D12_BLEND_ONE;
     blend.DestBlendAlpha = D3D12_BLEND_ZERO;
@@ -90,16 +103,17 @@ std::unique_ptr<GraphicsPipeline> D3D12Renderer::create_graphics_pipeline(
     return pipeline;
 }
 
-std::unique_ptr<VertexBuffer> D3D12Renderer::create_vertex_buffer(std::span<const Vertex> vertices)
+std::unique_ptr<VertexBuffer> D3D12Renderer::create_vertex_buffer(std::span<const std::byte> vertices, VertexLayout layout)
 {
-    if (vertices.empty() || vertices.size_bytes() > std::numeric_limits<UINT>::max())
+    if (vertices.empty() || vertices.size() % vertex_stride(layout) != 0 || vertices.size_bytes() > std::numeric_limits<UINT>::max())
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Vertex buffer must have a nonzero size fitting a 32-bit buffer view.");
         return nullptr;
     }
     auto buffer = std::make_unique<D3D12VertexBuffer>();
     buffer->owner = this;
-    buffer->count = static_cast<UINT>(vertices.size());
+    buffer->count = static_cast<UINT>(vertices.size() / vertex_stride(layout));
+    buffer->layout = layout;
     D3D12_RESOURCE_DESC description{};
     description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
     description.Width = vertices.size_bytes();
@@ -168,7 +182,7 @@ std::unique_ptr<VertexBuffer> D3D12Renderer::create_vertex_buffer(std::span<cons
     pending_upload_buffer_.Reset();
     buffer->view.BufferLocation = buffer->resource->GetGPUVirtualAddress();
     buffer->view.SizeInBytes = static_cast<UINT>(vertices.size_bytes());
-    buffer->view.StrideInBytes = sizeof(Vertex);
+    buffer->view.StrideInBytes = vertex_stride(layout);
     SDL_Log("Vertex buffer uploaded: %u vertices.", buffer->count);
     return buffer;
 }

@@ -22,7 +22,7 @@ std::unique_ptr<ComputePipeline> D3D12Renderer::create_compute_pipeline(
     parameters[0].Descriptor.ShaderRegister = 0;
     parameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
     parameters[1].Constants.ShaderRegister = 0;
-    parameters[1].Constants.Num32BitValues = 2;
+    parameters[1].Constants.Num32BitValues = 4;
     D3D12_ROOT_SIGNATURE_DESC root{};
     root.NumParameters = 2;
     root.pParameters = parameters;

@@ -20,6 +20,12 @@ struct Vertex
 };
 static_assert(sizeof(Vertex) == 24 && offsetof(Vertex, color) == 12);
 
+enum class VertexLayout { position_color, particle };
+constexpr std::uint32_t vertex_stride(VertexLayout layout)
+{
+    return layout == VertexLayout::particle ? 32u : sizeof(Vertex);
+}
+
 class VertexBuffer
 {
 public:
@@ -42,7 +48,7 @@ public:
 struct ComputeDispatch
 {
     const ComputePipeline& pipeline;
-    std::array<std::uint32_t, 2> constants;
+    std::array<std::uint32_t, 4> constants;
     std::uint32_t group_count;
 };
 
@@ -50,6 +56,7 @@ struct GraphicsPipelineDescription
 {
     std::span<const std::byte> vertex_shader;
     std::span<const std::byte> pixel_shader;
+    VertexLayout layout = VertexLayout::position_color;
 };
 
 struct DrawCommand
@@ -58,19 +65,27 @@ struct DrawCommand
     const GraphicsPipeline& pipeline;
     std::array<float, 4> clear_color;
     const ComputeDispatch* compute = nullptr;
+    float aspect_ratio = 1.0f;
 };
+
+enum class RenderResult { failed, skipped, submitted };
 
 class GraphicsDevice
 {
 public:
     virtual ~GraphicsDevice() = default;
-    virtual std::unique_ptr<VertexBuffer> create_vertex_buffer(std::span<const Vertex> vertices) = 0;
+    virtual std::unique_ptr<VertexBuffer> create_vertex_buffer(
+        std::span<const std::byte> records, VertexLayout layout) = 0;
+    std::unique_ptr<VertexBuffer> create_vertex_buffer(std::span<const Vertex> vertices)
+    {
+        return create_vertex_buffer(std::as_bytes(vertices), VertexLayout::position_color);
+    }
     virtual std::unique_ptr<GraphicsPipeline> create_graphics_pipeline(
         const GraphicsPipelineDescription& description) = 0;
     virtual std::unique_ptr<ComputePipeline> create_compute_pipeline(
         std::span<const std::byte> shader, const VertexBuffer& vertices) = 0;
     virtual bool resize(int width, int height) = 0;
-    virtual bool render(const DrawCommand& draw) = 0;
+    virtual RenderResult render(const DrawCommand& draw) = 0;
     virtual bool wait_idle() = 0;
 };
 

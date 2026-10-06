@@ -60,7 +60,7 @@ std::unique_ptr<ComputePipeline> VulkanRenderer::create_compute_pipeline(
     {
         return nullptr;
     }
-    const VkDescriptorBufferInfo buffer{vertices->buffer, 0, static_cast<VkDeviceSize>(vertices->count) * sizeof(Vertex)};
+    const VkDescriptorBufferInfo buffer{vertices->buffer, 0, static_cast<VkDeviceSize>(vertices->count) * vertex_stride(vertices->layout)};
     VkWriteDescriptorSet write{};
     write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     write.dstSet = pipeline->descriptor;
@@ -69,7 +69,7 @@ std::unique_ptr<ComputePipeline> VulkanRenderer::create_compute_pipeline(
     write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     write.pBufferInfo = &buffer;
     vkUpdateDescriptorSets(device_, 1, &write, 0, nullptr);
-    const VkPushConstantRange constants{VK_SHADER_STAGE_COMPUTE_BIT, 0, 2 * sizeof(std::uint32_t)};
+    const VkPushConstantRange constants{VK_SHADER_STAGE_COMPUTE_BIT, 0, 4 * sizeof(std::uint32_t)};
     VkPipelineLayoutCreateInfo layout{};
     layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     layout.setLayoutCount = 1;

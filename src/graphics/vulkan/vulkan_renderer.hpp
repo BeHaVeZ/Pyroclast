@@ -18,13 +18,13 @@ public:
     VulkanRenderer& operator=(const VulkanRenderer&) = delete;
 
     bool initialize(SDL_Window* window);
-    std::unique_ptr<VertexBuffer> create_vertex_buffer(std::span<const Vertex> vertices) override;
+    std::unique_ptr<VertexBuffer> create_vertex_buffer(std::span<const std::byte> vertices, VertexLayout layout) override;
     std::unique_ptr<GraphicsPipeline> create_graphics_pipeline(
         const GraphicsPipelineDescription& description) override;
     bool resize(int width, int height) override;
     std::unique_ptr<ComputePipeline> create_compute_pipeline(
         std::span<const std::byte> shader, const VertexBuffer& vertices) override;
-    bool render(const DrawCommand& draw) override;
+    RenderResult render(const DrawCommand& draw) override;
     bool wait_idle() override;
 
 private:

@@ -102,15 +102,15 @@ bool D3D12Renderer::wait_idle()
         wait_for_fence(value) && check_validation();
 }
 
-bool D3D12Renderer::render(const DrawCommand& draw)
+RenderResult D3D12Renderer::render(const DrawCommand& draw)
 {
     assert(swapchain_ && command_list_);
     const auto* vertices = dynamic_cast<const D3D12VertexBuffer*>(&draw.vertices);
     const auto* pipeline = dynamic_cast<const D3D12GraphicsPipeline*>(&draw.pipeline);
-    if (!vertices || !pipeline || vertices->owner != this || pipeline->owner != this)
+    if (!vertices || !pipeline || vertices->owner != this || pipeline->owner != this || vertices->layout != pipeline->vertex_layout)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Draw resources must belong to this graphics device.");
-        return false;
+        return RenderResult::failed;
     }
     const auto* compute = draw.compute ? dynamic_cast<const D3D12ComputePipeline*>(&draw.compute->pipeline) : nullptr;
     if (draw.compute && (!compute || compute->owner != this || compute->vertices != vertices ||
@@ -118,7 +118,7 @@ bool D3D12Renderer::render(const DrawCommand& draw)
         draw.compute->constants[0] != vertices->count))
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Invalid compute dispatch or resource ownership.");
-        return false;
+        return RenderResult::failed;
     }
     if (occluded_)
     {
@@ -126,11 +126,11 @@ bool D3D12Renderer::render(const DrawCommand& draw)
         const HRESULT result = swapchain_->Present(0, DXGI_PRESENT_TEST);
         if (result == DXGI_STATUS_OCCLUDED)
         {
-            return true;
+            return RenderResult::skipped;
         }
         if (!check(result, "Test swapchain visibility"))
         {
-            return false;
+            return RenderResult::failed;
         }
         occluded_ = false;
     }
@@ -141,7 +141,7 @@ bool D3D12Renderer::render(const DrawCommand& draw)
         !check(frame.allocator->Reset(), "Reset frame command allocator") ||
         !check(command_list_->Reset(frame.allocator.Get(), nullptr), "Reset command list"))
     {
-        return false;
+        return RenderResult::failed;
     }
 
     if (compute)
@@ -156,7 +156,7 @@ bool D3D12Renderer::render(const DrawCommand& draw)
         command_list_->SetPipelineState(compute->state.Get());
         command_list_->SetComputeRootSignature(compute->root_signature.Get());
         command_list_->SetComputeRootUnorderedAccessView(0, vertices->resource->GetGPUVirtualAddress());
-        command_list_->SetComputeRoot32BitConstants(1, 2, draw.compute->constants.data(), 0);
+        command_list_->SetComputeRoot32BitConstants(1, 4, draw.compute->constants.data(), 0);
         command_list_->Dispatch(draw.compute->group_count, 1, 1);
         std::swap(storage.Transition.StateBefore, storage.Transition.StateAfter);
         command_list_->ResourceBarrier(1, &storage);
@@ -183,14 +183,22 @@ bool D3D12Renderer::render(const DrawCommand& draw)
     command_list_->RSSetScissorRects(1, &scissor);
     command_list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     command_list_->IASetVertexBuffers(0, 1, &vertices->view);
-    command_list_->DrawInstanced(vertices->vertex_count(), 1, 0, 0);
+    if (pipeline->vertex_layout == VertexLayout::particle)
+    {
+        command_list_->SetGraphicsRoot32BitConstants(0, 1, &draw.aspect_ratio, 0);
+        command_list_->DrawInstanced(6, vertices->vertex_count(), 0, 0);
+    }
+    else
+    {
+        command_list_->DrawInstanced(vertices->vertex_count(), 1, 0, 0);
+    }
 
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
     command_list_->ResourceBarrier(1, &barrier);
     if (!check(command_list_->Close(), "Close frame command list"))
     {
-        return false;
+        return RenderResult::failed;
     }
     ID3D12CommandList* lists[] = {command_list_.Get()};
     queue_->ExecuteCommandLists(1, lists);
@@ -199,10 +207,10 @@ bool D3D12Renderer::render(const DrawCommand& draw)
     const auto value = next_fence_value_++;
     if (!check(queue_->Signal(fence_.Get(), value), "Signal frame fence"))
     {
-        return false;
+        return RenderResult::failed;
     }
     frame.fence_value = value;
-    return check(present_result, "Present frame") && check_validation();
+    return check(present_result, "Present frame") && check_validation() ? RenderResult::submitted : RenderResult::failed;
 }
 
 bool D3D12Renderer::resize(int width, int height)

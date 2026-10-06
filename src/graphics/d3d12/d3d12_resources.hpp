@@ -18,12 +18,14 @@ public:
     Microsoft::WRL::ComPtr<ID3D12Resource> resource;
     D3D12_VERTEX_BUFFER_VIEW view{};
     std::uint32_t count = 0;
+    VertexLayout layout = VertexLayout::position_color;
 };
 
 class D3D12GraphicsPipeline final : public GraphicsPipeline
 {
 public:
     const D3D12Renderer* owner = nullptr;
+    VertexLayout vertex_layout = VertexLayout::position_color;
     Microsoft::WRL::ComPtr<ID3D12RootSignature> root_signature;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> state;
 };
