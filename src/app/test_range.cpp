@@ -17,8 +17,10 @@ bool TestRange::initialize(GraphicsDevice& device, TargetFormat scene)
     {
         return false;
     }
-    SDL_Log("Test range ready: %u x %u height samples, %.0f m across.", Terrain::resolution, Terrain::resolution,
-        2.0 * Terrain::half_extent);
+    const auto statistics = environment_.statistics();
+    SDL_Log("Test range ready: %u x %u height samples, %.0f m across; %u props, %u boxes in %u cells (longest list %u), "
+        "%u environment bytes.", Terrain::resolution, Terrain::resolution, 2.0 * Terrain::half_extent, statistics.props,
+        statistics.boxes, statistics.occupied_cells, statistics.longest_list, statistics.bytes);
     return true;
 }
 
