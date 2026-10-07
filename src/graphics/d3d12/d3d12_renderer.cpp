@@ -157,7 +157,9 @@ void D3D12Renderer::bind(const Bindings& bindings, bool graphics)
 void D3D12Renderer::draw(const Draw& draw)
 {
     begin_event(command_list_.Get(), draw.label);
-    command_list_->SetPipelineState(static_cast<const D3D12GraphicsPipeline&>(draw.pipeline).state.Get());
+    const auto& pipeline = static_cast<const D3D12GraphicsPipeline&>(draw.pipeline);
+    command_list_->SetPipelineState(pipeline.state.Get());
+    command_list_->IASetPrimitiveTopology(pipeline.topology);
     command_list_->SetGraphicsRoot32BitConstants(root_draw_constants, binding_layout::draw_constant_words, draw.constants.data(), 0);
     bind(draw.bindings, true);
     command_list_->DrawInstanced(draw.vertex_count, draw.instance_count, 0, 0);
@@ -286,7 +288,6 @@ RenderResult D3D12Renderer::render(const Frame& frame)
     backbuffer_view.ptr += static_cast<SIZE_T>(backbuffer_index) * rtv_stride_;
     command_list_->SetGraphicsRootSignature(root_signature_.Get());
     command_list_->SetGraphicsRootConstantBufferView(root_frame_constants, frame_constants);
-    command_list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     for (const auto& pass : frame.passes)
     {
         const auto* target = static_cast<const D3D12RenderTarget*>(pass.target);

@@ -25,6 +25,7 @@ public:
 
     const D3D12Renderer* owner = nullptr;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> state;
+    D3D_PRIMITIVE_TOPOLOGY topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 };
 
 class D3D12RenderTarget final : public RenderTarget

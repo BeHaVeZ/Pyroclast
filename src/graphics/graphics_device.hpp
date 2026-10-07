@@ -35,6 +35,8 @@ private:
     std::uint32_t size_;
 };
 
+enum class Topology { triangles, lines };
+
 enum class TargetFormat { color, rgba16_float, r11g11b10_float, depth };
 
 class GraphicsPipeline
@@ -66,6 +68,7 @@ struct GraphicsPipelineDescription
     BlendMode blend = BlendMode::opaque;
     DepthMode depth = DepthMode::none;
     TargetFormat target = TargetFormat::color;
+    Topology topology = Topology::triangles;
 };
 
 struct RenderTargetDescription

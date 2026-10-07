@@ -39,7 +39,9 @@ std::unique_ptr<GraphicsPipeline> D3D12Renderer::create_graphics_pipeline(
     description.pRootSignature = root_signature_.Get();
     description.VS = {vertex_shader.data(), vertex_shader.size()};
     description.PS = {pixel_shader.data(), pixel_shader.size()};
-    description.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    const bool lines = shaders.topology == Topology::lines;
+    description.PrimitiveTopologyType = lines ? D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE : D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    pipeline->topology = lines ? D3D_PRIMITIVE_TOPOLOGY_LINELIST : D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
     description.NumRenderTargets = 1;
     description.RTVFormats[0] = color_format(shaders.target);
     description.SampleDesc.Count = 1;
