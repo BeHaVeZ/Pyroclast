@@ -20,6 +20,7 @@ struct TestCase
     std::optional<std::uint32_t> exit_after;
     std::string_view capture_path;
     bool gpu_validation = false;
+    std::optional<bool> ui;
 };
 }
 
@@ -27,6 +28,10 @@ int main()
 {
     using enum pyroclast::Renderer;
     const TestCase cases[] = {
+        {"overlay on", {"--ui=on"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, true},
+        {"overlay off", {"--ui=off"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, false},
+        {"overlay invalid", {"--ui=yes"}, d3d12, false, "Expected --ui"},
+        {"overlay duplicate", {"--ui=on", "--ui=off"}, d3d12, false, "only once"},
         {"GPU validation", {"--gpu-validation"}, d3d12, false, {}, false, 1, {}, false, {}, {}, true},
         {"GPU validation with a value", {"--gpu-validation=1"}, d3d12, false, "Unknown argument"},
         {"exit after", {"--exit-after=600"}, d3d12, false, {}, false, 1, {}, false, 600},
@@ -93,7 +98,7 @@ int main()
             ? result.error.empty() && result.options.renderer == test.renderer &&
                 result.options.show_help == test.show_help && result.options.gpu_timing == test.gpu_timing && result.options.explosions == test.explosions && result.options.profile_tick == test.profile_tick && result.options.half_smoke == test.half_smoke &&
                 result.options.exit_after == test.exit_after && result.options.capture_path == test.capture_path &&
-                result.options.gpu_validation == test.gpu_validation
+                result.options.gpu_validation == test.gpu_validation && result.options.ui == test.ui
             : result.error.find(test.error_fragment) != std::string::npos;
         if (!passed)
         {

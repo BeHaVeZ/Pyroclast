@@ -16,6 +16,7 @@ struct ApplicationOptions
     bool gpu_timing = false;
     bool half_smoke = false;
     bool gpu_validation = false;
+    std::optional<bool> ui;
     std::uint32_t explosions = 1;
     std::optional<std::uint32_t> profile_tick;
     std::optional<std::uint32_t> exit_after;

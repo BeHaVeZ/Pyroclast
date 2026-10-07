@@ -196,6 +196,7 @@ bool D3D12Renderer::initialize(SDL_Window* window, const GraphicsDeviceOptions& 
         return false;
     }
     if (options.gpu_timing && !create_timestamps()) return false;
+    if (options.debug_overlay && !create_overlay()) return false;
     SDL_Log("D3D12 initialized: %dx%d, two backbuffers, VSync %s.", width_, height_, vsync_ ? "enabled" : "disabled");
     return true;
 }

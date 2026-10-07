@@ -24,12 +24,36 @@ FetchContent_Declare(SDL3
 FetchContent_MakeAvailable(SDL3)
 find_package(Vulkan 1.3 REQUIRED)
 
+# Dear ImGui for the debug overlay. GitHub tag archives have changed checksums before; if this hash
+# stops matching, pin GIT_REPOSITORY https://github.com/ocornut/imgui.git with GIT_TAG v1.92.9b instead.
+FetchContent_Declare(imgui
+    URL https://github.com/ocornut/imgui/archive/refs/tags/v1.92.9b.tar.gz
+    URL_HASH SHA256=21d8a0a565e85dce943e375db00812c2f3f0ab21f3f0f7964e364a63422d7f99
+)
+FetchContent_MakeAvailable(imgui)
+# Third-party code is built without the project's warning level.
+add_library(imgui STATIC
+    ${imgui_SOURCE_DIR}/imgui.cpp
+    ${imgui_SOURCE_DIR}/imgui_demo.cpp
+    ${imgui_SOURCE_DIR}/imgui_draw.cpp
+    ${imgui_SOURCE_DIR}/imgui_tables.cpp
+    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl3.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_dx12.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp
+)
+target_include_directories(imgui PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
+target_compile_definitions(imgui PUBLIC IMGUI_DISABLE_OBSOLETE_FUNCTIONS NOMINMAX WIN32_LEAN_AND_MEAN)
+target_compile_features(imgui PUBLIC cxx_std_20)
+target_link_libraries(imgui PUBLIC SDL3::SDL3-static Vulkan::Vulkan d3d12 dxgi d3dcompiler)
+
 add_executable(Pyroclast
     src/app/main.cpp
     src/app/frame_baseline.cpp
     src/app/frame_statistics.cpp
     src/app/command_line.cpp
     src/app/explosion_renderer.cpp
+    src/tools/debug_ui.cpp
     src/simulation/particle_system.cpp
     src/graphics/graphics_device.cpp
     src/graphics/draw_validation.cpp
@@ -42,6 +66,7 @@ add_executable(Pyroclast
     src/graphics/d3d12/d3d12_compute.cpp
     src/graphics/d3d12/d3d12_capture.cpp
     src/graphics/d3d12/d3d12_bindings.cpp
+    src/graphics/d3d12/d3d12_overlay.cpp
     src/graphics/vulkan/vulkan_shaders.cpp
     src/graphics/vulkan/vulkan_initialize.cpp
     src/graphics/vulkan/vulkan_renderer.cpp
@@ -52,9 +77,10 @@ add_executable(Pyroclast
     src/graphics/vulkan/vulkan_compute.cpp
     src/graphics/vulkan/vulkan_capture.cpp
     src/graphics/vulkan/vulkan_bindings.cpp
+    src/graphics/vulkan/vulkan_overlay.cpp
 )
 target_compile_definitions(Pyroclast PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-target_link_libraries(Pyroclast PRIVATE SDL3::SDL3-static d3d12 dxgi Vulkan::Vulkan)
+target_link_libraries(Pyroclast PRIVATE SDL3::SDL3-static d3d12 dxgi Vulkan::Vulkan imgui)
 
 include(cmake/Shaders.cmake)
 

@@ -154,6 +154,9 @@ private:
     bool create_swapchain();
     bool create_capture_buffer(VkDeviceSize size);
     bool record_capture(VkCommandBuffer command, VkImage image);
+    bool create_overlay();
+    void destroy_overlay();
+    void record_overlay(VkCommandBuffer command, ImDrawData* overlay, VkImageView backbuffer, VkExtent2D extent);
     bool size_target(class VulkanRenderTarget& target);
     bool owns(const Frame& frame) const;
     void push_bindings(VkCommandBuffer command, VkPipelineBindPoint point, const Bindings& bindings,
@@ -188,6 +191,7 @@ private:
     bool rebuild_ = false;
     bool vsync_ = true;
     bool capture_enabled_ = false;
+    bool overlay_ = false;
     std::optional<GpuTimings> gpu_timings_;
     std::uint64_t timing_sample_id_ = 0;
 };

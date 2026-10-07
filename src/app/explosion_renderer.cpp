@@ -27,13 +27,13 @@ bool ExplosionRenderer::initialize(GraphicsDevice& device, bool half_resolution_
 }
 
 RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& particles, float aspect_ratio, double elapsed_seconds,
-    bool capture)
+    bool capture, ImDrawData* overlay)
 {
     assert(std::isfinite(aspect_ratio) && aspect_ratio > 0);
     const auto work = particles.plan(elapsed_seconds);
     const FrameConstants constants{aspect_ratio};
     const auto submit = [&](std::span<const Pass> passes) {
-        return device.render({{&work.dispatch, 1}, passes, background_color, std::as_bytes(std::span(&constants, 1)), capture});
+        return device.render({{&work.dispatch, 1}, passes, background_color, std::as_bytes(std::span(&constants, 1)), capture, overlay});
     };
     RenderResult result;
     if (!smoke_target_)

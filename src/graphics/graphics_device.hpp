@@ -16,6 +16,7 @@
 #include <vector>
 
 struct SDL_Window;
+struct ImDrawData;
 
 namespace pyroclast
 {
@@ -115,6 +116,7 @@ struct Frame
     std::array<float, 4> clear_color{};
     std::span<const std::byte> constants;
     bool capture = false;
+    ImDrawData* overlay = nullptr;
 };
 
 struct CapturedImage
@@ -164,6 +166,7 @@ struct GraphicsDeviceOptions
     bool vsync = true;
     bool capture = false;
     bool gpu_validation = false;
+    bool debug_overlay = false;
 };
 
 // The SDL window must outlive the device; resources used by a frame must survive until wait_idle.

@@ -46,6 +46,7 @@ public:
     void commit(const ParticleWork& work);
     void prepare_profile(std::uint32_t tick);
     bool has_pending_steps() const { return pending_steps_ != 0; }
+    bool paused() const { return paused_; }
     void trigger_explosion();
     void reset();
     void toggle_pause();

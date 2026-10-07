@@ -4,9 +4,12 @@
 #include "command_line.hpp"
 #include "explosion_renderer.hpp"
 #include "frame_baseline.hpp"
+#include "../tools/debug_ui.hpp"
 
+#include <array>
 #include <cstdio>
 #include <memory>
+#include <vector>
 
 namespace
 {
@@ -42,13 +45,40 @@ struct SdlCleanup final
     }
 };
 
+struct FrameHistory
+{
+    std::array<float, 240> milliseconds{};
+    std::size_t count = 0;
+    std::size_t next = 0;
+    void add(double value)
+    {
+        milliseconds[next] = static_cast<float>(value);
+        next = (next + 1) % milliseconds.size();
+        count = std::min(count + 1, milliseconds.size());
+    }
+};
+
+void apply(pyroclast::UiCommand command, pyroclast::ParticleSystem& demo)
+{
+    switch (command)
+    {
+    case pyroclast::UiCommand::trigger: demo.trigger_explosion(); break;
+    case pyroclast::UiCommand::clear: demo.reset(); break;
+    case pyroclast::UiCommand::toggle_pause: demo.toggle_pause(); break;
+    case pyroclast::UiCommand::step: demo.step(); break;
+    }
+}
+
 int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, pyroclast::ParticleSystem& demo,
-    pyroclast::ExplosionRenderer& explosions, const pyroclast::ApplicationOptions& options)
+    pyroclast::ExplosionRenderer& explosions, pyroclast::DebugUi* ui, const pyroclast::ApplicationOptions& options)
 {
     const auto window_id = SDL_GetWindowID(window);
     const auto profile_tick = options.profile_tick;
     pyroclast::FrameBaseline baseline({pyroclast::renderer_name(options.renderer), std::string(renderer.adapter_name()),
         demo.explosion_count(), demo.capacity(), profile_tick, options.half_smoke});
+    if (ui) baseline.disable();
+    FrameHistory history;
+    std::vector<pyroclast::UiCommand> commands;
     auto previous_time = SDL_GetPerformanceCounter();
     std::uint32_t submitted_frames = 0;
     const auto finish = [&options]() {
@@ -61,6 +91,14 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, pyro
         SDL_Event event{};
         while (SDL_PollEvent(&event))
         {
+            if (event.type == SDL_EVENT_QUIT ||
+                (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED &&
+                    event.window.windowID == window_id))
+            {
+                return finish();
+            }
+            if (ui && ui->process_event(event)) continue;
+            if (ui && event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_F1 && !event.key.repeat) ui->toggle_visible();
             if (event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_WINDOW_MINIMIZED ||
                 event.type == SDL_EVENT_WINDOW_FOCUS_LOST ||
                 (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED &&
@@ -78,12 +116,6 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, pyro
                 if (event.key.key == SDLK_R) demo.reset();
                 if (event.key.key == SDLK_P) demo.toggle_pause();
                 if (event.key.key == SDLK_N) demo.step();
-            }
-            if (event.type == SDL_EVENT_QUIT ||
-                (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED &&
-                    event.window.windowID == window_id))
-            {
-                return finish();
             }
         }
 
@@ -110,11 +142,24 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, pyro
                     static_cast<double>(SDL_GetPerformanceFrequency());
                 previous_time = start;
                 const bool capture = !options.capture_path.empty() && !demo.has_pending_steps();
+                ImDrawData* overlay = nullptr;
+                if (ui)
+                {
+                    const pyroclast::DiagnosticsSnapshot snapshot{pyroclast::renderer_name(options.renderer), renderer.adapter_name(),
+                        pyroclast::build_configuration, width, height, !profile_tick.has_value(),
+                        std::span<const float>(history.milliseconds.data(), history.count),
+                        history.count < history.milliseconds.size() ? 0 : static_cast<int>(history.next),
+                        renderer.completed_gpu_timings(), demo.explosion_count(), demo.capacity(), demo.paused(), options.half_smoke};
+                    commands.clear();
+                    overlay = ui->build(snapshot, commands);
+                    for (const auto command : commands) apply(command, demo);
+                }
                 const auto result = explosions.render(renderer, demo,
-                    static_cast<float>(width) / static_cast<float>(height), elapsed, capture);
+                    static_cast<float>(width) / static_cast<float>(height), elapsed, capture, overlay);
                 if (result == pyroclast::RenderResult::failed) return 1;
                 if (result == pyroclast::RenderResult::submitted)
                 {
+                    history.add(1000.0 * elapsed);
                     const double milliseconds = 1000.0 * static_cast<double>(SDL_GetPerformanceCounter() - start) /
                         static_cast<double>(SDL_GetPerformanceFrequency());
                     if (!profile_tick || !demo.has_pending_steps())
@@ -170,11 +215,18 @@ int run_application(const pyroclast::ApplicationOptions& options)
         return 1;
     }
 #endif
+    std::unique_ptr<pyroclast::DebugUi> ui;
+    if (options.ui.value_or(!options.profile_tick))
+    {
+        ui = pyroclast::DebugUi::create(window.get(), options.renderer);
+        if (!ui) return 1;
+    }
     const pyroclast::GraphicsDeviceOptions device_options{
-        .gpu_timing = options.gpu_timing || options.profile_tick.has_value(),
+        .gpu_timing = options.gpu_timing || options.profile_tick.has_value() || ui != nullptr,
         .vsync = !options.profile_tick.has_value(),
         .capture = !options.capture_path.empty(),
-        .gpu_validation = options.gpu_validation};
+        .gpu_validation = options.gpu_validation,
+        .debug_overlay = ui != nullptr};
     auto creation = pyroclast::create_graphics_device(options.renderer, window.get(), device_options);
     if (!creation.device)
     {
@@ -194,9 +246,10 @@ int run_application(const pyroclast::ApplicationOptions& options)
         demo.prepare_profile(*options.profile_tick);
         SDL_Log("Fixed-state profile: tick=%u; VSync off; timestamps on; zero integration steps after preparation.", *options.profile_tick);
     }
-    SDL_SetWindowTitle(window.get(), "Pyroclast - Explosion | Space: trigger | R: clear | P: pause | N: step");
+    SDL_SetWindowTitle(window.get(), ui ? "Pyroclast - Explosion | Space: trigger | R: clear | P: pause | N: step | F1: overlay" :
+        "Pyroclast - Explosion | Space: trigger | R: clear | P: pause | N: step");
     SDL_Log("Explosion demo ready. Space: trigger, R: clear, P: pause, N: single step.");
-    const int exit_code = run_event_loop(window.get(), device, demo, explosions, options);
+    const int exit_code = run_event_loop(window.get(), device, demo, explosions, ui.get(), options);
     return device.wait_idle() ? exit_code : 1;
 }
 }
@@ -225,6 +278,7 @@ int main(int argc, char** argv)
             "  --capture=FILE.png Write the first frame drawn at the profile tick, then exit (requires --profile-tick).\n"
             "  --exit-after=N     Exit after N submitted frames.\n"
             "  --gpu-validation   Debug only: D3D12 GPU-based or Vulkan GPU-assisted validation (slow).\n"
+            "  --ui=on|off        Dear ImGui overlay (default on, off with --profile-tick). F1 hides it.\n"
             "  --help             Print usage and exit.\n"
             "Both renderers run the same GPU explosion effect.");
         return 0;

@@ -47,6 +47,21 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
         {
             result.options.gpu_validation = true;
         }
+        else if (option.starts_with("--ui="))
+        {
+            if (result.options.ui)
+            {
+                result.error = "Specify --ui only once.";
+                return result;
+            }
+            const auto value = option.substr(std::string_view("--ui=").size());
+            if (value != "on" && value != "off")
+            {
+                result.error = "Expected --ui=on or off.";
+                return result;
+            }
+            result.options.ui = value == "on";
+        }
         else if (option.starts_with("--smoke-resolution="))
         {
             if (smoke_specified)

@@ -200,6 +200,7 @@ RenderResult D3D12Renderer::render(const Frame& frame)
     assert(swapchain_ && command_list_);
     const char* error = !owns(frame) ? "Frame uses resources from another graphics device." :
         frame.capture && !capture_enabled_ ? "Frame capture requires a device created with capture enabled." :
+        frame.overlay && !overlay_ ? "Frame overlay requires a device created with the debug overlay." :
         validate_frame(frame);
     if (error)
     {
@@ -304,6 +305,12 @@ RenderResult D3D12Renderer::render(const Frame& frame)
             command_list_->SetGraphicsRootDescriptorTable(root_textures + slot_index, shader_descriptor(input ? input->shader_view : 0));
         }
         for (const auto& item : pass.draws) draw(item);
+        if (!target && frame.overlay)
+        {
+            begin_event(command_list_.Get(), "Overlay");
+            record_overlay(frame.overlay, view);
+            end_event(command_list_.Get(), "Overlay");
+        }
 
         barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
         barrier.Transition.StateAfter = resting_state;
@@ -378,6 +385,7 @@ D3D12Renderer::~D3D12Renderer()
     {
         wait_idle();
     }
+    destroy_overlay();
     if (mapped_timestamps_)
     {
         const D3D12_RANGE written{0, 0};

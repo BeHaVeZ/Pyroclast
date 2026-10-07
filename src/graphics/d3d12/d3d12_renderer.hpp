@@ -43,7 +43,9 @@ private:
     static constexpr UINT frame_count = 2;
     static constexpr UINT backbuffer_count = 2;
     static constexpr DXGI_FORMAT backbuffer_format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    // Shader-visible descriptors: a null SRV, then render target SRVs, then Dear ImGui's textures.
     static constexpr UINT shader_descriptor_capacity = 64;
+    static constexpr UINT overlay_descriptor_first = 48;
 
     enum RootParameter : UINT
     {
@@ -83,6 +85,9 @@ private:
     void draw(const Draw& draw);
     void set_target(D3D12_CPU_DESCRIPTOR_HANDLE rtv, int width, int height);
     bool record_capture(ID3D12Resource* backbuffer);
+    bool create_overlay();
+    void destroy_overlay();
+    void record_overlay(ImDrawData* overlay, D3D12_CPU_DESCRIPTOR_HANDLE backbuffer_view);
     bool create_device(bool gpu_validation);
     bool create_timestamps();
     bool read_timestamps(std::size_t frame);
@@ -125,6 +130,8 @@ private:
     std::uint64_t timestamp_frequency_ = 0;
     std::optional<GpuTimings> gpu_timings_;
     std::uint64_t timing_sample_id_ = 0;
+    bool overlay_ = false;
+    std::vector<UINT> overlay_descriptors_;
     bool capture_enabled_ = false;
     bool capture_pending_ = false;
     Microsoft::WRL::ComPtr<ID3D12Resource> capture_readback_;

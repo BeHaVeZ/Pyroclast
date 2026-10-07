@@ -12,9 +12,9 @@ std::unique_ptr<RenderTarget> D3D12Renderer::create_render_target(const RenderTa
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Render target divisor must be at least one.");
         return nullptr;
     }
-    if (next_shader_descriptor_ == shader_descriptor_capacity)
+    if (next_shader_descriptor_ == overlay_descriptor_first)
     {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Shader descriptor heap is full.");
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The render target range of the shader descriptor heap is full.");
         return nullptr;
     }
     auto target = std::make_unique<D3D12RenderTarget>(description);

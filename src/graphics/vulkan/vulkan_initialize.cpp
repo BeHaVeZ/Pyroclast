@@ -62,6 +62,7 @@ bool VulkanRenderer::initialize(SDL_Window* window, const GraphicsDeviceOptions&
         return false;
     }
     if (options.gpu_timing && !create_timestamps()) return false;
+    if (options.debug_overlay && !create_overlay()) return false;
     SDL_Log("Vulkan initialized: %ux%u, two frames in flight, VSync %s.",
         swapchain_.extent.width, swapchain_.extent.height, vsync_ ? "enabled" : "disabled");
     return validation_ok();

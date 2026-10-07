@@ -74,6 +74,7 @@ VulkanTiming::~VulkanTiming()
 VulkanRenderer::~VulkanRenderer()
 {
     wait_idle();
+    destroy_overlay();
 }
 
 bool VulkanRenderer::wait_idle()
@@ -218,6 +219,7 @@ RenderResult VulkanRenderer::render(const Frame& frame)
 {
     const char* error = !owns(frame) ? "Frame uses resources from another graphics device." :
         frame.capture && !capture_enabled_ ? "Frame capture requires a device created with capture enabled." :
+        frame.overlay && !overlay_ ? "Frame overlay requires a device created with the debug overlay." :
         validate_frame(frame);
     if (error)
     {
@@ -374,6 +376,12 @@ RenderResult VulkanRenderer::render(const Frame& frame)
                 VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
         }
         end_label(command, pass.label);
+    }
+    if (frame.overlay)
+    {
+        begin_label(command, "Overlay");
+        record_overlay(command, frame.overlay, image.view, swapchain_.extent);
+        end_label(command, "Overlay");
     }
     if (!frame.capture)
     {

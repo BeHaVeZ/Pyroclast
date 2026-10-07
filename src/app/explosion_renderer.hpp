@@ -9,7 +9,7 @@ class ExplosionRenderer final
 public:
     bool initialize(GraphicsDevice& device, bool half_resolution_smoke);
     RenderResult render(GraphicsDevice& device, ParticleSystem& particles, float aspect_ratio, double elapsed_seconds,
-        bool capture = false);
+        bool capture = false, ImDrawData* overlay = nullptr);
 
 private:
     std::unique_ptr<RenderTarget> smoke_target_;
