@@ -8,6 +8,11 @@ namespace pyroclast
 namespace
 {
 constexpr std::array<float, 4> background_color{0.04f, 0.07f, 0.12f, 1.0f};
+
+struct FrameConstants
+{
+    float aspect_ratio;
+};
 }
 
 bool ExplosionRenderer::initialize(GraphicsDevice& device, bool half_resolution_smoke)
@@ -17,7 +22,8 @@ bool ExplosionRenderer::initialize(GraphicsDevice& device, bool half_resolution_
         return true;
     }
     smoke_target_ = device.create_render_target({2, background_color});
-    return smoke_target_ != nullptr;
+    composite_ = device.create_graphics_pipeline({Shader::composite_vertex, Shader::composite_pixel, BlendMode::opaque});
+    return smoke_target_ && composite_;
 }
 
 RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& particles, float aspect_ratio, double elapsed_seconds,
@@ -25,13 +31,16 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
 {
     assert(std::isfinite(aspect_ratio) && aspect_ratio > 0);
     const auto work = particles.plan(elapsed_seconds);
-    const DrawRange layered[] = {work.smoke, work.emissive};
-    const Pass full_resolution[] = {{nullptr, nullptr, layered}};
+    const FrameConstants constants{aspect_ratio};
+    const Draw layered[] = {work.smoke, work.emissive};
+    const Pass full_resolution[] = {{nullptr, {}, layered}};
+    const Draw composite{*composite_, {}, {}, 3, 1};
+    const Draw light_over_smoke[] = {composite, work.emissive};
     const Pass half_resolution[] = {
-        {smoke_target_.get(), nullptr, {&work.smoke, 1}},
-        {nullptr, smoke_target_.get(), {&work.emissive, 1}}};
+        {smoke_target_.get(), {}, {&work.smoke, 1}},
+        {nullptr, {smoke_target_.get(), nullptr}, light_over_smoke}};
     const std::span<const Pass> passes = smoke_target_ ? std::span<const Pass>(half_resolution) : std::span<const Pass>(full_resolution);
-    const auto result = device.render({particles.particles(), passes, background_color, &work.dispatch, aspect_ratio, capture});
+    const auto result = device.render({{&work.dispatch, 1}, passes, background_color, std::as_bytes(std::span(&constants, 1)), capture});
     if (result == RenderResult::submitted)
     {
         particles.commit(work);

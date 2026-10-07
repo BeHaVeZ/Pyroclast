@@ -7,17 +7,14 @@
 int main()
 {
     using namespace pyroclast;
-    constexpr std::uint32_t records = 1000;
-    const Buffer buffer(records * particle_layout::particle_stride);
-    const Buffer other_buffer(records * particle_layout::particle_stride);
-    const Buffer wrong_stride(records * particle_layout::particle_stride + 8);
+    const Buffer particles(1024);
+    const Buffer other(1024);
+    Buffer writable(1024);
     const GraphicsPipeline smoke(BlendMode::premultiplied_alpha);
     const GraphicsPipeline light(BlendMode::additive);
-    const ComputePipeline compute(buffer);
-    const ComputePipeline other_compute(other_buffer);
+    const ComputePipeline compute;
     RenderTarget half({2, {}});
     RenderTarget quarter({4, {}});
-    const std::array<float, 4> clear{};
 
     int failures = 0;
     const auto check = [&failures](const char* name, const char* error, const char* expected_fragment) {
@@ -30,60 +27,68 @@ int main()
             ++failures;
         }
     };
-    const auto validate = [&](const Buffer& vertices, const std::vector<Pass>& passes, const ComputeDispatch* dispatch) {
-        return validate_frame({vertices, passes, clear, dispatch});
+    const auto validate = [](const std::vector<Pass>& passes, const std::vector<Dispatch>& dispatches = {},
+        std::size_t constant_bytes = 16) {
+        const std::vector<std::byte> constants(constant_bytes);
+        return validate_frame({dispatches, passes, {}, constants});
     };
 
-    const DrawRange smoke_range{smoke, 600, 400, particle_layout::particle_layer_smoke};
-    const DrawRange light_range{light, 0, 600, particle_layout::particle_layer_emissive};
-    const DrawRange layered[] = {smoke_range, light_range};
-    const std::vector<Pass> one_pass{{nullptr, nullptr, layered}};
-    const std::vector<Pass> two_passes{{&half, nullptr, {&smoke_range, 1}}, {nullptr, &half, {&light_range, 1}}};
-    const ComputeDispatch dispatch{compute, {records, 1, 0, 1}, 16};
-    check("one backbuffer pass with compute", validate(buffer, one_pass, &dispatch), nullptr);
-    check("one backbuffer pass without compute", validate(buffer, one_pass, nullptr), nullptr);
-    check("target pass used as the backbuffer background", validate(buffer, two_passes, &dispatch), nullptr);
-    check("backbuffer pass that only clears", validate(buffer, {{}}, nullptr), nullptr);
-    check("two targets feeding later passes", validate(buffer,
-        {{&quarter, nullptr, {&smoke_range, 1}}, {&half, &quarter, {}}, {nullptr, &half, {&light_range, 1}}}, nullptr), nullptr);
+    Bindings reads{};
+    reads.read[0] = &particles;
+    const Draw smoke_draw{smoke, reads, {}, 6, 400};
+    const Draw light_draw{light, reads, {}, 6, 600};
+    const Draw layered[] = {smoke_draw, light_draw};
+    const std::vector<Pass> one_pass{{nullptr, {}, layered}};
+    const std::vector<Pass> two_passes{{&half, {}, {&smoke_draw, 1}}, {nullptr, {&half, nullptr}, {&light_draw, 1}}};
+    Bindings simulation{};
+    simulation.write[0] = &writable;
+    const Dispatch dispatch{compute, simulation, {}, {16, 1, 1}};
+    check("one backbuffer pass with compute", validate(one_pass, {dispatch}), nullptr);
+    check("one backbuffer pass without compute", validate(one_pass), nullptr);
+    check("target sampled by the backbuffer pass", validate(two_passes, {dispatch}), nullptr);
+    check("backbuffer pass that only clears", validate({{}}), nullptr);
+    check("two targets feeding later passes", validate(
+        {{&quarter, {}, {&smoke_draw, 1}}, {&half, {&quarter, nullptr}, {}}, {nullptr, {nullptr, &half}, {&light_draw, 1}}}), nullptr);
+    check("two inputs in one pass", validate(
+        {{&quarter, {}, {}}, {&half, {}, {}}, {nullptr, {&half, &quarter}, {}}}), nullptr);
+    check("frame constants at the limit", validate(one_pass, {}, binding_layout::frame_constant_bytes), nullptr);
+    check("no frame constants", validate(one_pass, {}, 0), nullptr);
 
-    check("no passes", validate(buffer, {}, nullptr), "at least one pass");
-    check("buffer that is not whole records", validate(wrong_stride, one_pass, nullptr), "particle buffer");
-    check("frame ending on a target", validate(buffer, {{&half, nullptr, layered}}, nullptr), "last pass");
-    check("backbuffer pass before the last", validate(buffer, {{nullptr, nullptr, layered}, {nullptr, nullptr, layered}}, nullptr), "last pass");
-    check("target drawn twice", validate(buffer,
-        {{&half, nullptr, {&smoke_range, 1}}, {&half, nullptr, {&smoke_range, 1}}, {nullptr, &half, {}}}, nullptr), "more than one pass");
-    check("background never drawn", validate(buffer, {{nullptr, &half, layered}}, nullptr), "drawn earlier");
-    check("background drawn later", validate(buffer,
-        {{&quarter, &half, {}}, {&half, nullptr, {&smoke_range, 1}}, {nullptr, &quarter, {}}}, nullptr), "drawn earlier");
-    check("target used as its own background", validate(buffer, {{&half, &half, {}}, {nullptr, &half, {}}}, nullptr), "drawn earlier");
+    check("no passes", validate({}), "at least one pass");
+    check("frame constants too large", validate(one_pass, {}, binding_layout::frame_constant_bytes + 4), "Frame constants");
+    check("frame ending on a target", validate({{&half, {}, layered}}), "last pass");
+    check("backbuffer pass before the last", validate({{nullptr, {}, layered}, {nullptr, {}, layered}}), "last pass");
+    check("target drawn twice", validate(
+        {{&half, {}, {&smoke_draw, 1}}, {&half, {}, {&smoke_draw, 1}}, {nullptr, {&half, nullptr}, {}}}), "more than one pass");
+    check("input never drawn", validate({{nullptr, {&half, nullptr}, layered}}), "drawn earlier");
+    check("input drawn later", validate(
+        {{&quarter, {&half, nullptr}, {}}, {&half, {}, {&smoke_draw, 1}}, {nullptr, {&quarter, nullptr}, {}}}), "drawn earlier");
+    check("target used as its own input", validate({{&half, {&half, nullptr}, {}}, {nullptr, {&half, nullptr}, {}}}), "drawn earlier");
+    check("input in the second slot never drawn", validate({{nullptr, {nullptr, &quarter}, {}}}), "drawn earlier");
 
-    const auto with_range = [&](const DrawRange& range) { return std::vector<Pass>{{nullptr, nullptr, {&range, 1}}}; };
-    const DrawRange last_record{light, records - 1, 1, 0};
-    const DrawRange empty{light, 0, 0, 0};
-    const DrawRange past_end{light, records + 1, 1, 0};
-    const DrawRange too_long{light, 600, 401, 0};
-    const DrawRange overflowing{light, 2, 0xffffffffu, 0};
-    const DrawRange unknown_layer{light, 0, 600, 2};
-    check("range ending at the last record", validate(buffer, with_range(last_record), nullptr), nullptr);
-    check("empty range", validate(buffer, with_range(empty), nullptr), "outside the vertex buffer");
-    check("range starting past the end", validate(buffer, with_range(past_end), nullptr), "outside the vertex buffer");
-    check("range running past the end", validate(buffer, with_range(too_long), nullptr), "outside the vertex buffer");
-    check("range count that would overflow", validate(buffer, with_range(overflowing), nullptr), "outside the vertex buffer");
-    check("unknown layer", validate(buffer, with_range(unknown_layer), nullptr), "unknown particle layer");
-    check("bad range in a target pass", validate(buffer, {{&half, nullptr, {&too_long, 1}}, {nullptr, &half, {}}}, nullptr),
-        "outside the vertex buffer");
+    const auto with_draw = [](const Draw& draw) { return std::vector<Pass>{{nullptr, {}, {&draw, 1}}}; };
+    Bindings writes{};
+    writes.write[2] = &writable;
+    const Draw no_vertices{light, reads, {}, 0, 1};
+    const Draw no_instances{light, reads, {}, 6, 0};
+    const Draw writing{light, writes, {}, 6, 1};
+    const Draw unbound{light, {}, {}, 3, 1};
+    check("draw without vertices", validate(with_draw(no_vertices)), "at least one vertex");
+    check("draw without instances", validate(with_draw(no_instances)), "at least one vertex");
+    check("draw binding a writable buffer", validate(with_draw(writing)), "writable");
+    check("draw without bindings", validate(with_draw(unbound)), nullptr);
 
-    const ComputeDispatch foreign{other_compute, {records, 1, 0, 1}, 16};
-    const ComputeDispatch no_groups{compute, {records, 1, 0, 1}, 0};
-    const ComputeDispatch too_many_groups{compute, {records, 1, 0, 1}, 65536};
-    const ComputeDispatch most_groups{compute, {records, 1, 0, 1}, 65535};
-    const ComputeDispatch wrong_count{compute, {records - 1, 1, 0, 1}, 16};
-    check("compute bound to another buffer", validate(buffer, one_pass, &foreign), "Compute dispatch");
-    check("compute without groups", validate(buffer, one_pass, &no_groups), "Compute dispatch");
-    check("compute with too many groups", validate(buffer, one_pass, &too_many_groups), "Compute dispatch");
-    check("compute at the group limit", validate(buffer, one_pass, &most_groups), nullptr);
-    check("compute record count mismatch", validate(buffer, one_pass, &wrong_count), "Compute dispatch");
-
+    Bindings aliased{};
+    aliased.read[3] = &writable;
+    aliased.write[1] = &writable;
+    Bindings separate{};
+    separate.read[0] = &other;
+    separate.write[0] = &writable;
+    check("dispatch without groups", validate(one_pass, {{compute, simulation, {}, {0, 1, 1}}}), "group counts");
+    check("dispatch with too many groups", validate(one_pass, {{compute, simulation, {}, {1, 65536, 1}}}), "group counts");
+    check("dispatch at the group limit", validate(one_pass, {{compute, simulation, {}, {65535, 65535, 65535}}}), nullptr);
+    check("dispatch reading and writing one buffer", validate(one_pass, {{compute, aliased, {}, {1, 1, 1}}}), "readable and writable");
+    check("dispatch reading one buffer and writing another", validate(one_pass, {{compute, separate, {}, {1, 1, 1}}}), nullptr);
+    check("dispatches in sequence", validate(one_pass, {dispatch, {compute, separate, {}, {4, 1, 1}}}), nullptr);
     return failures == 0 ? 0 : 1;
 }

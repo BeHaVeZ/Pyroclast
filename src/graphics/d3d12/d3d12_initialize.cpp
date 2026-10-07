@@ -181,7 +181,7 @@ bool D3D12Renderer::initialize(SDL_Window* window, const GraphicsDeviceOptions& 
 {
     vsync_ = options.vsync;
     capture_enabled_ = options.capture;
-    if (!create_device() || !create_swapchain(window) || !check_validation())
+    if (!create_device() || !create_bindings() || !create_swapchain(window) || !check_validation())
     {
         return false;
     }

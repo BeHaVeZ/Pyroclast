@@ -37,7 +37,6 @@ public:
     ~VulkanGraphicsPipeline() override;
     const VulkanRenderer* owner = nullptr;
     VkDevice device = VK_NULL_HANDLE;
-    VkPipelineLayout layout = VK_NULL_HANDLE;
     VkPipeline pipeline = VK_NULL_HANDLE;
 };
 
@@ -54,23 +53,17 @@ public:
     VkDeviceMemory memory = VK_NULL_HANDLE;
     VkImageView view = VK_NULL_HANDLE;
     VkExtent2D extent{};
-    VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
-    VkDescriptorSet descriptor = VK_NULL_HANDLE;
 };
 
 class VulkanComputePipeline final : public ComputePipeline
 {
 public:
-    using ComputePipeline::ComputePipeline;
+    VulkanComputePipeline() = default;
     VulkanComputePipeline(const VulkanComputePipeline&) = delete;
     VulkanComputePipeline& operator=(const VulkanComputePipeline&) = delete;
     ~VulkanComputePipeline() override;
     const VulkanRenderer* owner = nullptr;
     VkDevice device = VK_NULL_HANDLE;
-    VkDescriptorSetLayout descriptor_layout = VK_NULL_HANDLE;
-    VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
-    VkDescriptorSet descriptor = VK_NULL_HANDLE;
-    VkPipelineLayout layout = VK_NULL_HANDLE;
     VkPipeline pipeline = VK_NULL_HANDLE;
 };
 }

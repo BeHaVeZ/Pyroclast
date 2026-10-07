@@ -13,5 +13,6 @@ public:
 
 private:
     std::unique_ptr<RenderTarget> smoke_target_;
+    std::unique_ptr<GraphicsPipeline> composite_;
 };
 }

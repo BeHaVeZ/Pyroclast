@@ -26,46 +26,14 @@ std::unique_ptr<GraphicsPipeline> D3D12Renderer::create_graphics_pipeline(
     }
     if (shader_model.HighestShaderModel < D3D_SHADER_MODEL_6_0)
     {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Particle rendering requires shader model 6.0.");
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Pyroclast shaders require shader model 6.0.");
         return nullptr;
     }
 
-    D3D12_ROOT_SIGNATURE_DESC root_description{};
-    D3D12_ROOT_PARAMETER view{};
-    view.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-    view.Constants.Num32BitValues = 2;
-    view.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
-    root_description.NumParameters = 1;
-    root_description.pParameters = &view;
-    root_description.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-    Microsoft::WRL::ComPtr<ID3DBlob> serialized_root;
-    Microsoft::WRL::ComPtr<ID3DBlob> errors;
-    const HRESULT result = D3D12SerializeRootSignature(&root_description,
-        D3D_ROOT_SIGNATURE_VERSION_1, &serialized_root, &errors);
-    if (FAILED(result) && errors)
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Root signature: %s",
-            static_cast<const char*>(errors->GetBufferPointer()));
-    }
-    if (!check(result, "Serialize root signature") ||
-        !check(device_->CreateRootSignature(0, serialized_root->GetBufferPointer(),
-            serialized_root->GetBufferSize(), IID_PPV_ARGS(&pipeline->root_signature)),
-            "Create root signature"))
-    {
-        return nullptr;
-    }
-
-    const D3D12_INPUT_ELEMENT_DESC input_layout[] = {
-        {"POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, particle_layout::particle_motion_offset,
-            D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1},
-        {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, particle_layout::particle_life_offset,
-            D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1}
-    };
     D3D12_GRAPHICS_PIPELINE_STATE_DESC description{};
-    description.pRootSignature = pipeline->root_signature.Get();
+    description.pRootSignature = root_signature_.Get();
     description.VS = {vertex_shader.data(), vertex_shader.size()};
     description.PS = {pixel_shader.data(), pixel_shader.size()};
-    description.InputLayout = {input_layout, 2};
     description.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     description.NumRenderTargets = 1;
     description.RTVFormats[0] = backbuffer_format;

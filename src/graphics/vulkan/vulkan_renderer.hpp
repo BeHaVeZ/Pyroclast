@@ -39,6 +39,9 @@ struct VulkanFrameSlot
     VkCommandBuffer command = VK_NULL_HANDLE;
     VkSemaphore acquired = VK_NULL_HANDLE;
     VkFence submitted = VK_NULL_HANDLE;
+    VkBuffer constants = VK_NULL_HANDLE;
+    VkDeviceMemory constants_memory = VK_NULL_HANDLE;
+    std::byte* mapped_constants = nullptr;
 };
 
 struct VulkanSwapchain
@@ -63,17 +66,17 @@ struct VulkanSwapchain
     std::vector<Image> images;
 };
 
-struct VulkanUpscale
+struct VulkanBindings
 {
-    VulkanUpscale() = default;
-    VulkanUpscale(const VulkanUpscale&) = delete;
-    VulkanUpscale& operator=(const VulkanUpscale&) = delete;
-    ~VulkanUpscale();
+    VulkanBindings() = default;
+    VulkanBindings(const VulkanBindings&) = delete;
+    VulkanBindings& operator=(const VulkanBindings&) = delete;
+    ~VulkanBindings();
     VkDevice device = VK_NULL_HANDLE;
-    VkSampler sampler = VK_NULL_HANDLE;
-    VkDescriptorSetLayout descriptors = VK_NULL_HANDLE;
+    std::array<VkSampler, binding_layout::sampler_count> samplers{};
+    VkDescriptorSetLayout set_layout = VK_NULL_HANDLE;
     VkPipelineLayout layout = VK_NULL_HANDLE;
-    VkPipeline pipeline = VK_NULL_HANDLE;
+    PFN_vkCmdPushDescriptorSetKHR push = nullptr;
 };
 
 struct VulkanTiming
@@ -108,9 +111,14 @@ void transition_image(VkCommandBuffer command, VkImage image, VkImageLayout from
 void transition_buffer(VkCommandBuffer command, VkBuffer buffer,
     VkPipelineStageFlags2 source_stage, VkAccessFlags2 source_access,
     VkPipelineStageFlags2 destination_stage, VkAccessFlags2 destination_access);
+void memory_barrier(VkCommandBuffer command,
+    VkPipelineStageFlags2 source_stage, VkAccessFlags2 source_access,
+    VkPipelineStageFlags2 destination_stage, VkAccessFlags2 destination_access);
 
 std::optional<std::uint32_t> find_memory_type(VkPhysicalDevice physical, std::uint32_t type_bits,
     VkMemoryPropertyFlags required, VkMemoryPropertyFlags preferred);
+
+class VulkanBuffer;
 
 class VulkanRenderer final : public GraphicsDevice
 {
@@ -125,8 +133,7 @@ public:
     std::unique_ptr<GraphicsPipeline> create_graphics_pipeline(
         const GraphicsPipelineDescription& description) override;
     bool resize(int width, int height) override;
-    std::unique_ptr<ComputePipeline> create_compute_pipeline(
-        Shader shader, const Buffer& vertices) override;
+    std::unique_ptr<ComputePipeline> create_compute_pipeline(Shader shader) override;
     std::unique_ptr<RenderTarget> create_render_target(const RenderTargetDescription& description) override;
     RenderResult render(const Frame& frame) override;
     bool wait_idle() override;
@@ -137,6 +144,7 @@ public:
 private:
     bool create_instance();
     bool create_device();
+    bool create_bindings();
     bool create_shader_module(Shader shader, struct VulkanShaderModule& module);
     bool create_timestamps();
     bool read_timestamps(std::size_t frame);
@@ -144,15 +152,17 @@ private:
     bool create_swapchain();
     bool create_capture_buffer(VkDeviceSize size);
     bool record_capture(VkCommandBuffer command, VkImage image);
-    bool create_upscale_pipeline();
     bool size_target(class VulkanRenderTarget& target);
-    void upscale(VkCommandBuffer command, const class VulkanRenderTarget& source);
+    bool owns(const Frame& frame) const;
+    void push_bindings(VkCommandBuffer command, VkPipelineBindPoint point, const Bindings& bindings,
+        const VulkanFrameSlot& slot, std::span<const RenderTarget* const> inputs);
     void set_viewport(VkCommandBuffer command, VkExtent2D extent);
-    void draw_range(VkCommandBuffer command, const DrawRange& range, const Buffer& vertices, float aspect);
     // Records commands into a one-off command buffer and waits for them; startup and resize only.
     template <typename Record> bool submit_immediately(const char* operation, Record&& record);
-    bool allocate_buffer(class VulkanBuffer& buffer, VkBufferUsageFlags usage,
+    bool allocate_buffer(VulkanBuffer& buffer, VkBufferUsageFlags usage,
         VkMemoryPropertyFlags required, VkMemoryPropertyFlags preferred, const char* purpose);
+    bool allocate_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags required,
+        VkMemoryPropertyFlags preferred, const char* purpose, VkBuffer& buffer, VkDeviceMemory& memory);
     bool check(VkResult result, const char* operation);
     bool validation_ok() const;
     static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
@@ -160,7 +170,7 @@ private:
         const VkDebugUtilsMessengerCallbackDataEXT* data, void* user);
 
     VulkanContext vk_;
-    VulkanUpscale upscale_;
+    VulkanBindings bindings_;
     VulkanTiming timing_;
     std::array<VulkanFrameSlot, 2> frames_{};
     VulkanSwapchain swapchain_;

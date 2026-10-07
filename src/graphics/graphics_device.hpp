@@ -1,5 +1,6 @@
 #pragma once
 
+#include "binding_layout.hpp"
 #include "graphics_api.hpp"
 #include "particle_layout.hpp"
 #include "shaders.hpp"
@@ -45,19 +46,7 @@ private:
 class ComputePipeline
 {
 public:
-    explicit ComputePipeline(const Buffer& buffer) : buffer_(&buffer) {}
     virtual ~ComputePipeline() = default;
-    const Buffer& buffer() const { return *buffer_; }
-
-private:
-    const Buffer* buffer_;
-};
-
-struct ComputeDispatch
-{
-    const ComputePipeline& pipeline;
-    std::array<std::uint32_t, 4> constants;
-    std::uint32_t group_count;
 };
 
 struct GraphicsPipelineDescription
@@ -65,14 +54,6 @@ struct GraphicsPipelineDescription
     Shader vertex_shader;
     Shader pixel_shader;
     BlendMode blend = BlendMode::opaque;
-};
-
-struct DrawRange
-{
-    const GraphicsPipeline& pipeline;
-    std::uint32_t first_record;
-    std::uint32_t record_count;
-    std::uint32_t layer;
 };
 
 struct RenderTargetDescription
@@ -92,20 +73,44 @@ private:
     RenderTargetDescription description_;
 };
 
+struct Bindings
+{
+    std::array<const Buffer*, binding_layout::read_buffer_slots> read{};
+    std::array<Buffer*, binding_layout::write_buffer_slots> write{};
+};
+
+using DrawConstants = std::array<std::uint32_t, binding_layout::draw_constant_words>;
+
+struct Dispatch
+{
+    const ComputePipeline& pipeline;
+    Bindings bindings;
+    DrawConstants constants{};
+    std::array<std::uint32_t, 3> groups{1, 1, 1};
+};
+
+struct Draw
+{
+    const GraphicsPipeline& pipeline;
+    Bindings bindings;
+    DrawConstants constants{};
+    std::uint32_t vertex_count = 0;
+    std::uint32_t instance_count = 1;
+};
+
 struct Pass
 {
     RenderTarget* target = nullptr;
-    const RenderTarget* background = nullptr;
-    std::span<const DrawRange> draws;
+    std::array<const RenderTarget*, binding_layout::texture_slots> inputs{};
+    std::span<const Draw> draws;
 };
 
 struct Frame
 {
-    const Buffer& vertices;
+    std::span<const Dispatch> dispatches;
     std::span<const Pass> passes;
-    std::array<float, 4> clear_color;
-    const ComputeDispatch* compute = nullptr;
-    float aspect_ratio = 1.0f;
+    std::array<float, 4> clear_color{};
+    std::span<const std::byte> constants;
     bool capture = false;
 };
 
@@ -132,8 +137,7 @@ public:
     virtual std::unique_ptr<Buffer> create_buffer(std::uint32_t size, std::span<const std::byte> initial) = 0;
     virtual std::unique_ptr<GraphicsPipeline> create_graphics_pipeline(
         const GraphicsPipelineDescription& description) = 0;
-    virtual std::unique_ptr<ComputePipeline> create_compute_pipeline(
-        Shader shader, const Buffer& vertices) = 0;
+    virtual std::unique_ptr<ComputePipeline> create_compute_pipeline(Shader shader) = 0;
     virtual std::unique_ptr<RenderTarget> create_render_target(const RenderTargetDescription& description) = 0;
     virtual bool resize(int width, int height) = 0;
     virtual RenderResult render(const Frame& frame) = 0;
@@ -158,5 +162,6 @@ struct GraphicsDeviceOptions
     bool capture = false;
 };
 
+// The SDL window must outlive the device; resources used by a frame must survive until wait_idle.
 GraphicsDeviceCreation create_graphics_device(Renderer renderer, SDL_Window* window, const GraphicsDeviceOptions& options = {});
 }

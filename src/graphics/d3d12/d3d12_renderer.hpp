@@ -10,11 +10,14 @@
 
 #include <array>
 #include <cstdint>
+#include <vector>
 
 struct SDL_Window;
 
 namespace pyroclast
 {
+class D3D12Buffer;
+
 class D3D12Renderer final : public GraphicsDevice
 {
 public:
@@ -28,8 +31,7 @@ public:
     std::unique_ptr<GraphicsPipeline> create_graphics_pipeline(
         const GraphicsPipelineDescription& description) override;
     bool resize(int width, int height) override;
-    std::unique_ptr<ComputePipeline> create_compute_pipeline(
-        Shader shader, const Buffer& vertices) override;
+    std::unique_ptr<ComputePipeline> create_compute_pipeline(Shader shader) override;
     std::unique_ptr<RenderTarget> create_render_target(const RenderTargetDescription& description) override;
     RenderResult render(const Frame& frame) override;
     bool wait_idle() override;
@@ -41,20 +43,46 @@ private:
     static constexpr UINT frame_count = 2;
     static constexpr UINT backbuffer_count = 2;
     static constexpr DXGI_FORMAT backbuffer_format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    static constexpr UINT shader_descriptor_capacity = 64;
+
+    enum RootParameter : UINT
+    {
+        root_draw_constants = 0,
+        root_frame_constants = 1,
+        root_read_buffers = 2,
+        root_write_buffers = root_read_buffers + binding_layout::read_buffer_slots,
+        root_textures = root_write_buffers + binding_layout::write_buffer_slots,
+        root_parameter_count = root_textures + binding_layout::texture_slots
+    };
 
     struct FrameSlot
     {
         bool timestamps_pending = false;
         Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
         std::uint64_t fence_value = 0;
+        Microsoft::WRL::ComPtr<ID3D12Resource> constants;
+        std::byte* mapped_constants = nullptr;
     };
 
-    bool record_capture(ID3D12Resource* backbuffer);
-    bool create_upscale_pipeline();
+    class BufferStates
+    {
+    public:
+        void require(ID3D12Resource* buffer, D3D12_RESOURCE_STATES state);
+        void flush(ID3D12GraphicsCommandList* commands);
+        void reset() { states_.clear(); }
+
+    private:
+        std::vector<std::pair<ID3D12Resource*, D3D12_RESOURCE_STATES>> states_;
+        std::vector<D3D12_RESOURCE_BARRIER> pending_;
+    };
+
+    bool create_bindings();
     bool size_target(class D3D12RenderTarget& target);
-    void upscale(const class D3D12RenderTarget& source);
-    void draw_range(const DrawRange& range, const class D3D12Buffer& vertices, float aspect);
+    bool owns(const Frame& frame) const;
+    void bind(const Bindings& bindings, bool graphics);
+    void draw(const Draw& draw);
     void set_target(D3D12_CPU_DESCRIPTOR_HANDLE rtv, int width, int height);
+    bool record_capture(ID3D12Resource* backbuffer);
     bool create_device();
     bool create_timestamps();
     bool read_timestamps(std::size_t frame);
@@ -63,6 +91,7 @@ private:
     bool wait_for_fence(std::uint64_t value);
     bool check(HRESULT result, const char* operation);
     bool check_validation();
+    D3D12_GPU_DESCRIPTOR_HANDLE shader_descriptor(UINT index) const;
 
     std::string adapter_name_;
     Microsoft::WRL::ComPtr<IDXGIFactory6> factory_;
@@ -85,8 +114,11 @@ private:
     int height_ = 0;
     bool occluded_ = false;
     bool vsync_ = true;
-    Microsoft::WRL::ComPtr<ID3D12RootSignature> upscale_root_;
-    Microsoft::WRL::ComPtr<ID3D12PipelineState> upscale_pipeline_;
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> root_signature_;
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> shader_heap_;
+    UINT shader_descriptor_stride_ = 0;
+    UINT next_shader_descriptor_ = 1;
+    BufferStates buffer_states_;
     Microsoft::WRL::ComPtr<ID3D12QueryHeap> timestamps_;
     Microsoft::WRL::ComPtr<ID3D12Resource> timestamp_readback_;
     const std::uint64_t* mapped_timestamps_ = nullptr;

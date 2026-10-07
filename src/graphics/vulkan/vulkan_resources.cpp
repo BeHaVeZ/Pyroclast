@@ -32,7 +32,6 @@ VulkanBuffer::~VulkanBuffer()
 VulkanGraphicsPipeline::~VulkanGraphicsPipeline()
 {
     vkDestroyPipeline(device, pipeline, nullptr);
-    vkDestroyPipelineLayout(device, layout, nullptr);
 }
 
 template <typename Record>
@@ -79,17 +78,23 @@ bool VulkanRenderer::allocate_buffer(VulkanBuffer& buffer, VkBufferUsageFlags us
 {
     buffer.owner = this;
     buffer.device = vk_.device;
+    return allocate_buffer(buffer.size(), usage, required, preferred, purpose, buffer.buffer, buffer.memory);
+}
+
+bool VulkanRenderer::allocate_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags required,
+    VkMemoryPropertyFlags preferred, const char* purpose, VkBuffer& buffer, VkDeviceMemory& memory)
+{
     VkBufferCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    info.size = buffer.size();
+    info.size = size;
     info.usage = usage;
     info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    if (!check(vkCreateBuffer(vk_.device, &info, nullptr, &buffer.buffer), purpose))
+    if (!check(vkCreateBuffer(vk_.device, &info, nullptr, &buffer), purpose))
     {
         return false;
     }
     VkMemoryRequirements requirements{};
-    vkGetBufferMemoryRequirements(vk_.device, buffer.buffer, &requirements);
+    vkGetBufferMemoryRequirements(vk_.device, buffer, &requirements);
     const auto type = find_memory_type(vk_.physical, requirements.memoryTypeBits, required, preferred);
     if (!type)
     {
@@ -104,8 +109,8 @@ bool VulkanRenderer::allocate_buffer(VulkanBuffer& buffer, VkBufferUsageFlags us
     allocation.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocation.allocationSize = requirements.size;
     allocation.memoryTypeIndex = *type;
-    return check(vkAllocateMemory(vk_.device, &allocation, nullptr, &buffer.memory), purpose) &&
-        check(vkBindBufferMemory(vk_.device, buffer.buffer, buffer.memory, 0), purpose);
+    return check(vkAllocateMemory(vk_.device, &allocation, nullptr, &memory), purpose) &&
+        check(vkBindBufferMemory(vk_.device, buffer, memory, 0), purpose);
 }
 
 std::unique_ptr<Buffer> VulkanRenderer::create_buffer(std::uint32_t size, std::span<const std::byte> initial)
@@ -116,7 +121,7 @@ std::unique_ptr<Buffer> VulkanRenderer::create_buffer(std::uint32_t size, std::s
         return nullptr;
     }
     auto buffer = std::make_unique<VulkanBuffer>(size);
-    if (!allocate_buffer(*buffer, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+    if (!allocate_buffer(*buffer, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, "Create Vulkan buffer"))
     {
         return nullptr;
@@ -164,15 +169,6 @@ std::unique_ptr<GraphicsPipeline> VulkanRenderer::create_graphics_pipeline(
     auto pipeline = std::make_unique<VulkanGraphicsPipeline>(shaders.blend);
     pipeline->device = vk_.device;
     pipeline->owner = this;
-    VkPipelineLayoutCreateInfo layout{};
-    layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    const VkPushConstantRange view{VK_SHADER_STAGE_VERTEX_BIT, 0, 2 * sizeof(std::uint32_t)};
-    layout.pushConstantRangeCount = 1;
-    layout.pPushConstantRanges = &view;
-    if (!check(vkCreatePipelineLayout(vk_.device, &layout, nullptr, &pipeline->layout), "Create Vulkan pipeline layout"))
-    {
-        return nullptr;
-    }
     VkPipelineShaderStageCreateInfo stages[2]{};
     stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
@@ -182,16 +178,8 @@ std::unique_ptr<GraphicsPipeline> VulkanRenderer::create_graphics_pipeline(
     stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
     stages[1].module = pixel.handle;
     stages[1].pName = pixel.entry;
-    const VkVertexInputBindingDescription binding{0, particle_layout::particle_stride, VK_VERTEX_INPUT_RATE_INSTANCE};
-    const VkVertexInputAttributeDescription attributes[] = {
-        {0, 0, VK_FORMAT_R32G32_SFLOAT, particle_layout::particle_motion_offset},
-        {1, 0, VK_FORMAT_R32G32B32_SFLOAT, particle_layout::particle_life_offset}};
     VkPipelineVertexInputStateCreateInfo input{};
     input.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    input.vertexBindingDescriptionCount = 1;
-    input.pVertexBindingDescriptions = &binding;
-    input.vertexAttributeDescriptionCount = 2;
-    input.pVertexAttributeDescriptions = attributes;
     VkPipelineInputAssemblyStateCreateInfo assembly{};
     assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
     assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
@@ -239,7 +227,7 @@ std::unique_ptr<GraphicsPipeline> VulkanRenderer::create_graphics_pipeline(
     info.pMultisampleState = &samples;
     info.pColorBlendState = &blend;
     info.pDynamicState = &dynamic;
-    info.layout = pipeline->layout;
+    info.layout = bindings_.layout;
     VkPipelineRenderingCreateInfo rendering{};
     rendering.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
     rendering.colorAttachmentCount = 1;

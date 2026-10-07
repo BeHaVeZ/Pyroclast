@@ -6,12 +6,24 @@
 
 #include <cassert>
 #include <algorithm>
+#include <cstring>
 #include <limits>
 #include <utility>
 #include <vector>
 
 namespace pyroclast
 {
+namespace
+{
+// Shader reads from any stage; a buffer read by both compute and graphics needs no transition between them.
+constexpr auto buffer_read_state = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+
+ID3D12Resource* native(const Buffer* buffer)
+{
+    return buffer ? static_cast<const D3D12Buffer*>(buffer)->resource.Get() : nullptr;
+}
+}
+
 bool D3D12Renderer::check(HRESULT result, const char* operation)
 {
     if (SUCCEEDED(result))
@@ -113,41 +125,67 @@ void D3D12Renderer::set_target(D3D12_CPU_DESCRIPTOR_HANDLE rtv, int width, int h
     command_list_->RSSetScissorRects(1, &scissor);
 }
 
-void D3D12Renderer::draw_range(const DrawRange& range, const D3D12Buffer& vertices, float aspect)
+void D3D12Renderer::bind(const Bindings& bindings, bool graphics)
 {
-    const auto& pipeline = static_cast<const D3D12GraphicsPipeline&>(range.pipeline);
-    command_list_->SetPipelineState(pipeline.state.Get());
-    command_list_->SetGraphicsRootSignature(pipeline.root_signature.Get());
-    D3D12_VERTEX_BUFFER_VIEW view{};
-    view.StrideInBytes = particle_layout::particle_stride;
-    view.BufferLocation = vertices.resource->GetGPUVirtualAddress() + static_cast<UINT64>(range.first_record) * view.StrideInBytes;
-    view.SizeInBytes = range.record_count * view.StrideInBytes;
-    command_list_->IASetVertexBuffers(0, 1, &view);
-    command_list_->SetGraphicsRoot32BitConstants(0, 1, &aspect, 0);
-    command_list_->SetGraphicsRoot32BitConstants(0, 1, &range.layer, 1);
-    command_list_->DrawInstanced(6, range.record_count, 0, 0);
+    for (UINT slot = 0; slot < bindings.read.size(); ++slot)
+    {
+        if (!bindings.read[slot]) continue;
+        const auto address = native(bindings.read[slot])->GetGPUVirtualAddress();
+        if (graphics) command_list_->SetGraphicsRootShaderResourceView(root_read_buffers + slot, address);
+        else command_list_->SetComputeRootShaderResourceView(root_read_buffers + slot, address);
+    }
+    for (UINT slot = 0; slot < bindings.write.size(); ++slot)
+    {
+        if (bindings.write[slot])
+        {
+            command_list_->SetComputeRootUnorderedAccessView(root_write_buffers + slot, native(bindings.write[slot])->GetGPUVirtualAddress());
+        }
+    }
+}
+
+void D3D12Renderer::draw(const Draw& draw)
+{
+    command_list_->SetPipelineState(static_cast<const D3D12GraphicsPipeline&>(draw.pipeline).state.Get());
+    command_list_->SetGraphicsRoot32BitConstants(root_draw_constants, binding_layout::draw_constant_words, draw.constants.data(), 0);
+    bind(draw.bindings, true);
+    command_list_->DrawInstanced(draw.vertex_count, draw.instance_count, 0, 0);
+}
+
+bool D3D12Renderer::owns(const Frame& frame) const
+{
+    const auto buffers_owned = [this](const Bindings& bindings) {
+        const auto owned = [this](const Buffer* buffer) {
+            const auto* resource = dynamic_cast<const D3D12Buffer*>(buffer);
+            return buffer == nullptr || (resource && resource->owner == this);
+        };
+        return std::all_of(bindings.read.begin(), bindings.read.end(), owned) &&
+            std::all_of(bindings.write.begin(), bindings.write.end(), owned);
+    };
+    const auto target_owned = [this](const RenderTarget* target) {
+        const auto* native_target = dynamic_cast<const D3D12RenderTarget*>(target);
+        return target == nullptr || (native_target && native_target->owner == this);
+    };
+    for (const auto& dispatch : frame.dispatches)
+    {
+        const auto* pipeline = dynamic_cast<const D3D12ComputePipeline*>(&dispatch.pipeline);
+        if (!pipeline || pipeline->owner != this || !buffers_owned(dispatch.bindings)) return false;
+    }
+    for (const auto& pass : frame.passes)
+    {
+        if (!target_owned(pass.target) || !std::all_of(pass.inputs.begin(), pass.inputs.end(), target_owned)) return false;
+        for (const auto& draw : pass.draws)
+        {
+            const auto* pipeline = dynamic_cast<const D3D12GraphicsPipeline*>(&draw.pipeline);
+            if (!pipeline || pipeline->owner != this || !buffers_owned(draw.bindings)) return false;
+        }
+    }
+    return true;
 }
 
 RenderResult D3D12Renderer::render(const Frame& frame)
 {
     assert(swapchain_ && command_list_);
-    const auto* vertices = dynamic_cast<const D3D12Buffer*>(&frame.vertices);
-    const auto* compute = frame.compute ? dynamic_cast<const D3D12ComputePipeline*>(&frame.compute->pipeline) : nullptr;
-    bool owned = vertices && vertices->owner == this && (!frame.compute || (compute && compute->owner == this));
-    const auto owns_target = [this](const RenderTarget* target) {
-        const auto* native = dynamic_cast<const D3D12RenderTarget*>(target);
-        return target == nullptr || (native && native->owner == this);
-    };
-    for (const auto& pass : frame.passes)
-    {
-        owned = owned && owns_target(pass.target) && owns_target(pass.background);
-        for (const auto& range : pass.draws)
-        {
-            const auto* pipeline = dynamic_cast<const D3D12GraphicsPipeline*>(&range.pipeline);
-            owned = owned && pipeline && pipeline->owner == this;
-        }
-    }
-    const char* error = !owned ? "Frame uses resources from another graphics device." :
+    const char* error = !owns(frame) ? "Frame uses resources from another graphics device." :
         frame.capture && !capture_enabled_ ? "Frame capture requires a device created with capture enabled." :
         validate_frame(frame);
     if (error)
@@ -186,27 +224,37 @@ RenderResult D3D12Renderer::render(const Frame& frame)
     {
         return RenderResult::failed;
     }
+    std::memcpy(slot.mapped_constants, frame.constants.data(), frame.constants.size());
+    const auto frame_constants = slot.constants->GetGPUVirtualAddress();
+    ID3D12DescriptorHeap* heaps[] = {shader_heap_.Get()};
+    command_list_->SetDescriptorHeaps(1, heaps);
+    buffer_states_.reset();
 
     const auto query = static_cast<UINT>(frame_index_) * 4;
     if (timestamps_) command_list_->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query);
-    if (compute)
+    if (!frame.dispatches.empty())
     {
-        D3D12_RESOURCE_BARRIER storage{};
-        storage.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        storage.Transition.pResource = vertices->resource.Get();
-        storage.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-        storage.Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
-        storage.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        command_list_->ResourceBarrier(1, &storage);
-        command_list_->SetPipelineState(compute->state.Get());
-        command_list_->SetComputeRootSignature(compute->root_signature.Get());
-        command_list_->SetComputeRootUnorderedAccessView(0, vertices->resource->GetGPUVirtualAddress());
-        command_list_->SetComputeRoot32BitConstants(1, 4, frame.compute->constants.data(), 0);
-        command_list_->Dispatch(frame.compute->group_count, 1, 1);
-        storage.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        storage.Transition.StateAfter = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
-        command_list_->ResourceBarrier(1, &storage);
+        command_list_->SetComputeRootSignature(root_signature_.Get());
+        command_list_->SetComputeRootConstantBufferView(root_frame_constants, frame_constants);
     }
+    for (const auto& dispatch : frame.dispatches)
+    {
+        for (auto* buffer : dispatch.bindings.write) if (buffer) buffer_states_.require(native(buffer), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        for (const auto* buffer : dispatch.bindings.read) if (buffer) buffer_states_.require(native(buffer), buffer_read_state);
+        buffer_states_.flush(command_list_.Get());
+        command_list_->SetPipelineState(static_cast<const D3D12ComputePipeline&>(dispatch.pipeline).state.Get());
+        command_list_->SetComputeRoot32BitConstants(root_draw_constants, binding_layout::draw_constant_words, dispatch.constants.data(), 0);
+        bind(dispatch.bindings, false);
+        command_list_->Dispatch(dispatch.groups[0], dispatch.groups[1], dispatch.groups[2]);
+    }
+    for (const auto& pass : frame.passes)
+    {
+        for (const auto& draw : pass.draws)
+        {
+            for (const auto* buffer : draw.bindings.read) if (buffer) buffer_states_.require(native(buffer), buffer_read_state);
+        }
+    }
+    buffer_states_.flush(command_list_.Get());
 
     if (timestamps_)
     {
@@ -215,6 +263,8 @@ RenderResult D3D12Renderer::render(const Frame& frame)
     }
     auto backbuffer_view = rtv_heap_->GetCPUDescriptorHandleForHeapStart();
     backbuffer_view.ptr += static_cast<SIZE_T>(backbuffer_index) * rtv_stride_;
+    command_list_->SetGraphicsRootSignature(root_signature_.Get());
+    command_list_->SetGraphicsRootConstantBufferView(root_frame_constants, frame_constants);
     command_list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     for (const auto& pass : frame.passes)
     {
@@ -232,8 +282,12 @@ RenderResult D3D12Renderer::render(const Frame& frame)
         set_target(view, target ? target->width : width_, target ? target->height : height_);
         const auto& clear_color = target ? target->description().clear_color : frame.clear_color;
         command_list_->ClearRenderTargetView(view, clear_color.data(), 0, nullptr);
-        if (pass.background) upscale(static_cast<const D3D12RenderTarget&>(*pass.background));
-        for (const auto& range : pass.draws) draw_range(range, *vertices, frame.aspect_ratio);
+        for (UINT slot_index = 0; slot_index < pass.inputs.size(); ++slot_index)
+        {
+            const auto* input = static_cast<const D3D12RenderTarget*>(pass.inputs[slot_index]);
+            command_list_->SetGraphicsRootDescriptorTable(root_textures + slot_index, shader_descriptor(input ? input->shader_view : 0));
+        }
+        for (const auto& item : pass.draws) draw(item);
 
         barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
         barrier.Transition.StateAfter = resting_state;

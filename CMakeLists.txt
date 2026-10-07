@@ -41,6 +41,7 @@ add_executable(Pyroclast
     src/graphics/d3d12/d3d12_target.cpp
     src/graphics/d3d12/d3d12_compute.cpp
     src/graphics/d3d12/d3d12_capture.cpp
+    src/graphics/d3d12/d3d12_bindings.cpp
     src/graphics/vulkan/vulkan_shaders.cpp
     src/graphics/vulkan/vulkan_initialize.cpp
     src/graphics/vulkan/vulkan_renderer.cpp
@@ -50,6 +51,7 @@ add_executable(Pyroclast
     src/graphics/vulkan/vulkan_target.cpp
     src/graphics/vulkan/vulkan_compute.cpp
     src/graphics/vulkan/vulkan_capture.cpp
+    src/graphics/vulkan/vulkan_bindings.cpp
 )
 target_compile_definitions(Pyroclast PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 target_link_libraries(Pyroclast PRIVATE SDL3::SDL3-static d3d12 dxgi Vulkan::Vulkan)

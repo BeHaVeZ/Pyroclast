@@ -56,7 +56,7 @@ bool VulkanRenderer::initialize(SDL_Window* window, const GraphicsDeviceOptions&
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Create Vulkan surface failed: %s", SDL_GetError());
         return false;
     }
-    if (!create_device() || !create_frames() ||
+    if (!create_device() || !create_frames() || !create_bindings() ||
         !SDL_GetWindowSizeInPixels(window_, &width_, &height_) || !create_swapchain())
     {
         return false;
@@ -257,7 +257,7 @@ bool VulkanRenderer::create_device()
     {
         return false;
     }
-    upscale_.device = timing_.device = swapchain_.device = capture_.device = vk_.device;
+    bindings_.device = timing_.device = swapchain_.device = capture_.device = vk_.device;
     for (auto& slot : frames_) slot.device = vk_.device;
     vkGetDeviceQueue(vk_.device, vk_.queue_family, 0, &vk_.queue);
     VkPhysicalDeviceProperties properties{};

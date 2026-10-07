@@ -24,9 +24,9 @@ static_assert(sizeof(Particle) == particle_layout::particle_stride &&
 
 struct ParticleWork
 {
-    ComputeDispatch dispatch;
-    DrawRange smoke;
-    DrawRange emissive;
+    Dispatch dispatch;
+    Draw smoke;
+    Draw emissive;
     std::uint32_t steps;
 };
 

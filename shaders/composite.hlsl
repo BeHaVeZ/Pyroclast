@@ -1,7 +1,4 @@
-Texture2D<float4> source : register(t0);
-#ifdef __spirv__
-[[vk::binding(1, 0)]]
-#endif
+Texture2D<float4> source : register(t8);
 SamplerState linear_clamp : register(s0);
 
 struct PixelInput

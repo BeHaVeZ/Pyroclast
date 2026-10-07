@@ -26,7 +26,7 @@ bool ParticleSystem::initialize(GraphicsDevice& device, std::uint32_t explosions
     {
         return false;
     }
-    compute_ = device.create_compute_pipeline(Shader::particle_simulation, *particles_);
+    compute_ = device.create_compute_pipeline(Shader::particle_simulation);
     if (!compute_)
     {
         return false;
@@ -53,10 +53,17 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds)
         static_cast<std::uint32_t>(std::floor(accumulator_ / fixed_step));
     constexpr auto group_size = particle_layout::simulation_group_size;
     const auto emissive_count = explosion_count_ * emissive_particles;
+    Bindings simulation{};
+    simulation.write[0] = particles_.get();
+    Bindings drawing{};
+    drawing.read[0] = particles_.get();
+    const DrawConstants parameters{capacity_, steps, burst_count_, reset_epoch_};
+    const DrawConstants smoke_range{emissive_count, particle_layout::particle_layer_smoke};
+    const DrawConstants emissive_range{0, particle_layout::particle_layer_emissive};
     return {
-        {*compute_, {capacity_, steps, burst_count_, reset_epoch_}, (capacity_ + group_size - 1) / group_size},
-        {*smoke_graphics_, emissive_count, capacity_ - emissive_count, particle_layout::particle_layer_smoke},
-        {*graphics_, 0, emissive_count, particle_layout::particle_layer_emissive},
+        {*compute_, simulation, parameters, {(capacity_ + group_size - 1) / group_size, 1, 1}},
+        {*smoke_graphics_, drawing, smoke_range, 6, capacity_ - emissive_count},
+        {*graphics_, drawing, emissive_range, 6, emissive_count},
         steps};
 }
 

@@ -6,6 +6,7 @@
 #include <SDL3/SDL_vulkan.h>
 
 #include <algorithm>
+#include <cstring>
 #include <limits>
 
 namespace pyroclast
@@ -46,6 +47,8 @@ VulkanFrameSlot::~VulkanFrameSlot()
     vkDestroyCommandPool(device, pool, nullptr);
     vkDestroySemaphore(device, acquired, nullptr);
     vkDestroyFence(device, submitted, nullptr);
+    vkDestroyBuffer(device, constants, nullptr);
+    vkFreeMemory(device, constants_memory, nullptr);
 }
 
 void VulkanSwapchain::reset()
@@ -61,15 +64,6 @@ void VulkanSwapchain::reset()
     vkDestroySwapchainKHR(device, handle, nullptr);
     handle = VK_NULL_HANDLE;
     extent = {};
-}
-
-VulkanUpscale::~VulkanUpscale()
-{
-    if (!device) return;
-    vkDestroyPipeline(device, pipeline, nullptr);
-    vkDestroyPipelineLayout(device, layout, nullptr);
-    vkDestroyDescriptorSetLayout(device, descriptors, nullptr);
-    vkDestroySampler(device, sampler, nullptr);
 }
 
 VulkanTiming::~VulkanTiming()
@@ -116,18 +110,6 @@ void VulkanRenderer::set_viewport(VkCommandBuffer command, VkExtent2D extent)
     vkCmdSetScissor(command, 0, 1, &scissor);
 }
 
-void VulkanRenderer::draw_range(VkCommandBuffer command, const DrawRange& range, const Buffer& buffer, float aspect)
-{
-    const auto& vertices = static_cast<const VulkanBuffer&>(buffer);
-    const auto& pipeline = static_cast<const VulkanGraphicsPipeline&>(range.pipeline);
-    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
-    const VkDeviceSize offset = static_cast<VkDeviceSize>(range.first_record) * particle_layout::particle_stride;
-    vkCmdBindVertexBuffers(command, 0, 1, &vertices.buffer, &offset);
-    vkCmdPushConstants(command, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float), &aspect);
-    vkCmdPushConstants(command, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, sizeof(float), sizeof(std::uint32_t), &range.layer);
-    vkCmdDraw(command, 6, range.record_count, 0, 0);
-}
-
 void transition_image(VkCommandBuffer command, VkImage image, VkImageLayout from, VkImageLayout to,
     VkPipelineStageFlags2 source_stage, VkAccessFlags2 source_access,
     VkPipelineStageFlags2 destination_stage, VkAccessFlags2 destination_access)
@@ -170,41 +152,57 @@ void transition_buffer(VkCommandBuffer command, VkBuffer buffer,
     vkCmdPipelineBarrier2(command, &dependency);
 }
 
-namespace
-{
-void execution_barrier(VkCommandBuffer command)
+void memory_barrier(VkCommandBuffer command,
+    VkPipelineStageFlags2 source_stage, VkAccessFlags2 source_access,
+    VkPipelineStageFlags2 destination_stage, VkAccessFlags2 destination_access)
 {
     VkMemoryBarrier2 barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
-    barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-    barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+    barrier.srcStageMask = source_stage;
+    barrier.srcAccessMask = source_access;
+    barrier.dstStageMask = destination_stage;
+    barrier.dstAccessMask = destination_access;
     VkDependencyInfo dependency{};
     dependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
     dependency.memoryBarrierCount = 1;
     dependency.pMemoryBarriers = &barrier;
     vkCmdPipelineBarrier2(command, &dependency);
 }
+
+bool VulkanRenderer::owns(const Frame& frame) const
+{
+    const auto buffers_owned = [this](const Bindings& bindings) {
+        const auto owned = [this](const Buffer* buffer) {
+            const auto* resource = dynamic_cast<const VulkanBuffer*>(buffer);
+            return buffer == nullptr || (resource && resource->owner == this);
+        };
+        return std::all_of(bindings.read.begin(), bindings.read.end(), owned) &&
+            std::all_of(bindings.write.begin(), bindings.write.end(), owned);
+    };
+    const auto target_owned = [this](const RenderTarget* target) {
+        const auto* native_target = dynamic_cast<const VulkanRenderTarget*>(target);
+        return target == nullptr || (native_target && native_target->owner == this);
+    };
+    for (const auto& dispatch : frame.dispatches)
+    {
+        const auto* pipeline = dynamic_cast<const VulkanComputePipeline*>(&dispatch.pipeline);
+        if (!pipeline || pipeline->owner != this || !buffers_owned(dispatch.bindings)) return false;
+    }
+    for (const auto& pass : frame.passes)
+    {
+        if (!target_owned(pass.target) || !std::all_of(pass.inputs.begin(), pass.inputs.end(), target_owned)) return false;
+        for (const auto& draw : pass.draws)
+        {
+            const auto* pipeline = dynamic_cast<const VulkanGraphicsPipeline*>(&draw.pipeline);
+            if (!pipeline || pipeline->owner != this || !buffers_owned(draw.bindings)) return false;
+        }
+    }
+    return true;
 }
 
 RenderResult VulkanRenderer::render(const Frame& frame)
 {
-    const auto* vertices = dynamic_cast<const VulkanBuffer*>(&frame.vertices);
-    const auto* compute = frame.compute ? dynamic_cast<const VulkanComputePipeline*>(&frame.compute->pipeline) : nullptr;
-    bool owned = vertices && vertices->owner == this && (!frame.compute || (compute && compute->owner == this));
-    const auto owns_target = [this](const RenderTarget* target) {
-        const auto* native = dynamic_cast<const VulkanRenderTarget*>(target);
-        return target == nullptr || (native && native->owner == this);
-    };
-    for (const auto& pass : frame.passes)
-    {
-        owned = owned && owns_target(pass.target) && owns_target(pass.background);
-        for (const auto& range : pass.draws)
-        {
-            const auto* pipeline = dynamic_cast<const VulkanGraphicsPipeline*>(&range.pipeline);
-            owned = owned && pipeline && pipeline->owner == this;
-        }
-    }
-    const char* error = !owned ? "Frame uses resources from another graphics device." :
+    const char* error = !owns(frame) ? "Frame uses resources from another graphics device." :
         frame.capture && !capture_enabled_ ? "Frame capture requires a device created with capture enabled." :
         validate_frame(frame);
     if (error)
@@ -259,6 +257,7 @@ RenderResult VulkanRenderer::render(const Frame& frame)
     {
         return RenderResult::failed;
     }
+    std::memcpy(slot.mapped_constants, frame.constants.data(), frame.constants.size());
     VkCommandBufferBeginInfo begin{};
     begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -267,33 +266,45 @@ RenderResult VulkanRenderer::render(const Frame& frame)
         return RenderResult::failed;
     }
     const auto command = slot.command;
+    constexpr VkShaderStageFlags constant_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+    constexpr std::uint32_t constant_bytes = binding_layout::draw_constant_words * sizeof(std::uint32_t);
     const auto query = static_cast<std::uint32_t>(frame_index_) * 4;
     if (timing_.pool)
     {
         vkCmdResetQueryPool(command, timing_.pool, query, 4);
         vkCmdWriteTimestamp2(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, timing_.pool, query);
-        execution_barrier(command);
+        memory_barrier(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_NONE);
     }
-    if (compute)
+    constexpr VkPipelineStageFlags2 shader_stages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT |
+        VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+    if (!frame.dispatches.empty())
     {
-        transition_buffer(command, vertices->buffer,
-            VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+        memory_barrier(command, shader_stages, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
-        vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, compute->pipeline);
-        vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, compute->layout,
-            0, 1, &compute->descriptor, 0, nullptr);
-        vkCmdPushConstants(command, compute->layout, VK_SHADER_STAGE_COMPUTE_BIT,
-            0, 4 * sizeof(std::uint32_t), frame.compute->constants.data());
-        vkCmdDispatch(command, frame.compute->group_count, 1, 1);
-        transition_buffer(command, vertices->buffer,
-            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-            VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT, VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT);
+    }
+    for (std::size_t index = 0; index < frame.dispatches.size(); ++index)
+    {
+        const auto& dispatch = frame.dispatches[index];
+        if (index != 0)
+        {
+            memory_barrier(command, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+        }
+        vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, static_cast<const VulkanComputePipeline&>(dispatch.pipeline).pipeline);
+        vkCmdPushConstants(command, bindings_.layout, constant_stages, 0, constant_bytes, dispatch.constants.data());
+        push_bindings(command, VK_PIPELINE_BIND_POINT_COMPUTE, dispatch.bindings, slot, {});
+        vkCmdDispatch(command, dispatch.groups[0], dispatch.groups[1], dispatch.groups[2]);
+    }
+    if (!frame.dispatches.empty())
+    {
+        memory_barrier(command, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+            VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
     }
     if (timing_.pool)
     {
         vkCmdWriteTimestamp2(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, timing_.pool, query + 1);
         vkCmdWriteTimestamp2(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, timing_.pool, query + 2);
-        execution_barrier(command);
+        memory_barrier(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_NONE);
     }
     for (const auto& pass : frame.passes)
     {
@@ -329,8 +340,13 @@ RenderResult VulkanRenderer::render(const Frame& frame)
         rendering.pColorAttachments = &color;
         vkCmdBeginRendering(command, &rendering);
         set_viewport(command, extent);
-        if (pass.background) upscale(command, static_cast<const VulkanRenderTarget&>(*pass.background));
-        for (const auto& range : pass.draws) draw_range(command, range, *vertices, frame.aspect_ratio);
+        for (const auto& draw : pass.draws)
+        {
+            vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, static_cast<const VulkanGraphicsPipeline&>(draw.pipeline).pipeline);
+            vkCmdPushConstants(command, bindings_.layout, constant_stages, 0, constant_bytes, draw.constants.data());
+            push_bindings(command, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.bindings, slot, pass.inputs);
+            vkCmdDraw(command, draw.vertex_count, draw.instance_count, 0, 0);
+        }
         vkCmdEndRendering(command);
         if (target)
         {

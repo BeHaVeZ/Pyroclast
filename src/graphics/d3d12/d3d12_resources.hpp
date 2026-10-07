@@ -24,7 +24,6 @@ public:
     using GraphicsPipeline::GraphicsPipeline;
 
     const D3D12Renderer* owner = nullptr;
-    Microsoft::WRL::ComPtr<ID3D12RootSignature> root_signature;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> state;
 };
 
@@ -36,7 +35,7 @@ public:
     const D3D12Renderer* owner = nullptr;
     Microsoft::WRL::ComPtr<ID3D12Resource> texture;
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> render_view;
-    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> shader_view;
+    UINT shader_view = 0;
     int width = 0;
     int height = 0;
 };
@@ -44,10 +43,7 @@ public:
 class D3D12ComputePipeline final : public ComputePipeline
 {
 public:
-    using ComputePipeline::ComputePipeline;
-
     const D3D12Renderer* owner = nullptr;
-    Microsoft::WRL::ComPtr<ID3D12RootSignature> root_signature;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> state;
 };
 }

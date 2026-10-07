@@ -22,12 +22,12 @@ public:
         auto pipeline = std::make_unique<pyroclast::GraphicsPipeline>(description.blend);
         if (description.blend == pyroclast::BlendMode::premultiplied_alpha) smoke = pipeline.get();
         if (description.blend == pyroclast::BlendMode::additive) emissive = pipeline.get();
+        if (description.vertex_shader == pyroclast::Shader::composite_vertex) composite = pipeline.get();
         return pipeline;
     }
-    std::unique_ptr<pyroclast::ComputePipeline> create_compute_pipeline(
-        pyroclast::Shader, const pyroclast::Buffer& buffer) override
+    std::unique_ptr<pyroclast::ComputePipeline> create_compute_pipeline(pyroclast::Shader) override
     {
-        return std::make_unique<pyroclast::ComputePipeline>(buffer);
+        return std::make_unique<pyroclast::ComputePipeline>();
     }
     std::unique_ptr<pyroclast::RenderTarget> create_render_target(const pyroclast::RenderTargetDescription& description) override
     {
@@ -42,7 +42,8 @@ public:
     std::string_view adapter_name() const override { return "test device"; }
     pyroclast::RenderResult render(const pyroclast::Frame& frame) override
     {
-        valid_frame = pyroclast::validate_frame(frame) == nullptr && frame.compute;
+        valid_frame = pyroclast::validate_frame(frame) == nullptr && frame.dispatches.size() == 1 &&
+            frame.constants.size() == sizeof(float);
         const auto draws = [](const pyroclast::Pass& pass, std::initializer_list<const pyroclast::GraphicsPipeline*> pipelines) {
             if (pass.draws.size() != pipelines.size()) return false;
             std::size_t index = 0;
@@ -50,10 +51,12 @@ public:
             return true;
         };
         const auto& passes = frame.passes;
-        one_pass = passes.size() == 1 && !passes[0].background && draws(passes[0], {smoke, emissive});
+        const auto no_inputs = [](const pyroclast::Pass& pass) { return !pass.inputs[0] && !pass.inputs[1]; };
+        one_pass = passes.size() == 1 && no_inputs(passes[0]) && draws(passes[0], {smoke, emissive});
         smoke_then_light_passes = passes.size() == 2 && target &&
-            passes[0].target == target && !passes[0].background && draws(passes[0], {smoke}) &&
-            !passes[1].target && passes[1].background == target && draws(passes[1], {emissive});
+            passes[0].target == target && no_inputs(passes[0]) && draws(passes[0], {smoke}) &&
+            !passes[1].target && passes[1].inputs[0] == target && !passes[1].inputs[1] &&
+            draws(passes[1], {composite, emissive}) && passes[1].draws[0].vertex_count == 3;
         return result;
     }
 
@@ -64,6 +67,7 @@ public:
     pyroclast::RenderTarget* target = nullptr;
     const pyroclast::GraphicsPipeline* smoke = nullptr;
     const pyroclast::GraphicsPipeline* emissive = nullptr;
+    const pyroclast::GraphicsPipeline* composite = nullptr;
     pyroclast::RenderResult result = pyroclast::RenderResult::submitted;
 };
 }
@@ -84,18 +88,22 @@ int main()
     };
     const auto layered = [](const TestDevice& owner, const ParticleSystem& particles, const ParticleWork& work, std::uint32_t explosions) {
         const auto emissive_count = explosions * ParticleSystem::emissive_particles;
+        const auto* pool = &particles.particles();
         return &work.smoke.pipeline == owner.smoke && &work.emissive.pipeline == owner.emissive &&
-            work.smoke.layer == particle_layout::particle_layer_smoke &&
-            work.emissive.layer == particle_layout::particle_layer_emissive &&
-            work.smoke.first_record == emissive_count && work.smoke.record_count == particles.capacity() - emissive_count &&
-            work.emissive.first_record == 0 && work.emissive.record_count == emissive_count;
+            work.smoke.constants[1] == particle_layout::particle_layer_smoke &&
+            work.emissive.constants[1] == particle_layout::particle_layer_emissive &&
+            work.smoke.constants[0] == emissive_count && work.smoke.instance_count == particles.capacity() - emissive_count &&
+            work.emissive.constants[0] == 0 && work.emissive.instance_count == emissive_count &&
+            work.smoke.vertex_count == 6 && work.emissive.vertex_count == 6 &&
+            work.smoke.bindings.read[0] == pool && work.emissive.bindings.read[0] == pool &&
+            work.dispatch.bindings.write[0] == pool && !work.dispatch.bindings.read[0];
     };
     constexpr auto group_size = particle_layout::simulation_group_size;
 
     check(system.initialize(device) && device.valid_upload, "bounded zero-initialized pool");
     const auto first = submit(system, 1.0 / 60);
     check(first.dispatch.constants[0] == ParticleSystem::minimum_capacity &&
-        first.dispatch.group_count == ParticleSystem::minimum_capacity / group_size &&
+        first.dispatch.groups[0] == ParticleSystem::minimum_capacity / group_size &&
         first.dispatch.constants[2] == ParticleSystem::explosion_particles, "default dispatch");
     check(first.steps == 1 && first.dispatch.constants[1] == 1, "fixed simulation step");
     check(layered(device, system, first, 1), "smoke and light cover the bounded pool as two contiguous layers");
@@ -147,7 +155,7 @@ int main()
         check(stress_device.valid_upload && stress.capacity() == expected_capacity &&
             stress.particles().size() == expected_capacity * particle_layout::particle_stride &&
             started.dispatch.constants[0] == expected_capacity && started.dispatch.constants[2] == burst &&
-            started.dispatch.group_count == (expected_capacity + group_size - 1) / group_size &&
+            started.dispatch.groups[0] == (expected_capacity + group_size - 1) / group_size &&
             layered(stress_device, stress, started, count),
             "bounded stress dispatch and layer-contiguous ranges");
         stress.reset();
@@ -189,8 +197,8 @@ int main()
     check(!rendered.has_pending_steps(), "submitted frame consumes its queued step");
 
     ExplosionRenderer half_resolution;
-    check(half_resolution.initialize(device, true) && device.target && device.target->description().divisor == 2,
-        "half resolution creates a half-size target");
+    check(half_resolution.initialize(device, true) && device.target && device.target->description().divisor == 2 && device.composite,
+        "half resolution creates a half-size target and its composite pipeline");
     check(half_resolution.render(device, rendered, 16.0f / 9.0f, 1.0 / 60) == RenderResult::submitted &&
         device.valid_frame && device.smoke_then_light_passes,
         "half resolution draws smoke into the target, then stretches it under full-resolution light");
