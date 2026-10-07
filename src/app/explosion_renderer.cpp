@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <numeric>
 
 namespace pyroclast
 {
@@ -44,6 +45,15 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     TestRange::light(constants);
     const auto origins = particles.effect_origins();
     std::copy(origins.begin(), origins.end(), constants.effect_origins.begin());
+    std::array<std::uint32_t, maximum_explosions> order{};
+    const auto effects = order.begin() + static_cast<std::ptrdiff_t>(origins.size());
+    std::iota(order.begin(), effects, 0u);
+    const auto distance = [&origins, &camera](std::uint32_t effect) {
+        const auto offset = float3{origins[effect].x, origins[effect].y, origins[effect].z} - camera.position;
+        return dot(offset, offset);
+    };
+    std::stable_sort(order.begin(), effects, [&distance](std::uint32_t a, std::uint32_t b) { return distance(a) > distance(b); });
+    for (std::size_t rank = 0; rank < order.size(); ++rank) constants.effect_order[rank / 4][rank % 4] = order[rank];
 
     const auto opaque = range.draws();
     const Draw present{*present_, {}, {}, 3, 1, "Copy scene"};
@@ -55,14 +65,13 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     RenderResult result;
     if (!smoke_target_)
     {
-        const Draw layered[] = {work.smoke, work.emissive};
-        const Pass passes[] = {scene, {scene_.get(), {}, layered, "Particles", true, depth_.get(), false}, to_backbuffer};
+        const Pass passes[] = {scene, {scene_.get(), {}, {&work.particles, 1}, "Particles", true, depth_.get(), false}, to_backbuffer};
         result = submit(passes);
     }
     else
     {
         const Draw composite{*composite_, {}, {}, 3, 1, "Smoke composite"};
-        const Draw light_over_smoke[] = {composite, work.emissive};
+        const Draw light_over_smoke[] = {composite, work.light};
         const Pass passes[] = {scene,
             {smoke_target_.get(), {}, {&work.offscreen_smoke, 1}, "Half-resolution smoke"},
             {scene_.get(), {smoke_target_.get(), nullptr}, light_over_smoke, "Composite and light", true, depth_.get(), false},

@@ -2,6 +2,7 @@
 #include "graphics/draw_validation.hpp"
 
 #include <cstdio>
+#include <cstring>
 
 namespace
 {
@@ -30,8 +31,7 @@ public:
         const bool particle = description.vertex_shader == Shader::particle_vertex;
         const bool composite_shader = description.vertex_shader == Shader::composite_vertex;
         if (particle && description.blend == BlendMode::premultiplied_alpha)
-            (description.depth == DepthMode::test ? smoke : offscreen_smoke) = pipeline.get();
-        if (particle && description.blend == BlendMode::additive) emissive = pipeline.get();
+            (description.depth == DepthMode::test ? particles : offscreen) = pipeline.get();
         if (composite_shader) (description.blend == BlendMode::opaque ? present : composite) = pipeline.get();
         if (description.vertex_shader == Shader::terrain_vertex) terrain = pipeline.get();
         if (description.vertex_shader == Shader::sky_vertex) sky = pipeline.get();
@@ -56,6 +56,7 @@ public:
     {
         valid_frame = pyroclast::validate_frame(frame) == nullptr && frame.dispatches.size() == 1 &&
             frame.constants.size() == sizeof(pyroclast::FrameConstants);
+        if (valid_frame) std::memcpy(&constants, frame.constants.data(), sizeof(constants));
         const auto draws = [](const pyroclast::Pass& pass, std::initializer_list<const pyroclast::GraphicsPipeline*> pipelines) {
             if (pass.draws.size() != pipelines.size()) return false;
             std::size_t index = 0;
@@ -77,10 +78,10 @@ public:
             return pass.target == scene && pass.load && pass.depth == depth && !pass.depth_write;
         };
         full_resolution_passes = passes.size() == 3 && range_pass(passes[0]) && over_scene(passes[1]) && inputs(passes[1], nullptr) &&
-            draws(passes[1], {smoke, emissive}) && present_pass(passes[2]);
+            draws(passes[1], {particles}) && present_pass(passes[2]);
         half_resolution_passes = passes.size() == 4 && range_pass(passes[0]) &&
-            passes[1].target == half_target && !passes[1].depth && inputs(passes[1], nullptr) && draws(passes[1], {offscreen_smoke}) &&
-            over_scene(passes[2]) && inputs(passes[2], half_target) && draws(passes[2], {composite, emissive}) &&
+            passes[1].target == half_target && !passes[1].depth && inputs(passes[1], nullptr) && draws(passes[1], {offscreen}) &&
+            over_scene(passes[2]) && inputs(passes[2], half_target) && draws(passes[2], {composite, particles}) &&
             passes[2].draws[0].vertex_count == 3 && present_pass(passes[3]);
         return result;
     }
@@ -93,9 +94,9 @@ public:
     pyroclast::RenderTarget* scene = nullptr;
     pyroclast::RenderTarget* depth = nullptr;
     pyroclast::RenderTarget* half_target = nullptr;
-    const pyroclast::GraphicsPipeline* smoke = nullptr;
-    const pyroclast::GraphicsPipeline* offscreen_smoke = nullptr;
-    const pyroclast::GraphicsPipeline* emissive = nullptr;
+    pyroclast::FrameConstants constants{};
+    const pyroclast::GraphicsPipeline* particles = nullptr;
+    const pyroclast::GraphicsPipeline* offscreen = nullptr;
     const pyroclast::GraphicsPipeline* present = nullptr;
     const pyroclast::GraphicsPipeline* composite = nullptr;
     const pyroclast::GraphicsPipeline* terrain = nullptr;
@@ -124,18 +125,15 @@ int main()
         return work;
     };
     const auto layered = [&range](const TestDevice& owner, const ParticleSystem& particles, const ParticleWork& work, std::uint32_t explosions) {
-        const auto emissive_count = explosions * ParticleSystem::emissive_particles;
         const auto* pool = &particles.particles();
-        return &work.smoke.pipeline == owner.smoke && &work.offscreen_smoke.pipeline == owner.offscreen_smoke &&
-            &work.emissive.pipeline == owner.emissive &&
-            work.smoke.constants == work.offscreen_smoke.constants && work.smoke.instance_count == work.offscreen_smoke.instance_count &&
-            work.smoke.constants[2] == particles.capacity() && work.emissive.constants[2] == particles.capacity() &&
-            work.smoke.constants[1] == particle_layout::particle_layer_smoke &&
-            work.emissive.constants[1] == particle_layout::particle_layer_emissive &&
-            work.smoke.constants[0] == emissive_count && work.smoke.instance_count == particles.capacity() - emissive_count &&
-            work.emissive.constants[0] == 0 && work.emissive.instance_count == emissive_count &&
-            work.smoke.vertex_count == 6 && work.emissive.vertex_count == 6 &&
-            work.smoke.bindings.read[0] == pool && work.emissive.bindings.read[0] == pool &&
+        const auto draws = [&](const Draw& draw, const GraphicsPipeline* pipeline, std::uint32_t first, std::uint32_t count) {
+            return &draw.pipeline == pipeline && draw.constants[0] == particles.capacity() && draw.constants[1] == explosions &&
+                draw.constants[2] == first && draw.constants[3] == count && draw.vertex_count == 6 &&
+                draw.instance_count == explosions * count && draw.bindings.read[0] == pool;
+        };
+        return draws(work.particles, owner.particles, 0, ParticleSystem::explosion_particles) &&
+            draws(work.offscreen_smoke, owner.offscreen, 0, ParticleSystem::smoke_particles) &&
+            draws(work.light, owner.particles, ParticleSystem::smoke_particles, ParticleSystem::emissive_particles) &&
             work.dispatch.bindings.write[0] == pool && work.dispatch.bindings.read[0] == &range.heights();
     };
     constexpr auto group_size = particle_layout::simulation_group_size;
@@ -149,7 +147,7 @@ int main()
         first.dispatch.groups[0] == ParticleSystem::minimum_capacity / group_size &&
         first.dispatch.constants[2] == ParticleSystem::explosion_particles, "default dispatch");
     check(first.steps == 1 && first.dispatch.constants[1] == 1, "fixed simulation step");
-    check(layered(device, system, first, 1), "smoke and light cover the bounded pool as two contiguous layers");
+    check(layered(device, system, first, 1), "particles are drawn effect by effect, smoke before light");
     system.toggle_pause();
     check(submit(system, 1.0 / 60).steps == 0, "pause does not advance simulation");
     system.step();
@@ -200,7 +198,7 @@ int main()
             started.dispatch.constants[0] == expected_capacity && started.dispatch.constants[2] == burst &&
             started.dispatch.groups[0] == (expected_capacity + group_size - 1) / group_size &&
             layered(stress_device, stress, started, count),
-            "bounded stress dispatch and layer-contiguous ranges");
+            "bounded stress dispatch and per-effect draws");
         const auto group = stress.effect_origins();
         float sum_x = 0;
         float sum_z = 0;
@@ -252,6 +250,36 @@ int main()
     device.result = RenderResult::submitted;
     full_resolution.render(device, rendered, range, camera, 1280, 720, 1.0 / 60);
     check(!rendered.has_pending_steps(), "submitted frame consumes its queued step");
+
+    TestDevice ordered_device;
+    TestRange ordered_range;
+    ParticleSystem group;
+    ExplosionRenderer ordered;
+    ordered_range.initialize(ordered_device);
+    group.initialize(ordered_device, ordered_range.terrain(), ordered_range.heights(), 100);
+    ordered.initialize(ordered_device, false);
+    auto oblique = camera;
+    oblique.position = {-70, 30, 20};
+    check(ordered.render(ordered_device, group, ordered_range, oblique, 1280, 720, 0) == RenderResult::submitted && ordered_device.valid_frame,
+        "a 100-effect frame is valid");
+    const auto group_origins = group.effect_origins();
+    const auto distance = [&](std::uint32_t effect) {
+        const auto offset = float3{group_origins[effect].x, group_origins[effect].y, group_origins[effect].z} - oblique.position;
+        return dot(offset, offset);
+    };
+    std::array<bool, maximum_explosions> seen{};
+    bool back_to_front = true;
+    for (std::uint32_t rank = 0; rank < maximum_explosions; ++rank)
+    {
+        const auto effect = ordered_device.constants.effect_order[rank / 4][rank % 4];
+        back_to_front = back_to_front && effect < maximum_explosions && !seen[effect];
+        if (!back_to_front) break;
+        seen[effect] = true;
+        if (rank > 0) back_to_front = distance(ordered_device.constants.effect_order[(rank - 1) / 4][(rank - 1) % 4]) >= distance(effect);
+    }
+    check(back_to_front, "the effect order is a permutation from the farthest to the nearest effect");
+    check(ordered_device.constants.effect_origins[99].x == group_origins[99].x && ordered_device.constants.effect_origins[99].z == group_origins[99].z,
+        "the frame constants carry the effect origins");
 
     ExplosionRenderer half_resolution;
     check(half_resolution.initialize(device, true) && device.half_target && device.half_target->description().divisor == 2 &&

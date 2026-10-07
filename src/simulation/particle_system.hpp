@@ -30,9 +30,9 @@ static_assert(sizeof(Particle) == particle_layout::particle_stride &&
 struct ParticleWork
 {
     Dispatch dispatch;
-    Draw smoke;
+    Draw particles;
     Draw offscreen_smoke;
-    Draw emissive;
+    Draw light;
     std::uint32_t steps;
 };
 
@@ -64,9 +64,8 @@ private:
     void reset_pool(std::uint32_t burst_count);
     std::unique_ptr<Buffer> particles_;
     const Buffer* heights_ = nullptr;
-    std::unique_ptr<GraphicsPipeline> emissive_graphics_;
-    std::unique_ptr<GraphicsPipeline> smoke_graphics_;
-    std::unique_ptr<GraphicsPipeline> offscreen_smoke_graphics_;
+    std::unique_ptr<GraphicsPipeline> graphics_;
+    std::unique_ptr<GraphicsPipeline> offscreen_graphics_;
     std::unique_ptr<ComputePipeline> compute_;
     std::array<float4, maximum_explosions> origins_{};
     std::uint32_t capacity_ = minimum_capacity;

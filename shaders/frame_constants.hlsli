@@ -17,5 +17,6 @@ struct FrameConstants
     float4 fog;
     float4 viewport;
     float4 effect_origins[maximum_explosions];
+    uint4 effect_order[maximum_explosions / 4];
 };
 ConstantBuffer<FrameConstants> frame : register(b1);

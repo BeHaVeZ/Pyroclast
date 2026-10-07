@@ -28,13 +28,11 @@ bool ParticleSystem::initialize(GraphicsDevice& device, const Terrain& terrain, 
     }
     const auto bytes = capacity_ * static_cast<std::uint32_t>(sizeof(Particle));
     particles_ = device.create_buffer(bytes, {});
-    emissive_graphics_ = device.create_graphics_pipeline(
-        {Shader::particle_vertex, Shader::particle_pixel, BlendMode::additive, DepthMode::test});
-    smoke_graphics_ = device.create_graphics_pipeline(
+    graphics_ = device.create_graphics_pipeline(
         {Shader::particle_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha, DepthMode::test});
-    offscreen_smoke_graphics_ = device.create_graphics_pipeline(
+    offscreen_graphics_ = device.create_graphics_pipeline(
         {Shader::particle_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha, DepthMode::none});
-    if (!particles_ || !emissive_graphics_ || !smoke_graphics_ || !offscreen_smoke_graphics_)
+    if (!particles_ || !graphics_ || !offscreen_graphics_)
     {
         return false;
     }
@@ -55,7 +53,7 @@ constexpr double fixed_step = 1.0 / 60.0;
 
 ParticleWork ParticleSystem::plan(double elapsed_seconds)
 {
-    assert(particles_ && heights_ && emissive_graphics_ && smoke_graphics_ && offscreen_smoke_graphics_ && compute_);
+    assert(particles_ && heights_ && graphics_ && offscreen_graphics_ && compute_);
     assert(std::isfinite(elapsed_seconds) && elapsed_seconds >= 0);
     if (!paused_)
     {
@@ -64,21 +62,21 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds)
     const auto steps = paused_ ? std::min(pending_steps_, 1u) :
         static_cast<std::uint32_t>(std::floor(accumulator_ / fixed_step));
     constexpr auto group_size = particle_layout::simulation_group_size;
-    const auto emissive_count = explosion_count_ * emissive_particles;
     Bindings simulation{};
     simulation.read[0] = heights_;
     simulation.write[0] = particles_.get();
     Bindings drawing{};
     drawing.read[0] = particles_.get();
     const DrawConstants parameters{capacity_, steps, burst_count_, reset_epoch_};
-    assert(emissive_count <= capacity_ && particles_->size() == capacity_ * particle_layout::particle_stride);
-    const DrawConstants smoke_range{emissive_count, particle_layout::particle_layer_smoke, capacity_};
-    const DrawConstants emissive_range{0, particle_layout::particle_layer_emissive, capacity_};
+    assert(explosion_count_ * explosion_particles <= capacity_ && particles_->size() == capacity_ * particle_layout::particle_stride);
+    const DrawConstants both_layers{capacity_, explosion_count_, 0, explosion_particles};
+    const DrawConstants smoke_layer{capacity_, explosion_count_, 0, smoke_particles};
+    const DrawConstants light_layer{capacity_, explosion_count_, smoke_particles, emissive_particles};
     return {
         {*compute_, simulation, parameters, {(capacity_ + group_size - 1) / group_size, 1, 1}, "Particle simulation"},
-        {*smoke_graphics_, drawing, smoke_range, 6, capacity_ - emissive_count, "Smoke"},
-        {*offscreen_smoke_graphics_, drawing, smoke_range, 6, capacity_ - emissive_count, "Smoke"},
-        {*emissive_graphics_, drawing, emissive_range, 6, emissive_count, "Light"},
+        {*graphics_, drawing, both_layers, 6, explosion_count_ * explosion_particles, "Particles"},
+        {*offscreen_graphics_, drawing, smoke_layer, 6, explosion_count_ * smoke_particles, "Smoke"},
+        {*graphics_, drawing, light_layer, 6, explosion_count_ * emissive_particles, "Light"},
         steps};
 }
 
