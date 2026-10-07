@@ -155,9 +155,9 @@ int main()
 
     ParticleSystem system;
     namespace layout = particle_layout;
-    constexpr std::uint32_t group_bytes = ParticleSystem::effect_slots * groups * 8;
+    constexpr std::uint32_t all_groups = ParticleSystem::effect_slots * groups;
     check(system.initialize(device, range.heights(), targets) && device.zeroed_sizes == std::vector<std::uint32_t>{
-        ParticleSystem::capacity * layout::particle_stride, group_bytes, group_bytes, ParticleSystem::capacity * 4, layout::arguments_bytes},
+        ParticleSystem::capacity * layout::particle_stride, all_groups * 8, all_groups * 4, ParticleSystem::capacity * 4, layout::arguments_bytes},
         "a zero-filled pool with one slab per effect slot, alive masks and offsets per group, an alive list and arguments");
     const auto idle = system.plan(1.0 / 60, 0);
     check(idle.effects == 0 && idle.steps == 1, "no active effect: nothing to simulate or draw");
@@ -171,7 +171,8 @@ int main()
     check(simulation.groups[0] == 3 * groups && three.steps == 2 && simulation.constants[0] == three.steps && simulation.constants[1] == 3 &&
         simulation.constants[2] == ParticleSystem::capacity && simulation.bindings.write[0] == pool && masks &&
         simulation.bindings.read[0] == &range.heights(), "the simulation covers the active slabs, 40 groups each, and writes their alive masks");
-    check(scan.groups[0] == 1 && scan.constants[0] == 3 * groups && scan.constants[1] == system.tick() && scan.bindings.read[0] == masks &&
+    check(scan.groups[0] == 1 && scan.constants[0] == 3 * groups && scan.constants[1] == system.tick() && scan.constants[2] == 0 &&
+        scan.bindings.read[0] == masks &&
         offsets && arguments && arguments->size() == layout::arguments_bytes,
         "one scan group turns the masks into offsets and arguments stamped with the tick after the steps");
     check(scatter.groups[0] == 3 * groups && scatter.constants[0] == 3 && scatter.constants[1] == 0 && scatter.bindings.read[0] == masks &&
@@ -188,7 +189,7 @@ int main()
     check(draws(three.particles, device.particles, 0, ParticleSystem::capacity, 1, layout::particle_arguments_offset),
         "every layer is drawn from the whole list");
     const auto layered = system.plan(0, 3, 2);
-    check(layered.dispatches[2].constants[1] == 1 &&
+    check(layered.dispatches[1].constants[2] == 1 && layered.dispatches[2].constants[1] == 1 &&
         draws(layered.offscreen_smoke, device.offscreen, 0, layout::light_list_first, 2, layout::smoke_arguments_offset) &&
         draws(layered.light, device.particles, layout::light_list_first, ParticleSystem::capacity - layout::light_list_first, 1,
             layout::light_arguments_offset), "offscreen smoke and light are drawn from a list per layer");

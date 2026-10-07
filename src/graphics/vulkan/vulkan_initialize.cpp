@@ -254,6 +254,13 @@ bool VulkanRenderer::create_device(std::string_view requested_adapter)
             skip("missing feature ", !vulkan13.dynamicRendering ? "dynamicRendering" : "synchronization2");
             continue;
         }
+        const auto& limits = properties.limits;
+        if (limits.maxComputeWorkGroupInvocations < 1024 || limits.maxComputeWorkGroupSize[0] < 1024 ||
+            limits.maxComputeSharedMemorySize < 32768)
+        {
+            skip("compute groups smaller than D3D12's (1,024 threads, 32 KB shared memory)");
+            continue;
+        }
         VkFormatProperties depth_properties{};
         vkGetPhysicalDeviceFormatProperties(adapter, depth_format, &depth_properties);
         constexpr VkFormatFeatureFlags depth_features = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;

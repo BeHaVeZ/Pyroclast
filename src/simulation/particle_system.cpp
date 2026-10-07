@@ -13,9 +13,9 @@ bool ParticleSystem::initialize(GraphicsDevice& device, const Buffer& heights, P
     heights_ = &heights;
     const auto bytes = capacity * static_cast<std::uint32_t>(sizeof(Particle));
     particles_ = device.create_buffer(bytes, {});
-    constexpr std::uint32_t group_bytes = effect_slots * groups_per_slab * 8;
-    alive_masks_ = device.create_buffer(group_bytes, {});
-    offsets_ = device.create_buffer(group_bytes, {});
+    constexpr std::uint32_t groups = effect_slots * groups_per_slab;
+    alive_masks_ = device.create_buffer(groups * 8, {});
+    offsets_ = device.create_buffer(groups * 4, {});
     alive_ = device.create_buffer(capacity * 4, {});
     arguments_ = device.create_buffer(particle_layout::arguments_bytes, {});
     graphics_ = device.create_graphics_pipeline(
@@ -69,7 +69,7 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_e
     const bool layered = offscreen_divisor != 0;
     constexpr auto light_first = particle_layout::light_list_first;
     const DrawConstants parameters{steps, active_effects, capacity, 0};
-    const DrawConstants scan_parameters{active_effects * groups_per_slab, tick_ + steps};
+    const DrawConstants scan_parameters{active_effects * groups_per_slab, tick_ + steps, layered ? 1u : 0u};
     const DrawConstants scatter_parameters{active_effects, layered ? 1u : 0u};
     const DrawConstants both_layers{capacity, 0, capacity, 1};
     const DrawConstants smoke_layer{capacity, 0, light_first, std::max(offscreen_divisor, 1u)};

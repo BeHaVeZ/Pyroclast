@@ -19,7 +19,7 @@ static const uint maximum_simulation_steps = 4;
 
 static const uint slab_groups = explosion_particles / simulation_group_size;
 static const uint smoke_groups = smoke_particles / simulation_group_size;
-static const uint scan_threads = 256;
+static const uint scan_threads = 512;
 static const uint particle_vertices = 6;
 static const uint particle_arguments_offset = 0;
 static const uint smoke_arguments_offset = 16;

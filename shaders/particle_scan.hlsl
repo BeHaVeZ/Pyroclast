@@ -4,6 +4,7 @@ struct Parameters
 {
     uint group_count;
     uint tick;
+    uint layered;
 };
 #ifdef __spirv__
 [[vk::push_constant]]
@@ -13,13 +14,9 @@ ByteAddressBuffer alive_masks : register(t0);
 RWByteAddressBuffer offsets : register(u0);
 RWByteAddressBuffer arguments : register(u1);
 
+static const uint maximum_groups = maximum_effects * slab_groups;
+groupshared uint group_values[maximum_groups];
 groupshared uint2 sums[scan_threads];
-
-uint alive_count(uint group)
-{
-    uint2 bits = alive_masks.Load2(group * 8);
-    return countbits(bits.x) + countbits(bits.y);
-}
 
 bool smoke_group(uint group)
 {
@@ -29,16 +26,21 @@ bool smoke_group(uint group)
 [numthreads(scan_threads, 1, 1)]
 void cs_main(uint thread : SV_GroupIndex)
 {
-    uint group_count = min(parameters.group_count, maximum_effects * slab_groups);
+    uint group_count = min(parameters.group_count, maximum_groups);
+    for (uint loaded = thread; loaded < group_count; loaded += scan_threads)
+    {
+        uint2 bits = alive_masks.Load2(loaded * 8);
+        group_values[loaded] = countbits(bits.x) + countbits(bits.y);
+    }
+    GroupMemoryBarrierWithGroupSync();
     uint run = (group_count + scan_threads - 1) / scan_threads;
     uint first = min(thread * run, group_count);
     uint last = min(first + run, group_count);
     uint2 total = uint2(0, 0);
     for (uint group = first; group < last; ++group)
     {
-        uint count = alive_count(group);
-        if (smoke_group(group)) total.x += count;
-        else total.y += count;
+        if (smoke_group(group)) total.x += group_values[group];
+        else total.y += group_values[group];
     }
     sums[thread] = total;
     GroupMemoryBarrierWithGroupSync();
@@ -52,11 +54,16 @@ void cs_main(uint thread : SV_GroupIndex)
     uint2 before = sums[thread] - total;
     for (uint group = first; group < last; ++group)
     {
-        uint count = alive_count(group);
+        uint count = group_values[group];
         bool smoke = smoke_group(group);
-        offsets.Store2(group * 8, uint2(before.x + before.y, smoke ? before.x : before.y));
+        group_values[group] = parameters.layered != 0 ? (smoke ? before.x : before.y) : before.x + before.y;
         if (smoke) before.x += count;
         else before.y += count;
+    }
+    GroupMemoryBarrierWithGroupSync();
+    for (uint stored = thread; stored < group_count; stored += scan_threads)
+    {
+        offsets.Store(stored * 4, group_values[stored]);
     }
     if (thread == scan_threads - 1)
     {
