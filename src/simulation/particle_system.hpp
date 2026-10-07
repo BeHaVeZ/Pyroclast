@@ -50,7 +50,7 @@ public:
     std::uint32_t explosion_count() const { return explosion_count_; }
     const Buffer& particles() const { return *particles_; }
     std::span<const float4> effect_origins() const { return {origins_.data(), explosion_count_}; }
-    ParticleWork plan(double elapsed_seconds);
+    ParticleWork plan(double elapsed_seconds, std::uint32_t offscreen_divisor = 1);
     void commit(const ParticleWork& work);
     void prepare_profile(std::uint32_t tick);
     bool has_pending_steps() const { return pending_steps_ != 0; }

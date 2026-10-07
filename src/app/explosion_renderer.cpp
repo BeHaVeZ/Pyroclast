@@ -29,7 +29,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     const Camera& camera, int width, int height, double elapsed_seconds, bool capture, ImDrawData* overlay)
 {
     assert(width > 0 && height > 0);
-    const auto work = particles.plan(elapsed_seconds);
+    const auto work = particles.plan(elapsed_seconds, smoke_target_ ? smoke_target_->description().divisor : 1);
 
     FrameConstants constants{};
     const float w = static_cast<float>(width);
@@ -65,7 +65,8 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     RenderResult result;
     if (!smoke_target_)
     {
-        const Pass passes[] = {scene, {scene_.get(), {}, {&work.particles, 1}, "Particles", true, depth_.get(), false}, to_backbuffer};
+        const Pass passes[] = {scene, {scene_.get(), {nullptr, depth_.get()}, {&work.particles, 1}, "Particles", true, depth_.get(), false},
+            to_backbuffer};
         result = submit(passes);
     }
     else
@@ -73,8 +74,8 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
         const Draw composite{*composite_, {}, {}, 3, 1, "Smoke composite"};
         const Draw light_over_smoke[] = {composite, work.light};
         const Pass passes[] = {scene,
-            {smoke_target_.get(), {}, {&work.offscreen_smoke, 1}, "Half-resolution smoke"},
-            {scene_.get(), {smoke_target_.get(), nullptr}, light_over_smoke, "Composite and light", true, depth_.get(), false},
+            {smoke_target_.get(), {nullptr, depth_.get()}, {&work.offscreen_smoke, 1}, "Half-resolution smoke"},
+            {scene_.get(), {smoke_target_.get(), depth_.get()}, light_over_smoke, "Composite and light", true, depth_.get(), false},
             to_backbuffer};
         result = submit(passes);
     }

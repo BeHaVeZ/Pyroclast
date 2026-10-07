@@ -77,11 +77,15 @@ public:
         const auto over_scene = [&](const pyroclast::Pass& pass) {
             return pass.target == scene && pass.load && pass.depth == depth && !pass.depth_write;
         };
-        full_resolution_passes = passes.size() == 3 && range_pass(passes[0]) && over_scene(passes[1]) && inputs(passes[1], nullptr) &&
+        const auto with_depth = [&](const pyroclast::Pass& pass, const pyroclast::RenderTarget* first) {
+            return pass.inputs[0] == first && pass.inputs[1] == depth;
+        };
+        full_resolution_passes = passes.size() == 3 && range_pass(passes[0]) && over_scene(passes[1]) && with_depth(passes[1], nullptr) &&
             draws(passes[1], {particles}) && present_pass(passes[2]);
         half_resolution_passes = passes.size() == 4 && range_pass(passes[0]) &&
-            passes[1].target == half_target && !passes[1].depth && inputs(passes[1], nullptr) && draws(passes[1], {offscreen}) &&
-            over_scene(passes[2]) && inputs(passes[2], half_target) && draws(passes[2], {composite, particles}) &&
+            passes[1].target == half_target && !passes[1].depth && with_depth(passes[1], nullptr) && draws(passes[1], {offscreen}) &&
+            passes[1].draws[0].constants[4] == 2 &&
+            over_scene(passes[2]) && with_depth(passes[2], half_target) && draws(passes[2], {composite, particles}) &&
             passes[2].draws[0].vertex_count == 3 && present_pass(passes[3]);
         return result;
     }
@@ -128,7 +132,7 @@ int main()
         const auto* pool = &particles.particles();
         const auto draws = [&](const Draw& draw, const GraphicsPipeline* pipeline, std::uint32_t first, std::uint32_t count) {
             return &draw.pipeline == pipeline && draw.constants[0] == particles.capacity() && draw.constants[1] == explosions &&
-                draw.constants[2] == first && draw.constants[3] == count && draw.vertex_count == 6 &&
+                draw.constants[2] == first && draw.constants[3] == count && draw.constants[4] == 1 && draw.vertex_count == 6 &&
                 draw.instance_count == explosions * count && draw.bindings.read[0] == pool;
         };
         return draws(work.particles, owner.particles, 0, ParticleSystem::explosion_particles) &&

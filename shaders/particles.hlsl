@@ -7,12 +7,14 @@ struct DrawConstants
     uint effect_count;
     uint local_first;
     uint local_count;
+    uint depth_scale;
 };
 #ifdef __spirv__
 [[vk::push_constant]]
 #endif
 ConstantBuffer<DrawConstants> draw : register(b0);
 ByteAddressBuffer particles : register(t0);
+Texture2D<float> scene_depth : register(t9);
 
 struct PixelInput
 {
@@ -20,6 +22,8 @@ struct PixelInput
     float2 uv : TEXCOORD0;
     float4 color : COLOR0;
     float occlusion : TEXCOORD1;
+    float distance : TEXCOORD2;
+    float softness : TEXCOORD3;
 };
 
 PixelInput vs_main(uint vertex : SV_VertexID, uint instance : SV_InstanceID)
@@ -54,6 +58,8 @@ PixelInput vs_main(uint vertex : SV_VertexID, uint instance : SV_InstanceID)
     else if (fireball) size *= 1 + 1.8 * progress;
     float3 world = position.xyz + (corner.x * frame.camera_right.xyz + corner.y * frame.camera_up.xyz) * size;
     output.position = mul(frame.view_projection, float4(world, 1));
+    output.distance = output.position.w;
+    output.softness = max(size, 0.1);
     output.uv = corner;
     float3 hot = float3(1.0, 0.8, 0.3);
     float3 cool = float3(0.7, 0.08, 0.01);
@@ -73,6 +79,9 @@ float4 ps_main(PixelInput input) : SV_Target
 {
     float radius = dot(input.uv, input.uv);
     if (radius >= 1) discard;
-    float alpha = (1.0 - radius) * input.color.a;
+    uint2 texel = min(uint2(input.position.xy * draw.depth_scale), uint2(frame.viewport.xy) - 1);
+    float scene = frame.camera_position.w / max(scene_depth.Load(int3(texel, 0)), 1e-9);
+    float fade = saturate((scene - input.distance) / input.softness);
+    float alpha = (1.0 - radius) * input.color.a * fade;
     return float4(input.color.rgb * alpha, alpha * input.occlusion);
 }

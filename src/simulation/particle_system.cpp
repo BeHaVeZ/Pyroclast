@@ -51,7 +51,7 @@ namespace
 constexpr double fixed_step = 1.0 / 60.0;
 }
 
-ParticleWork ParticleSystem::plan(double elapsed_seconds)
+ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t offscreen_divisor)
 {
     assert(particles_ && heights_ && graphics_ && offscreen_graphics_ && compute_);
     assert(std::isfinite(elapsed_seconds) && elapsed_seconds >= 0);
@@ -69,9 +69,10 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds)
     drawing.read[0] = particles_.get();
     const DrawConstants parameters{capacity_, steps, burst_count_, reset_epoch_};
     assert(explosion_count_ * explosion_particles <= capacity_ && particles_->size() == capacity_ * particle_layout::particle_stride);
-    const DrawConstants both_layers{capacity_, explosion_count_, 0, explosion_particles};
-    const DrawConstants smoke_layer{capacity_, explosion_count_, 0, smoke_particles};
-    const DrawConstants light_layer{capacity_, explosion_count_, smoke_particles, emissive_particles};
+    assert(offscreen_divisor >= 1);
+    const DrawConstants both_layers{capacity_, explosion_count_, 0, explosion_particles, 1};
+    const DrawConstants smoke_layer{capacity_, explosion_count_, 0, smoke_particles, offscreen_divisor};
+    const DrawConstants light_layer{capacity_, explosion_count_, smoke_particles, emissive_particles, 1};
     return {
         {*compute_, simulation, parameters, {(capacity_ + group_size - 1) / group_size, 1, 1}, "Particle simulation"},
         {*graphics_, drawing, both_layers, 6, explosion_count_ * explosion_particles, "Particles"},
