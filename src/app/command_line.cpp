@@ -4,6 +4,7 @@
 
 #include <charconv>
 #include <optional>
+#include <string>
 #include <string_view>
 
 namespace pyroclast
@@ -31,6 +32,15 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
     bool profile_specified = false;
     bool smoke_specified = false;
     bool capture_specified = false;
+    const auto set_once = [&result](bool& flag, const char* name) {
+        if (flag)
+        {
+            result.error = std::string("Specify ") + name + " only once.";
+            return false;
+        }
+        flag = true;
+        return true;
+    };
 
     for (const char* argument : arguments)
     {
@@ -41,15 +51,15 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
         }
         else if (option == "--gpu-timing")
         {
-            result.options.gpu_timing = true;
+            if (!set_once(result.options.gpu_timing, "--gpu-timing")) return result;
         }
         else if (option == "--gpu-regions")
         {
-            result.options.gpu_regions = true;
+            if (!set_once(result.options.gpu_regions, "--gpu-regions")) return result;
         }
         else if (option == "--gpu-validation")
         {
-            result.options.gpu_validation = true;
+            if (!set_once(result.options.gpu_validation, "--gpu-validation")) return result;
         }
         else if (option.starts_with("--adapter="))
         {

@@ -45,9 +45,9 @@ bool D3D12Renderer::create_device([[maybe_unused]] bool gpu_validation, std::str
             factory_->EnumAdapterByGpuPreference(index, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&adapter));
         if (result == DXGI_ERROR_NOT_FOUND)
         {
-            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, requested_adapter.empty() ?
-                "No hardware adapter supports D3D12 feature level 11.0." :
-                "No D3D12 feature level 11.0 adapter matches the requested name.");
+            if (requested_adapter.empty()) SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "No hardware adapter supports D3D12 feature level 11.0.");
+            else SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "No D3D12 feature level 11.0 adapter name contains '%.*s'.",
+                static_cast<int>(requested_adapter.size()), requested_adapter.data());
             return false;
         }
         if (!check(result, "Enumerate graphics adapter"))

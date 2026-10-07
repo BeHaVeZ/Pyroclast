@@ -196,6 +196,7 @@ bool VulkanRenderer::create_device(std::string_view requested_adapter)
     }
     int best_score = 0;
     bool best_present_fences = false;
+    bool name_matched = requested_adapter.empty();
     for (const auto adapter : adapters)
     {
         VkPhysicalDeviceProperties properties{};
@@ -208,6 +209,7 @@ bool VulkanRenderer::create_device(std::string_view requested_adapter)
             skip("name does not match --adapter");
             continue;
         }
+        name_matched = true;
         if (properties.apiVersion < VK_API_VERSION_1_3 || properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU)
         {
             skip(properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU ? "software device" : "Vulkan 1.3 is not supported");
@@ -237,11 +239,12 @@ bool VulkanRenderer::create_device(std::string_view requested_adapter)
             skip("missing ", missing);
             continue;
         }
+        const bool has_maintenance = vk_.surface_maintenance && has_extension(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
         VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT maintenance{};
         maintenance.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT;
         VkPhysicalDeviceVulkan13Features vulkan13{};
         vulkan13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-        vulkan13.pNext = &maintenance;
+        vulkan13.pNext = has_maintenance ? &maintenance : nullptr;
         VkPhysicalDeviceFeatures2 features{};
         features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
         features.pNext = &vulkan13;
@@ -251,8 +254,7 @@ bool VulkanRenderer::create_device(std::string_view requested_adapter)
             skip("missing feature ", !vulkan13.dynamicRendering ? "dynamicRendering" : "synchronization2");
             continue;
         }
-        const bool present_fences = vk_.surface_maintenance && has_extension(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME) &&
-            maintenance.swapchainMaintenance1;
+        const bool present_fences = has_maintenance && maintenance.swapchainMaintenance1;
         bool queue_found = false;
         vkGetPhysicalDeviceQueueFamilyProperties(adapter, &count, nullptr);
         std::vector<VkQueueFamilyProperties> families(count);
@@ -281,6 +283,12 @@ bool VulkanRenderer::create_device(std::string_view requested_adapter)
             break;
         }
         if (!queue_found) skip("no graphics and compute queue can present to the window");
+    }
+    if (!name_matched)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "No Vulkan adapter name contains '%.*s'.",
+            static_cast<int>(requested_adapter.size()), requested_adapter.data());
+        return false;
     }
     if (!vk_.physical)
     {

@@ -98,7 +98,7 @@ ImDrawData* DebugUi::build(const DiagnosticsSnapshot& snapshot, std::vector<UiCo
         }
         else
         {
-            ImGui::TextDisabled("GPU timestamps off (start with --gpu-timing)");
+            ImGui::TextDisabled("No GPU timestamp sample yet");
         }
 
         ImGui::SeparatorText("Simulation");

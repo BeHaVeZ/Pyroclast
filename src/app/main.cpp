@@ -76,7 +76,11 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, pyro
     const auto profile_tick = options.profile_tick;
     pyroclast::FrameBaseline baseline({pyroclast::renderer_name(options.renderer), std::string(renderer.adapter_name()),
         demo.explosion_count(), demo.capacity(), profile_tick, options.half_smoke});
-    if (ui) baseline.disable();
+    if (ui)
+    {
+        baseline.disable();
+        SDL_Log("Startup sample skipped while the overlay is on; launch with --ui=off to take it.");
+    }
     FrameHistory history;
     std::vector<pyroclast::UiCommand> commands;
     auto previous_time = SDL_GetPerformanceCounter();
