@@ -32,5 +32,6 @@ public:
 
 private:
     std::vector<float> heights_;
+    Box bounds_;
 };
 }

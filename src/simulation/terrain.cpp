@@ -34,6 +34,8 @@ Terrain::Terrain()
                 generated_height(column * spacing - half_extent, row * spacing - half_extent);
         }
     }
+    const auto [lowest, highest] = std::minmax_element(heights_.begin(), heights_.end());
+    bounds_ = {{-half_extent, *lowest, -half_extent}, {half_extent, *highest, half_extent}};
 }
 
 float Terrain::height(float x, float z) const
@@ -59,10 +61,16 @@ float3 Terrain::normal(float x, float z) const
 
 std::optional<float3> Terrain::raycast(const Ray& ray, float max_distance) const
 {
+    const auto inside = box_interval(ray, bounds_);
+    if (!inside || inside->entry > max_distance) return std::nullopt;
+    const float start = inside->entry;
+    const float end = std::min(inside->exit, max_distance);
     const float step = spacing * 0.5f;
-    float previous = 0;
-    for (float distance = 0; distance <= max_distance; distance += step)
+    const auto steps = static_cast<std::uint32_t>(std::ceil((end - start) / step));
+    float previous = start;
+    for (std::uint32_t index = 0; index <= steps; ++index)
     {
+        const float distance = std::min(start + static_cast<float>(index) * step, end);
         const float3 point = ray.origin + ray.direction * distance;
         if (point.y <= height(point.x, point.z))
         {

@@ -79,5 +79,15 @@ struct Box
     float3 maximum;
 };
 
-std::optional<float> intersect_box(const Ray& ray, const Box& box);
+struct Interval
+{
+    float entry = 0;
+    float exit = 0;
+};
+std::optional<Interval> box_interval(const Ray& ray, const Box& box);
+inline std::optional<float> intersect_box(const Ray& ray, const Box& box)
+{
+    const auto interval = box_interval(ray, box);
+    return interval ? std::optional<float>(interval->entry) : std::nullopt;
+}
 }

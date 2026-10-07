@@ -73,7 +73,7 @@ std::optional<float> intersect_plane(const Ray& ray, float3 normal, float offset
     return distance >= 0 ? std::optional<float>(distance) : std::nullopt;
 }
 
-std::optional<float> intersect_box(const Ray& ray, const Box& box)
+std::optional<Interval> box_interval(const Ray& ray, const Box& box)
 {
     float entry = 0;
     float exit = std::numeric_limits<float>::max();
@@ -95,6 +95,6 @@ std::optional<float> intersect_box(const Ray& ray, const Box& box)
         exit = std::min(exit, far_side);
         if (entry > exit) return std::nullopt;
     }
-    return entry;
+    return Interval{entry, exit};
 }
 }

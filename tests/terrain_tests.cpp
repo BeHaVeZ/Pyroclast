@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <limits>
 
 namespace
 {
@@ -57,6 +58,15 @@ int main()
     check(slanted && approx(slanted->y, 0, 0.01f) && approx(slanted->z, 20, 0.05f), "a slanted ray hits where it reaches the ground");
     check(!terrain.raycast({{0, 50, 0}, {0, 1, 0}}, 200), "a ray pointing up misses");
     check(!terrain.raycast({{0, 50, 0}, {0, -1, 0}}, 20), "a ray stops at its maximum distance");
+    const auto infinite = std::numeric_limits<float>::infinity();
+    check(!terrain.raycast({{0, 50, 0}, {0, 1, 0}}, infinite), "an infinite ray pointing up ends and misses");
+    const auto far_down = terrain.raycast({{0, 50, 0}, {0, -1, 0}}, infinite);
+    check(far_down && approx(far_down->y, 0, 0.01f), "an infinite ray pointing down hits");
+    check(!terrain.raycast({{0, 30, 0}, normalize(float3{1, -0.02f, 0})}, 2000), "a ray that clears the terrain misses beyond its edge");
+    check(!terrain.raycast({{400, 50, 0}, {0, -1, 0}}, infinite), "a ray outside the terrain misses");
+    const auto entering = terrain.raycast({{-400, 5, 0}, {1, 0, 0}}, infinite);
+    check(entering && entering->x > -Terrain::half_extent - 0.01f && approx(entering->y, 5),
+        "a ray from outside meets the first slope it reaches");
     const auto hill_direction = normalize(float3{1, -0.05f, 0.3f});
     const auto hill = terrain.raycast({{0, 15, 0}, hill_direction}, 400);
     check(hill && approx(hill->y, terrain.height(hill->x, hill->z), 0.01f), "a hit lies on the surface");
