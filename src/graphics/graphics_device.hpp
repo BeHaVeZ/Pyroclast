@@ -128,11 +128,21 @@ struct CapturedImage
 
 enum class RenderResult { failed, skipped, submitted };
 
+inline constexpr std::size_t max_gpu_regions = 16;
+
+struct GpuRegion
+{
+    const char* label = nullptr;
+    double milliseconds = 0;
+};
+
 struct GpuTimings
 {
-    double compute_ms;
-    double draw_ms;
-    std::uint64_t sample_id;
+    double compute_ms = 0;
+    double draw_ms = 0;
+    std::uint64_t sample_id = 0;
+    std::array<GpuRegion, max_gpu_regions> regions{};
+    std::uint32_t region_count = 0;
 };
 
 class GraphicsDevice
@@ -166,6 +176,7 @@ struct GraphicsDeviceOptions
     bool vsync = true;
     bool capture = false;
     bool gpu_validation = false;
+    bool gpu_regions = false;
     bool debug_overlay = false;
 };
 

@@ -244,7 +244,8 @@ RenderResult D3D12Renderer::render(const Frame& frame)
     command_list_->SetDescriptorHeaps(1, heaps);
     buffer_states_.reset();
 
-    const auto query = static_cast<UINT>(frame_index_) * 4;
+    slot.region_count = 0;
+    const auto query = static_cast<UINT>(frame_index_) * queries_per_slot;
     if (timestamps_) command_list_->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query);
     if (!frame.dispatches.empty())
     {
@@ -253,6 +254,7 @@ RenderResult D3D12Renderer::render(const Frame& frame)
     }
     for (const auto& dispatch : frame.dispatches)
     {
+        const auto region = begin_region(dispatch.label, "Dispatch");
         for (auto* buffer : dispatch.bindings.write) if (buffer) buffer_states_.require(native(buffer), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         for (const auto* buffer : dispatch.bindings.read) if (buffer) buffer_states_.require(native(buffer), buffer_read_state);
         buffer_states_.flush(command_list_.Get());
@@ -262,6 +264,7 @@ RenderResult D3D12Renderer::render(const Frame& frame)
         bind(dispatch.bindings, false);
         command_list_->Dispatch(dispatch.groups[0], dispatch.groups[1], dispatch.groups[2]);
         end_event(command_list_.Get(), dispatch.label);
+        end_region(region);
     }
     for (const auto& pass : frame.passes)
     {
@@ -285,6 +288,7 @@ RenderResult D3D12Renderer::render(const Frame& frame)
     for (const auto& pass : frame.passes)
     {
         const auto* target = static_cast<const D3D12RenderTarget*>(pass.target);
+        const auto region = begin_region(pass.label, "Pass");
         begin_event(command_list_.Get(), pass.label);
         const auto resting_state = target ? D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE : D3D12_RESOURCE_STATE_PRESENT;
         D3D12_RESOURCE_BARRIER barrier{};
@@ -305,11 +309,14 @@ RenderResult D3D12Renderer::render(const Frame& frame)
             command_list_->SetGraphicsRootDescriptorTable(root_textures + slot_index, shader_descriptor(input ? input->shader_view : 0));
         }
         for (const auto& item : pass.draws) draw(item);
+        end_region(region);
         if (!target && frame.overlay)
         {
+            const auto overlay_region = begin_region("Overlay", "Overlay");
             begin_event(command_list_.Get(), "Overlay");
             record_overlay(frame.overlay, view);
             end_event(command_list_.Get(), "Overlay");
+            end_region(overlay_region);
         }
 
         barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
@@ -320,7 +327,7 @@ RenderResult D3D12Renderer::render(const Frame& frame)
     if (timestamps_)
     {
         command_list_->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query + 3);
-        command_list_->ResolveQueryData(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query, 4,
+        command_list_->ResolveQueryData(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query, 4 + 2 * slot.region_count,
             timestamp_readback_.Get(), query * sizeof(std::uint64_t));
     }
     if (frame.capture && !record_capture(backbuffer))

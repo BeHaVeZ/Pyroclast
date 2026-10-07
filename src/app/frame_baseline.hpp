@@ -41,5 +41,8 @@ private:
     std::size_t gpu_count_ = 0;
     double compute_ms_ = 0.0;
     double draw_ms_ = 0.0;
+    std::array<double, max_gpu_regions> region_ms_{};
+    std::array<const char*, max_gpu_regions> region_labels_{};
+    std::uint32_t region_count_ = 0;
 };
 }

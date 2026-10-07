@@ -87,6 +87,14 @@ ImDrawData* DebugUi::build(const DiagnosticsSnapshot& snapshot, std::vector<UiCo
         {
             const auto& gpu = *snapshot.gpu;
             ImGui::Text("GPU compute interval %.3f ms, draw interval %.3f ms", gpu.compute_ms, gpu.draw_ms);
+            if (gpu.region_count != 0 && ImGui::BeginTable("regions", 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_RowBg))
+            {
+                for (std::uint32_t index = 0; index < gpu.region_count; ++index)
+                {
+                    row(gpu.regions[index].label, "%.3f ms", gpu.regions[index].milliseconds);
+                }
+                ImGui::EndTable();
+            }
         }
         else
         {

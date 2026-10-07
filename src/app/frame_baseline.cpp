@@ -35,6 +35,12 @@ void FrameBaseline::record(double milliseconds, std::optional<GpuTimings> gpu)
         ++gpu_count_;
         compute_ms_ += gpu->compute_ms;
         draw_ms_ += gpu->draw_ms;
+        region_count_ = gpu->region_count;
+        for (std::uint32_t region = 0; region < gpu->region_count; ++region)
+        {
+            region_labels_[region] = gpu->regions[region].label;
+            region_ms_[region] += gpu->regions[region].milliseconds;
+        }
     }
     samples_[count_++] = milliseconds;
     if (count_ != samples_.size()) return;
@@ -57,11 +63,25 @@ void FrameBaseline::record(double milliseconds, std::optional<GpuTimings> gpu)
             gpu_count_, compute, draw);
     }
 
+    std::string regions = "[";
+    for (std::uint32_t region = 0; region < region_count_ && gpu_count_ != 0; ++region)
+    {
+        const double average = region_ms_[region] / static_cast<double>(gpu_count_);
+        SDL_Log("GPU region %s: %.6f ms average.", region_labels_[region], average);
+        char entry[160];
+        std::snprintf(entry, sizeof(entry), "%s{\"label\":%s,\"ms\":%.6f}", region == 0 ? "" : ",",
+            json_string(region_labels_[region]).c_str(), average);
+        regions += entry;
+    }
+    regions += "]";
+
     const std::string tick = sample.profile_tick ? std::to_string(*sample.profile_tick) : "null";
-    char gpu_ms[128] = "null";
+    std::string gpu_ms = "null";
     if (gpu_count_ != 0)
     {
-        std::snprintf(gpu_ms, sizeof(gpu_ms), "{\"samples\":%zu,\"compute\":%.6f,\"draw\":%.6f}", gpu_count_, compute, draw);
+        char summary[128];
+        std::snprintf(summary, sizeof(summary), "{\"samples\":%zu,\"compute\":%.6f,\"draw\":%.6f,\"regions\":", gpu_count_, compute, draw);
+        gpu_ms = summary + regions + "}";
     }
     std::printf("{\"build\":\"%s\",\"renderer\":%s,\"gpu\":%s,\"explosions\":%u,\"capacity\":%u,\"profile_tick\":%s,"
         "\"vsync\":%s,\"smoke_resolution\":\"%s\",\"width\":1280,\"height\":720,\"warmup_frames\":%zu,\"samples\":%zu,"
@@ -69,7 +89,7 @@ void FrameBaseline::record(double milliseconds, std::optional<GpuTimings> gpu)
         build_configuration, json_string(sample.renderer).c_str(), json_string(sample.gpu).c_str(),
         sample.explosions, sample.capacity, tick.c_str(), sample.profile_tick ? "false" : "true",
         sample.half_resolution_smoke ? "half" : "full", warmup_frames, samples_.size(),
-        cpu.average, cpu.median, cpu.p99, gpu_ms);
+        cpu.average, cpu.median, cpu.p99, gpu_ms.c_str());
     std::fflush(stdout);
 }
 }

@@ -226,6 +226,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
         .vsync = !options.profile_tick.has_value(),
         .capture = !options.capture_path.empty(),
         .gpu_validation = options.gpu_validation,
+        .gpu_regions = options.gpu_regions,
         .debug_overlay = ui != nullptr};
     auto creation = pyroclast::create_graphics_device(options.renderer, window.get(), device_options);
     if (!creation.device)
@@ -267,7 +268,8 @@ int main(int argc, char** argv)
     if (result.options.show_help)
     {
         std::puts(
-            "Usage: Pyroclast.exe [--renderer=d3d12|vulkan] [--explosions=1|10|50|100] [--gpu-timing] [--profile-tick=N] [--smoke-resolution=full|half]\n"
+            "Usage: Pyroclast.exe [--renderer=d3d12|vulkan] [--explosions=1|10|50|100] [--gpu-timing] [--gpu-regions] [--profile-tick=N]\n"
+            "                     [--smoke-resolution=full|half] [--ui=on|off] [--gpu-validation]\n"
             "                     [--capture=FILE.png] [--exit-after=N] [--help]\n"
             "  --renderer=d3d12   Request Direct3D 12 (default).\n"
             "  --renderer=vulkan  Request Vulkan.\n"
@@ -275,6 +277,7 @@ int main(int argc, char** argv)
             "  --profile-tick=N   Freeze at tick 0-480; enable timestamps and disable VSync.\n"
             "  --smoke-resolution=full|half  Select smoke rendering resolution (default full).\n"
             "  --gpu-timing       Enable GPU timestamp measurements.\n"
+            "  --gpu-regions      Also time every dispatch, pass and the overlay (serializes Vulkan GPU work).\n"
             "  --capture=FILE.png Write the first frame drawn at the profile tick, then exit (requires --profile-tick).\n"
             "  --exit-after=N     Exit after N submitted frames.\n"
             "  --gpu-validation   Debug only: D3D12 GPU-based or Vulkan GPU-assisted validation (slow).\n"

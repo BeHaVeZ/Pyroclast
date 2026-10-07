@@ -284,24 +284,26 @@ RenderResult VulkanRenderer::render(const Frame& frame)
     const auto command = slot.command;
     constexpr VkShaderStageFlags constant_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
     constexpr std::uint32_t constant_bytes = binding_layout::draw_constant_words * sizeof(std::uint32_t);
-    const auto query = static_cast<std::uint32_t>(frame_index_) * 4;
+    slot.region_count = 0;
+    const auto query = static_cast<std::uint32_t>(frame_index_) * queries_per_slot;
     if (timing_.pool)
     {
-        vkCmdResetQueryPool(command, timing_.pool, query, 4);
+        vkCmdResetQueryPool(command, timing_.pool, query, queries_per_slot);
         vkCmdWriteTimestamp2(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, timing_.pool, query);
         memory_barrier(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_NONE);
     }
     constexpr VkPipelineStageFlags2 shader_stages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT |
         VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-    if (!frame.dispatches.empty())
-    {
-        memory_barrier(command, shader_stages, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
-    }
     for (std::size_t index = 0; index < frame.dispatches.size(); ++index)
     {
         const auto& dispatch = frame.dispatches[index];
-        if (index != 0)
+        const auto region = begin_region(command, dispatch.label, "Dispatch");
+        if (index == 0)
+        {
+            memory_barrier(command, shader_stages, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+        }
+        else
         {
             memory_barrier(command, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
@@ -312,6 +314,7 @@ RenderResult VulkanRenderer::render(const Frame& frame)
         push_bindings(command, VK_PIPELINE_BIND_POINT_COMPUTE, dispatch.bindings, slot, {});
         vkCmdDispatch(command, dispatch.groups[0], dispatch.groups[1], dispatch.groups[2]);
         end_label(command, dispatch.label);
+        end_region(command, region);
     }
     if (!frame.dispatches.empty())
     {
@@ -327,6 +330,7 @@ RenderResult VulkanRenderer::render(const Frame& frame)
     for (const auto& pass : frame.passes)
     {
         const auto* target = static_cast<const VulkanRenderTarget*>(pass.target);
+        const auto region = begin_region(command, pass.label, "Pass");
         begin_label(command, pass.label);
         if (target)
         {
@@ -369,6 +373,7 @@ RenderResult VulkanRenderer::render(const Frame& frame)
             end_label(command, draw.label);
         }
         vkCmdEndRendering(command);
+        end_region(command, region);
         if (target)
         {
             transition_image(command, target->image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -379,9 +384,11 @@ RenderResult VulkanRenderer::render(const Frame& frame)
     }
     if (frame.overlay)
     {
+        const auto region = begin_region(command, "Overlay", "Overlay");
         begin_label(command, "Overlay");
         record_overlay(command, frame.overlay, image.view, swapchain_.extent);
         end_label(command, "Overlay");
+        end_region(command, region);
     }
     if (!frame.capture)
     {

@@ -57,9 +57,14 @@ private:
         root_parameter_count = root_textures + binding_layout::texture_slots
     };
 
+    static constexpr UINT queries_per_slot = 4 + 2 * max_gpu_regions;
+    static constexpr UINT no_region = ~0u;
+
     struct FrameSlot
     {
         bool timestamps_pending = false;
+        std::array<const char*, max_gpu_regions> region_labels{};
+        std::uint32_t region_count = 0;
         Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
         std::uint64_t fence_value = 0;
         Microsoft::WRL::ComPtr<ID3D12Resource> constants;
@@ -90,6 +95,8 @@ private:
     void record_overlay(ImDrawData* overlay, D3D12_CPU_DESCRIPTOR_HANDLE backbuffer_view);
     bool create_device(bool gpu_validation);
     bool create_timestamps();
+    UINT begin_region(const char* label, const char* fallback);
+    void end_region(UINT region);
     bool read_timestamps(std::size_t frame);
     bool create_swapchain(SDL_Window* window);
     bool create_render_targets();
@@ -124,6 +131,7 @@ private:
     UINT shader_descriptor_stride_ = 0;
     UINT next_shader_descriptor_ = 1;
     BufferStates buffer_states_;
+    bool regions_ = false;
     Microsoft::WRL::ComPtr<ID3D12QueryHeap> timestamps_;
     Microsoft::WRL::ComPtr<ID3D12Resource> timestamp_readback_;
     const std::uint64_t* mapped_timestamps_ = nullptr;

@@ -37,6 +37,8 @@ struct VulkanFrameSlot
     ~VulkanFrameSlot();
     VkDevice device = VK_NULL_HANDLE;
     bool timestamps_pending = false;
+    std::array<const char*, max_gpu_regions> region_labels{};
+    std::uint32_t region_count = 0;
     VkCommandPool pool = VK_NULL_HANDLE;
     VkCommandBuffer command = VK_NULL_HANDLE;
     VkSemaphore acquired = VK_NULL_HANDLE;
@@ -149,6 +151,10 @@ private:
     bool create_bindings();
     bool create_shader_module(Shader shader, struct VulkanShaderModule& module);
     bool create_timestamps();
+    std::uint32_t begin_region(VkCommandBuffer command, const char* label, const char* fallback);
+    void end_region(VkCommandBuffer command, std::uint32_t region);
+    static constexpr std::uint32_t queries_per_slot = 4 + 2 * max_gpu_regions;
+    static constexpr std::uint32_t no_region = ~0u;
     bool read_timestamps(std::size_t frame);
     bool create_frames();
     bool create_swapchain();
@@ -192,6 +198,7 @@ private:
     bool vsync_ = true;
     bool capture_enabled_ = false;
     bool overlay_ = false;
+    bool regions_ = false;
     std::optional<GpuTimings> gpu_timings_;
     std::uint64_t timing_sample_id_ = 0;
 };
