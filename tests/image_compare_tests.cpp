@@ -27,6 +27,8 @@ int main()
     check(small.differing_pixels == 2 && small.beyond_one_level == 1 && small.max_level == 3, "counts and maximum");
     check(std::abs(small.mean_level - 4.0 / 300.0) < 1e-12, "mean over RGB channels");
     check(small.p99_level == 1, "p99 includes the second largest of 100 pixels");
+    check(small.histogram[0] == 98 && small.histogram[1] == 1 && small.histogram[3] == 1 && small.above(1) == 1 &&
+        small.above(2) == 1 && small.above(3) == 0, "pixels counted by their largest difference");
 
     second = first;
     second[0] = 250;

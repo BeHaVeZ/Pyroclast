@@ -56,14 +56,23 @@ PixelInput vs_main(uint vertex : SV_VertexID, uint instance : SV_InstanceID)
     float side = (face & 1) != 0 ? 1 : -1;
     float3 local = axis == 0 ? float3(side, u, w) : axis == 1 ? float3(u, side, w) : float3(u, w, side);
     float3 normal = axis == 0 ? float3(side, 0, 0) : axis == 1 ? float3(0, side, 0) : float3(0, 0, side);
-    float flat = 0.5 + 0.5 * particle_random(record, 11);
-    float thin = 0.35 + 0.5 * particle_random(record, 12);
+    uint id = frame.effect_states[slot].x * explosion_particles + record % explosion_particles;
+    float flat = 0.5 + 0.5 * particle_random(id, 11);
+    float thin = 0.35 + 0.5 * particle_random(id, 12);
     float3 half_extent = 0.5 * size * float3(1, flat, thin) * saturate((lifetime - position.w) * 2);
-    float3 tumble = particle_direction(record);
-    output.world = position.xyz + rotate(local * half_extent, tumble, spin);
+    float distance = max(mul(frame.view_projection, float4(position.xyz, 1)).w, frame.camera_position.w);
+    float pixels = 2 * half_extent.x * frame.projection.x / distance;
+    if (pixels > 0) half_extent *= max(1, 1.5 / pixels);
+    float axis_y = particle_random(id, 14) * 2 - 1;
+    float axis_angle = particle_random(id, 15) * 6.2831853;
+    float3 tumble = float3(sqrt(1 - axis_y * axis_y) * cos(axis_angle), axis_y, sqrt(1 - axis_y * axis_y) * sin(axis_angle));
+    float reach = abs(rotate(float3(half_extent.x, 0, 0), tumble, spin).y) + abs(rotate(float3(0, half_extent.y, 0), tumble, spin).y) +
+        abs(rotate(float3(0, 0, half_extent.z), tumble, spin).y);
+    float3 centre = position.xyz - float3(0, 0.5 * size - reach, 0);
+    output.world = centre + rotate(local * half_extent, tumble, spin);
     output.normal = rotate(normal, tumble, spin);
     output.position = mul(frame.view_projection, float4(output.world, 1));
-    output.albedo = layer.first_color * (0.75 + 0.5 * particle_random(record, 13));
+    output.albedo = layer.first_color * (0.75 + 0.5 * particle_random(id, 13));
     return output;
 }
 

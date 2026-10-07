@@ -212,13 +212,15 @@ public:
         const auto compute = statistics(compute_ms_);
         std::printf("{\"scenario\":\"%.*s\",\"valid\":%s,\"build\":\"%s\",\"renderer\":\"%s\",\"gpu\":%s,\"width\":%d,\"height\":%d,"
             "\"smoke_resolution\":\"%s\",\"scene_format\":\"%s\",\"view\":\"%s\",\"overlay\":%s,\"effect_lines\":%s,\"gpu_regions\":%s,"
-            "\"ticks\":%u,\"frames\":%zu,\"effects_started\":%llu,\"effects_dropped\":%llu,\"peak_effects\":%u,"
+            "\"preset\":\"%.*s\",\"layer_mask\":%u,\"ticks\":%u,\"frames\":%zu,\"effects_started\":%llu,\"effects_dropped\":%llu,\"peak_effects\":%u,"
             "\"particles\":{\"samples\":%zu,\"peak_alive\":%u,\"mean_alive\":%.3f,\"checksum\":\"%016llx\"},\"cpu_ms\":%s,"
             "\"gpu_ms\":{\"samples\":%zu,\"draw\":%s,\"compute\":%s}}\n",
             static_cast<int>(scenario_.name.size()), scenario_.name.data(), valid_ ? "true" : "false", pyroclast::build_configuration,
             pyroclast::renderer_name(options.renderer), gpu.c_str(), width, height, options.half_smoke ? "half" : "full",
             pyroclast::scene_format_name(options.scene_format), pyroclast::view_name(options.view), overlay ? "true" : "false",
-            sandbox.debug_lines ? "true" : "false", options.gpu_regions ? "true" : "false", scenario_.duration_ticks, frames,
+            sandbox.debug_lines ? "true" : "false", options.gpu_regions ? "true" : "false",
+            static_cast<int>(pyroclast::preset_name(options.preset).size()), pyroclast::preset_name(options.preset).data(),
+            sandbox.layer_mask, scenario_.duration_ticks, frames,
             static_cast<unsigned long long>(sandbox.effects.started()), static_cast<unsigned long long>(sandbox.effects.dropped()),
             peak_effects_, counter_samples_, peak_alive_, mean_alive, static_cast<unsigned long long>(checksum_), cpu.c_str(),
             draw_ms_.size(), draw.c_str(), compute.c_str());
@@ -280,7 +282,8 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
     const auto profile_tick = options.profile_tick;
     pyroclast::FrameBaseline baseline({pyroclast::renderer_name(options.renderer), std::string(renderer.adapter_name()),
         static_cast<std::uint32_t>(sandbox.group.size()), pyroclast::ParticleSystem::capacity, profile_tick, options.half_smoke,
-        pyroclast::view_name(options.view), pyroclast::scene_format_name(options.scene_format)});
+        pyroclast::view_name(options.view), pyroclast::scene_format_name(options.scene_format), std::string(pyroclast::preset_name(options.preset)),
+        options.layer_mask});
     if (scenario) baseline.disable();
     if (ui)
     {
@@ -597,7 +600,11 @@ int main(int argc, char** argv)
             "  --view=NAME        Start the camera at a named pose: overview (default), ground, hill or aerial.\n"
             "  --scene-format=F   Scene target: rgba16f (default), r11g11b10f, or rgba8 (a cost reference; bands).\n"
             "  --scenario=NAME    Scripted run, one tick per frame, then a JSON summary: single, grid-10, grid-50,\n"
-            "                     grid-100 or barrage (80 impacts walking across the range).\n"
+            "                     grid-100, barrage (80 impacts walking across the range) or presets (all seven in a row).\n"
+            "  --preset=NAME      small-impact, small-he (default), artillery-he, heavy, fuel-fire, dust-blast or stress-test,\n"
+            "                     for the startup group, profiles, scenarios and the first click.\n"
+            "  --disable=LIST     Hide layers or the lights: comma-separated dust, smoke, plume, flash, fireball, sparks,\n"
+            "                     debris, lights.\n"
             "  --effect-lines     Start with each effect's origin, normal and reach drawn as lines (L toggles).\n"
             "  --gpu-validation   Debug only: D3D12 GPU-based or Vulkan GPU-assisted validation (slow).\n"
             "  --ui=on|off        Dear ImGui overlay (default on, off with --profile-tick). F1 hides it.\n"

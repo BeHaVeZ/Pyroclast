@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <span>
 
@@ -13,6 +14,8 @@ struct ImageDifference
     unsigned max_level = 0;
     double mean_level = 0;
     unsigned p99_level = 0;
+    std::array<std::uint64_t, 256> histogram{};
+    std::uint64_t above(unsigned level) const;
 };
 
 // Both spans hold the same number of RGBA8 pixels.

@@ -13,7 +13,7 @@ ImageDifference compare_rgba(std::span<const std::uint8_t> first, std::span<cons
     ImageDifference result;
     result.pixels = first.size() / 4;
     if (result.pixels == 0) return result;
-    std::array<std::uint64_t, 256> histogram{};
+    auto& histogram = result.histogram;
     std::uint64_t total = 0;
     for (std::size_t offset = 0; offset < first.size(); offset += 4)
     {
@@ -42,5 +42,12 @@ ImageDifference compare_rgba(std::span<const std::uint8_t> first, std::span<cons
         }
     }
     return result;
+}
+
+std::uint64_t ImageDifference::above(unsigned level) const
+{
+    std::uint64_t count = 0;
+    for (unsigned index = level + 1; index < histogram.size(); ++index) count += histogram[index];
+    return count;
 }
 }

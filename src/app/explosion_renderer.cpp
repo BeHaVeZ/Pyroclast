@@ -68,7 +68,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     for (std::size_t rank = 0; rank < order.size(); ++rank) constants.effect_order[rank / 4][rank % 4] = order[rank];
     std::array<PointLight, particle_layout::maximum_lights> lights;
     const bool lit = ((options.layer_mask >> particle_layout::lights_mask_bit) & 1) != 0;
-    const auto light_count = lit ? select_lights(slots, active, particles.tick(), lights) : 0;
+    const auto light_count = lit ? select_lights(slots, active, particles.tick() + work.steps, lights) : 0;
     for (std::uint32_t index = 0; index < light_count; ++index)
     {
         const auto& light = lights[index];

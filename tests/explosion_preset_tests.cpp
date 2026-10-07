@@ -5,6 +5,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 
 int main()
 {
@@ -27,8 +28,17 @@ int main()
     check(names && !preset_from_name("nuke") && !preset_from_name(""), "every preset has a name --preset accepts");
 
     const auto classes = effect_classes();
-    check(classes.size() == effect_class_count && effect_class_index(ExplosionPreset::stress_test, SurfaceType::concrete) == effect_class_count - 1,
-        "one class per preset and surface, in index order");
+    bool ordered = classes.size() == effect_class_count && effect_class_index(ExplosionPreset::stress_test, SurfaceType::concrete) == effect_class_count - 1;
+    for (std::uint32_t preset = 0; preset < preset_count && ordered; ++preset)
+    {
+        for (std::uint32_t surface = 0; surface < surface_type_count && ordered; ++surface)
+        {
+            const auto expected = make_effect_class(static_cast<ExplosionPreset>(preset), static_cast<SurfaceType>(surface));
+            const auto index = effect_class_index(static_cast<ExplosionPreset>(preset), static_cast<SurfaceType>(surface));
+            ordered = std::memcmp(&classes[index], &expected, sizeof(EffectClass)) == 0;
+        }
+    }
+    check(ordered, "one class per preset and surface, in index order");
     bool layouts = true;
     for (std::uint32_t index = 0; index < classes.size() && layouts; ++index)
     {
@@ -81,7 +91,8 @@ int main()
         surfaces = surfaces && layer(concrete, EffectLayer::ground_dust).count < layer(dirt, EffectLayer::ground_dust).count &&
             layer(concrete, EffectLayer::sparks).count > layer(dirt, EffectLayer::sparks).count &&
             layer(concrete, EffectLayer::ground_dust).first_color.x > layer(dirt, EffectLayer::ground_dust).first_color.x &&
-            (dirt_debris.count == 0 || (concrete_debris.size_min < dirt_debris.size_min && concrete_debris.first_color.x > dirt_debris.first_color.x));
+            (dirt_debris.count == 0 || (concrete_debris.count > dirt_debris.count && concrete_debris.size_min < dirt_debris.size_min &&
+                concrete_debris.first_color.x > dirt_debris.first_color.x));
     }
     check(surfaces, "concrete: less and lighter dust, smaller lighter fragments, more sparks");
 

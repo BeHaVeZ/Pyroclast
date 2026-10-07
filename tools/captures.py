@@ -2,11 +2,16 @@
 
   python tools/captures.py capture --config Debug --out out/baselines/<label> [--views overview,ground,hill,aerial]
                                    [--presets small-he,artillery-he,...]
-  python tools/captures.py compare <dir-a> <dir-b> [--subset] [--max-level 0] [--min-within-one 1.0]
-  python tools/captures.py cross-api <dir> [--max-level 2] [--min-within-one 0.999]
+  python tools/captures.py compare <dir-a> <dir-b> [--subset] [--max-level 0] [--max-outliers 0] [--min-within-one 1.0]
+  python tools/captures.py cross-api <dir> [--max-level 2] [--max-outliers 9] [--min-within-one 0.999]
 
 compare requires both directories to hold the same captures unless --subset allows the first to
 hold only some of the second's. cross-api requires every capture to exist for both renderers.
+
+--max-outliers pixels may exceed --max-level. Cross-API it defaults to 9 (0.001% of 1280 x 720): an
+opaque edge, such as a small debris fragment's, can cover a pixel centre on one API and not the other
+(their vertex and viewport arithmetic differ in the last bits), and that one pixel differs by however
+much the fragment differs from what is behind it. Translucent particles have no such edges.
 
 Captures are written by Pyroclast itself (--capture) before Present, so they are authoritative
 GPU output; desktop screenshots are not used. In Debug the native validation summary must read
@@ -72,7 +77,8 @@ def compare_pairs(pairs, arguments):
     failures = 0
     for name, first, second in pairs:
         result = subprocess.run([str(tool), str(first), str(second), f"--max-level={arguments.max_level}",
-                                 f"--min-within-one={arguments.min_within_one}"], capture_output=True, text=True)
+                                 f"--max-outliers={arguments.max_outliers}", f"--min-within-one={arguments.min_within_one}"],
+                                capture_output=True, text=True)
         line = (result.stdout or result.stderr).strip()
         failures += result.returncode != 0
         print(f"{name}: {line}")
@@ -125,7 +131,7 @@ def main():
     run.add_argument("--ticks", default="0,60,180,480")
     run.add_argument("--views", default="overview", help="camera poses (--view) to capture from")
     run.add_argument("--presets", default="small-he", help="explosion presets (--preset) to capture")
-    for name, default_level, default_fraction in (("compare", 0, 1.0), ("cross-api", 2, 0.999)):
+    for name, default_level, default_outliers, default_fraction in (("compare", 0, 0, 1.0), ("cross-api", 2, 9, 0.999)):
         command = commands.add_parser(name)
         if name == "compare":
             command.add_argument("first")
@@ -134,6 +140,7 @@ def main():
         else:
             command.add_argument("directory")
         command.add_argument("--max-level", type=int, default=default_level)
+        command.add_argument("--max-outliers", type=int, default=default_outliers)
         command.add_argument("--min-within-one", type=float, default=default_fraction)
         command.add_argument("--image-diff", help="ImageDiff.exe path (default: Release build output)")
     arguments = parser.parse_args()

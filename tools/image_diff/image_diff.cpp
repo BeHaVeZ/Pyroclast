@@ -69,11 +69,13 @@ bool parse_option(std::string_view argument, std::string_view name, Number& valu
 int main(int argc, char** argv)
 {
     unsigned max_level = 0;
+    unsigned max_outliers = 0;
     double min_within_one = 1.0;
     if (argc < 3)
     {
-        std::fputs("Usage: ImageDiff a.png b.png [--max-level=N] [--min-within-one=F] [--difference=out.png]\n"
+        std::fputs("Usage: ImageDiff a.png b.png [--max-level=N] [--max-outliers=N] [--min-within-one=F] [--difference=out.png]\n"
             "  --max-level=N       Largest allowed channel difference (default 0).\n"
+            "  --max-outliers=N    Pixels allowed to exceed --max-level (default 0).\n"
             "  --min-within-one=F  Required fraction of pixels whose channels differ by at most one (default 1).\n"
             "  --difference=FILE   Write the per-channel difference, scaled by 40, as a PNG.\n", stderr);
         return 2;
@@ -87,7 +89,8 @@ int main(int argc, char** argv)
             difference_path = argument.substr(std::string_view("--difference=").size());
             continue;
         }
-        if (!parse_option(argument, "--max-level=", max_level) && !parse_option(argument, "--min-within-one=", min_within_one))
+        if (!parse_option(argument, "--max-level=", max_level) && !parse_option(argument, "--max-outliers=", max_outliers) &&
+            !parse_option(argument, "--min-within-one=", min_within_one))
         {
             std::fprintf(stderr, "Unknown or malformed option '%s'.\n", argv[index]);
             return 2;
@@ -108,9 +111,10 @@ int main(int argc, char** argv)
         return 2;
     }
     const double within_one = 1.0 - static_cast<double>(difference.beyond_one_level) / static_cast<double>(difference.pixels);
-    const bool pass = difference.max_level <= max_level && within_one >= min_within_one;
-    std::printf("%s size=%dx%d differing=%llu max=%u mean=%.4f p99=%u within_one=%.5f\n", pass ? "PASS" : "FAIL",
+    const auto outliers = difference.above(max_level);
+    const bool pass = outliers <= max_outliers && within_one >= min_within_one;
+    std::printf("%s size=%dx%d differing=%llu max=%u mean=%.4f p99=%u within_one=%.5f outliers=%llu\n", pass ? "PASS" : "FAIL",
         first->width, first->height, static_cast<unsigned long long>(difference.differing_pixels),
-        difference.max_level, difference.mean_level, difference.p99_level, within_one);
+        difference.max_level, difference.mean_level, difference.p99_level, within_one, static_cast<unsigned long long>(outliers));
     return pass ? 0 : 1;
 }

@@ -128,5 +128,28 @@ int main()
         peak = std::max(peak, slots.active().size());
     }
     check(peak == 32 && slots.dropped() == 0, "the barrage peaks at 32 effects and drops none");
+
+    const auto heavy_barrage = make_scenario("barrage", terrain, ExplosionPreset::heavy);
+    bool surfaced = heavy_barrage && heavy_barrage->events.size() == 80;
+    bool concrete = false;
+    for (std::size_t index = 0; surfaced && index < heavy_barrage->events.size(); ++index)
+    {
+        const auto& event = heavy_barrage->events[index].event;
+        surfaced = event.preset == ExplosionPreset::heavy && event.surface == Terrain::surface(event.position.x, event.position.z);
+        concrete = concrete || event.surface == SurfaceType::concrete;
+    }
+    check(surfaced && concrete && heavy_barrage->duration_ticks == 79 * 15 + effect_ticks(ExplosionPreset::heavy, SurfaceType::dirt),
+        "scripted events carry the preset and the surface under them; the barrage crosses the concrete pad");
+    const auto presets = make_scenario("presets", terrain, ExplosionPreset::heavy);
+    bool row = presets && presets->events.size() == preset_count && is_scenario_name("presets");
+    std::uint32_t longest = 0;
+    for (std::uint32_t index = 0; row && index < presets->events.size(); ++index)
+    {
+        const auto& scripted = presets->events[index];
+        row = scripted.tick == 0 && scripted.event.preset == static_cast<ExplosionPreset>(index) && scripted.event.surface == SurfaceType::dirt &&
+            (index == 0 || scripted.event.position.x > presets->events[index - 1].event.position.x);
+        longest = std::max(longest, effect_ticks(scripted.event.preset, SurfaceType::dirt));
+    }
+    check(row && presets->duration_ticks == longest, "presets: every preset once, west to east, on dirt, until the longest-lived ends");
     return failures == 0 ? 0 : 1;
 }

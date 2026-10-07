@@ -82,7 +82,6 @@ bool simulate(uint slot, uint local, uint record)
             if (layer.buoyancy > 0) velocity.y += layer.buoyancy * smoke_temperature(position.w) * dt;
             if (layer.gravity > 0) velocity.y -= layer.gravity * dt;
             position.xyz += velocity.xyz * dt;
-            if (debris) spin += spin_rate * dt * saturate(length(velocity.xyz) * 0.25);
             float terrain = terrain_height(heights, position.xz);
             float ground = terrain + (smoke ? size : debris ? size * 0.5 : 0);
             if (position.y < ground)
@@ -93,6 +92,7 @@ bool simulate(uint slot, uint local, uint record)
                 velocity.y = bounce ? -velocity.y * layer.restitution : max(velocity.y, 0);
                 if (debris && dot(velocity.xyz, velocity.xyz) < 0.5) velocity.xyz = 0;
             }
+            if (debris) spin += spin_rate * dt * saturate(length(velocity.xyz) * 0.25);
             if (layer.spawn == spawn_ring) position.y = min(position.y, terrain + size + 0.3 * position.w);
             if (position.w >= velocity.w) velocity.w = 0;
         }

@@ -34,6 +34,7 @@ Raw per-run values are written to the CSV after every case.
 import argparse
 import csv
 import json
+import re
 import shlex
 import statistics
 import subprocess
@@ -110,6 +111,11 @@ def main():
     parser.add_argument("--b-args", default="", help="extra flags for every B launch")
     arguments = parser.parse_args()
     extra = {"A": shlex.split(arguments.a_args), "B": shlex.split(arguments.b_args)}
+    pairs = []
+    for case in filter(None, arguments.cases.split(",")):
+        if not re.fullmatch(r"\d+@\d+", case):
+            parser.error(f"--cases: expected <explosions>@<tick>, got {case!r}")
+        pairs.append(tuple(int(part) for part in case.split("@")))
 
     output = Path(arguments.csv)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -119,8 +125,7 @@ def main():
         writer = csv.DictWriter(handle, fieldnames=FIELDS)
         writer.writeheader()
         matrix = MATRICES[arguments.matrix]
-        if arguments.cases:
-            pairs = [tuple(int(part) for part in case.split("@")) for case in arguments.cases.split(",")]
+        if pairs:
             matrix = [(renderer, smoke, explosions, tick) for renderer in ("d3d12", "vulkan")
                       for smoke in arguments.smoke.split(",") for explosions, tick in pairs]
         for case in [case for case in matrix if case[0] in renderers]:

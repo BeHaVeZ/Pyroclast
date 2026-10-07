@@ -97,11 +97,13 @@ void FrameBaseline::record(double milliseconds, std::optional<GpuTimings> gpu, s
         gpu_ms = summary + regions + "}";
     }
     std::printf("{\"build\":\"%s\",\"renderer\":%s,\"gpu\":%s,\"explosions\":%u,\"capacity\":%u,\"profile_tick\":%s,"
-        "\"vsync\":%s,\"smoke_resolution\":\"%s\",\"view\":%s,\"scene_format\":%s,\"width\":1280,\"height\":720,\"warmup_frames\":%zu,\"samples\":%zu,"
+        "\"vsync\":%s,\"smoke_resolution\":\"%s\",\"view\":%s,\"scene_format\":%s,\"preset\":%s,\"layer_mask\":%u,"
+        "\"width\":1280,\"height\":720,\"warmup_frames\":%zu,\"samples\":%zu,"
         "\"alive\":%s,\"cpu_ms\":{\"average\":%.4f,\"median\":%.4f,\"p99\":%.4f},\"gpu_ms\":%s}\n",
         build_configuration, json_string(sample.renderer).c_str(), json_string(sample.gpu).c_str(),
         sample.explosions, sample.capacity, tick.c_str(), sample.profile_tick ? "false" : "true",
-        sample.half_resolution_smoke ? "half" : "full", json_string(sample.view).c_str(), json_string(sample.scene_format).c_str(), warmup_frames, samples_.size(),
+        sample.half_resolution_smoke ? "half" : "full", json_string(sample.view).c_str(), json_string(sample.scene_format).c_str(),
+        json_string(sample.preset).c_str(), sample.layer_mask, warmup_frames, samples_.size(),
         alive_particles.c_str(), cpu.average, cpu.median, cpu.p99, gpu_ms.c_str());
     std::fflush(stdout);
 }

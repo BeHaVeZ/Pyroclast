@@ -117,7 +117,8 @@ ImDrawData* DebugUi::build(const DiagnosticsSnapshot& snapshot, std::vector<UiCo
             if (snapshot.particles)
             {
                 const auto& counts = *snapshot.particles;
-                row("Alive particles", "%u (smoke %u, light %u) at tick %u", counts.alive, counts.smoke, counts.light, counts.tick);
+                row("Alive particles", "%u (smoke %u, light %u, debris %u) at tick %u", counts.alive, counts.smoke, counts.light,
+                    counts.debris, counts.tick);
             }
             else row("Alive particles", "none");
             row("Smoke resolution", "%s", snapshot.half_resolution_smoke ? "half" : "full");
