@@ -1,6 +1,6 @@
-"""Interleaved A/B timing of two Pyroclast builds on fixed-state workloads.
+"""Interleaved A/B timing of two Pyroclast builds on fixed-state workloads or scripted scenarios.
 
-  python tools/ab.py --a <dir-with-Pyroclast.exe> --b <dir> [--runs 5] [--matrix default|quick]
+  python tools/ab.py --a <dir-with-Pyroclast.exe> --b <dir> [--runs 5] [--matrix default|quick|scenarios]
                      [--renderers d3d12,vulkan] [--csv out/ab/latest.csv]
                      [--a-args="--flag=value ..."] [--b-args="..."]
 
@@ -10,12 +10,15 @@ Write them with "=" (--a-args=--scene-format=rgba8): argparse reads a separate v
 with "--" as another option.
 
 Each case launches A and B alternately (ABAB, then BABA on odd runs) so slow drift between
-sessions affects both builds equally. Every launch uses --profile-tick, which freezes the
-simulation, disables VSync and samples 600 frames after 120 warmup frames; results come from the
-JSON record Pyroclast prints.
+sessions affects both builds equally. The default and quick matrices use --profile-tick, which
+freezes the simulation, disables VSync and samples 600 frames after 120 warmup frames. The
+scenarios matrix runs --scenario=single|grid-100|barrage (one tick per frame, VSync off) and
+compares the averages of the GPU draw and compute intervals over the whole run, the draw p95 and
+the CPU median; its CSV also records each run's live-particle checksum, which must be the same for
+every run of a build. Results come from the JSON record Pyroclast prints.
 
-A launch that exits 0 without a timing record had its sample invalidated (focus loss, resize) and
-is retried, with a message. A launch that crashes, exits nonzero or times out is a failure: it is
+A launch that exits 0 without a timing record, or a scenario whose summary is marked invalid, had
+its sample invalidated (focus loss, resize) and is retried, with a message. A launch that crashes, exits nonzero or times out is a failure: it is
 reported, recorded in the CSV, and makes the script exit 1, because an unstable build must not
 look performance-neutral.
 
@@ -39,26 +42,45 @@ MATRICES = {
                 for renderer in ("d3d12", "vulkan") for smoke in ("full", "half")
                 for explosions, tick in ((100, 180), (100, 470), (1, 180))],
     "quick": [(renderer, "full", 100, 180) for renderer in ("d3d12", "vulkan")],
+    "scenarios": [(renderer, smoke, scenario, None)
+                  for renderer in ("d3d12", "vulkan") for smoke in ("full", "half")
+                  for scenario in ("single", "grid-100", "barrage")],
 }
 METRICS = ("gpu_draw", "gpu_compute", "cpu_median")
-FIELDS = ["renderer", "smoke", "explosions", "tick", "run", "build", "args", "scene_format", "status", *METRICS]
+SCENARIO_METRICS = ("gpu_draw", "gpu_draw_p95", "gpu_compute", "cpu_median")
+FIELDS = ["renderer", "smoke", "explosions", "tick", "scenario", "run", "build", "args", "scene_format", "status",
+          *METRICS, "gpu_draw_p95", "checksum"]
+
+
+def is_scenario(case):
+    return case[3] is None
 
 
 def launch(directory, case, extra, attempts=3):
     """Returns ("ok", timings) or ("failed: reason", None)."""
-    renderer, smoke, explosions, tick = case
-    command = [str(Path(directory) / "Pyroclast.exe"), f"--renderer={renderer}", f"--smoke-resolution={smoke}",
-               f"--explosions={explosions}", f"--profile-tick={tick}", f"--exit-after={tick + 900}", *extra]
+    renderer, smoke, workload, tick = case
+    command = [str(Path(directory) / "Pyroclast.exe"), f"--renderer={renderer}", f"--smoke-resolution={smoke}"]
+    if is_scenario(case):
+        command += [f"--scenario={workload}", *extra]
+    else:
+        command += [f"--explosions={workload}", f"--profile-tick={tick}", f"--exit-after={tick + 900}", *extra]
     for attempt in range(attempts):
         try:
             result = subprocess.run(command, capture_output=True, text=True, timeout=600)
         except subprocess.TimeoutExpired:
             return "failed: timeout", None
-        if result.returncode != 0:
-            return f"failed: exit {result.returncode}", None
         records = [line for line in result.stdout.splitlines() if line.startswith("{")]
         record = json.loads(records[-1]) if records else {}
-        if record.get("gpu_ms"):
+        invalidated = is_scenario(case) and record.get("valid") is False
+        if result.returncode != 0 and not invalidated:
+            return f"failed: exit {result.returncode}", None
+        if is_scenario(case) and record.get("valid") and record.get("gpu_ms", {}).get("draw"):
+            gpu = record["gpu_ms"]
+            return "ok", {"gpu_draw": gpu["draw"]["average"], "gpu_draw_p95": gpu["draw"]["p95"],
+                          "gpu_compute": gpu["compute"]["average"], "cpu_median": record["cpu_ms"]["median"],
+                          "scene_format": record.get("scene_format", ""),
+                          "checksum": record.get("particles", {}).get("checksum", "")}
+        if not is_scenario(case) and record.get("gpu_ms"):
             return "ok", {"gpu_draw": record["gpu_ms"]["draw"], "gpu_compute": record["gpu_ms"]["compute"],
                           "cpu_median": record["cpu_ms"]["median"], "scene_format": record.get("scene_format", "")}
         print(f"  sample invalidated (attempt {attempt + 1}/{attempts}): {' '.join(command[1:])}", flush=True)
@@ -96,7 +118,8 @@ def main():
             for run in range(arguments.runs):
                 for build in ("A", "B") if run % 2 == 0 else ("B", "A"):
                     status, values = launch(arguments.a if build == "A" else arguments.b, case, extra[build])
-                    writer.writerow({"renderer": case[0], "smoke": case[1], "explosions": case[2], "tick": case[3],
+                    workload = {"scenario": case[2]} if is_scenario(case) else {"explosions": case[2], "tick": case[3]}
+                    writer.writerow({"renderer": case[0], "smoke": case[1], **workload,
                                      "run": run, "build": build, "args": " ".join(extra[build]), "status": status, **(values or {})})
                     if values:
                         samples[build].append(values)
@@ -104,11 +127,17 @@ def main():
                         failures += 1
                         print(f"  {build} {status}: {'/'.join(map(str, case))} run {run}", flush=True)
             handle.flush()
-            label = "{}/{}/{}@{}".format(*case)
+            label = "{}/{}/{}".format(*case[:3]) if is_scenario(case) else "{}/{}/{}@{}".format(*case)
             if not samples["A"] or not samples["B"]:
                 print(f"{label:24} no complete samples", flush=True)
                 continue
-            for metric in METRICS:
+            if is_scenario(case):
+                for build in ("A", "B"):
+                    checksums = {sample["checksum"] for sample in samples[build]}
+                    if len(checksums) > 1:
+                        failures += 1
+                        print(f"{label:24} {build} live-particle checksums differ between runs: {sorted(checksums)}", flush=True)
+            for metric in SCENARIO_METRICS if is_scenario(case) else METRICS:
                 first = summarize([sample[metric] for sample in samples["A"]])
                 second = summarize([sample[metric] for sample in samples["B"]])
                 difference = (second[0] - first[0]) / first[0] if first[0] else 0.0
