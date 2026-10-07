@@ -149,7 +149,9 @@ RenderResult VulkanRenderer::render(const Frame& frame)
             owned = owned && pipeline && pipeline->owner == this;
         }
     }
-    const char* error = owned ? validate_frame(frame) : "Frame uses resources from another graphics device.";
+    const char* error = !owned ? "Frame uses resources from another graphics device." :
+        frame.capture && !capture_enabled_ ? "Frame capture requires a device created with capture enabled." :
+        validate_frame(frame);
     if (error)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "%s", error);
@@ -291,6 +293,10 @@ RenderResult VulkanRenderer::render(const Frame& frame)
         }
     }
     if (timing_.pool) vkCmdWriteTimestamp(slot.command, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timing_.pool, query + 3);
+    if (frame.capture && !record_capture(slot.command, image.image))
+    {
+        return RenderResult::failed;
+    }
     if (!check(vkEndCommandBuffer(slot.command), "End Vulkan command buffer") ||
         !check(vkResetFences(vk_.device, 1, &slot.submitted), "Reset frame fence") ||
         !check(vkResetFences(vk_.device, 1, &image.presented), "Reset presentation fence"))

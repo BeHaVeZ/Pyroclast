@@ -34,6 +34,7 @@ public:
     RenderResult render(const Frame& frame) override;
     bool wait_idle() override;
     std::optional<GpuTimings> completed_gpu_timings() const override { return gpu_timings_; }
+    std::optional<CapturedImage> read_capture() override;
     std::string_view adapter_name() const override { return adapter_name_; }
 
 private:
@@ -48,6 +49,7 @@ private:
         std::uint64_t fence_value = 0;
     };
 
+    bool record_capture(ID3D12Resource* backbuffer);
     bool create_upscale_pipeline();
     bool size_target(class D3D12RenderTarget& target);
     void upscale(const class D3D12RenderTarget& source);
@@ -89,6 +91,11 @@ private:
     std::uint64_t timestamp_frequency_ = 0;
     std::optional<GpuTimings> gpu_timings_;
     std::uint64_t timing_sample_id_ = 0;
+    bool capture_enabled_ = false;
+    bool capture_pending_ = false;
+    Microsoft::WRL::ComPtr<ID3D12Resource> capture_readback_;
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT capture_footprint_{};
+    UINT64 capture_size_ = 0;
     std::uint64_t validation_warnings_ = 0;
     std::uint64_t validation_errors_ = 0;
 };

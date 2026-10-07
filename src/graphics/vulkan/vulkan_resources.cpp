@@ -7,6 +7,22 @@
 
 namespace pyroclast
 {
+std::optional<std::uint32_t> find_memory_type(VkPhysicalDevice physical, std::uint32_t type_bits,
+    VkMemoryPropertyFlags required, VkMemoryPropertyFlags preferred)
+{
+    VkPhysicalDeviceMemoryProperties properties{};
+    vkGetPhysicalDeviceMemoryProperties(physical, &properties);
+    std::optional<std::uint32_t> found;
+    for (std::uint32_t index = 0; index < properties.memoryTypeCount; ++index)
+    {
+        const auto flags = properties.memoryTypes[index].propertyFlags;
+        if (!(type_bits & (1u << index)) || (flags & required) != required) continue;
+        if ((flags & preferred) == preferred) return index;
+        if (!found) found = index;
+    }
+    return found;
+}
+
 VulkanVertexBuffer::~VulkanVertexBuffer()
 {
     vkDestroyBuffer(device, buffer, nullptr);

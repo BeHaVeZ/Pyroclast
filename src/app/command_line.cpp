@@ -3,10 +3,26 @@
 #include "../simulation/explosion_scenarios.hpp"
 
 #include <charconv>
+#include <optional>
 #include <string_view>
 
 namespace pyroclast
 {
+namespace
+{
+std::optional<std::uint32_t> parse_count(std::string_view value, std::uint32_t minimum, std::uint32_t maximum)
+{
+    std::uint32_t parsed_value = 0;
+    const auto parsed = std::from_chars(value.data(), value.data() + value.size(), parsed_value);
+    if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() ||
+        parsed_value < minimum || parsed_value > maximum)
+    {
+        return std::nullopt;
+    }
+    return parsed_value;
+}
+}
+
 CommandLineResult parse_command_line(std::span<const char* const> arguments)
 {
     CommandLineResult result;
@@ -14,6 +30,7 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
     bool explosions_specified = false;
     bool profile_specified = false;
     bool smoke_specified = false;
+    bool capture_specified = false;
 
     for (const char* argument : arguments)
     {
@@ -50,15 +67,41 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
                 return result;
             }
             profile_specified = true;
-            const auto value = option.substr(std::string_view("--profile-tick=").size());
-            std::uint32_t tick = 0;
-            const auto parsed = std::from_chars(value.data(), value.data() + value.size(), tick);
-            if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() || tick > 480)
+            result.options.profile_tick = parse_count(option.substr(std::string_view("--profile-tick=").size()), 0, 480);
+            if (!result.options.profile_tick)
             {
                 result.error = "Expected --profile-tick=N with an integer from 0 to 480.";
                 return result;
             }
-            result.options.profile_tick = tick;
+        }
+        else if (option.starts_with("--exit-after="))
+        {
+            if (result.options.exit_after)
+            {
+                result.error = "Specify --exit-after only once.";
+                return result;
+            }
+            result.options.exit_after = parse_count(option.substr(std::string_view("--exit-after=").size()), 1, 10'000'000);
+            if (!result.options.exit_after)
+            {
+                result.error = "Expected --exit-after=N with an integer from 1 to 10000000.";
+                return result;
+            }
+        }
+        else if (option.starts_with("--capture="))
+        {
+            if (capture_specified)
+            {
+                result.error = "Specify --capture only once.";
+                return result;
+            }
+            capture_specified = true;
+            result.options.capture_path = option.substr(std::string_view("--capture=").size());
+            if (result.options.capture_path.empty())
+            {
+                result.error = "Expected --capture=<file.png>.";
+                return result;
+            }
         }
         else if (option.starts_with("--explosions="))
         {
@@ -68,15 +111,13 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
                 return result;
             }
             explosions_specified = true;
-            const auto value = option.substr(std::string_view("--explosions=").size());
-            std::uint32_t explosions = 0;
-            const auto parsed = std::from_chars(value.data(), value.data() + value.size(), explosions);
-            if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() || !is_explosion_scenario(explosions))
+            const auto explosions = parse_count(option.substr(std::string_view("--explosions=").size()), 1, maximum_explosions);
+            if (!explosions || !is_explosion_scenario(*explosions))
             {
                 result.error = "Expected --explosions=1, 10, 50, or 100.";
                 return result;
             }
-            result.options.explosions = explosions;
+            result.options.explosions = *explosions;
         }
         else if (option.starts_with("--renderer="))
         {
@@ -111,6 +152,10 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
         }
     }
 
+    if (capture_specified && !result.options.profile_tick)
+    {
+        result.error = "--capture requires --profile-tick so the captured state is reproducible.";
+    }
     return result;
 }
 

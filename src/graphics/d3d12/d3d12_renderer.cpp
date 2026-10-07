@@ -146,7 +146,9 @@ RenderResult D3D12Renderer::render(const Frame& frame)
             owned = owned && pipeline && pipeline->owner == this;
         }
     }
-    const char* error = owned ? validate_frame(frame) : "Frame uses resources from another graphics device.";
+    const char* error = !owned ? "Frame uses resources from another graphics device." :
+        frame.capture && !capture_enabled_ ? "Frame capture requires a device created with capture enabled." :
+        validate_frame(frame);
     if (error)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "%s", error);
@@ -239,6 +241,10 @@ RenderResult D3D12Renderer::render(const Frame& frame)
         command_list_->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query + 3);
         command_list_->ResolveQueryData(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query, 4,
             timestamp_readback_.Get(), query * sizeof(std::uint64_t));
+    }
+    if (frame.capture && !record_capture(slot.backbuffer.Get()))
+    {
+        return RenderResult::failed;
     }
     if (!check(command_list_->Close(), "Close frame command list"))
     {

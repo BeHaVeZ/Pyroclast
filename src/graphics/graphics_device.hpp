@@ -12,6 +12,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 struct SDL_Window;
 
@@ -107,6 +108,14 @@ struct Frame
     std::array<float, 4> clear_color;
     const ComputeDispatch* compute = nullptr;
     float aspect_ratio = 1.0f;
+    bool capture = false;
+};
+
+struct CapturedImage
+{
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::vector<std::uint8_t> rgba;
 };
 
 enum class RenderResult { failed, skipped, submitted };
@@ -133,6 +142,8 @@ public:
     virtual RenderResult render(const Frame& frame) = 0;
     virtual bool wait_idle() = 0;
     virtual std::optional<GpuTimings> completed_gpu_timings() const = 0;
+    // Waits for the GPU and returns the image copied by the last submitted frame that requested a capture.
+    virtual std::optional<CapturedImage> read_capture() = 0;
     // The selected GPU as the driver reports it; valid for the device's lifetime.
     virtual std::string_view adapter_name() const = 0;
 };
@@ -147,6 +158,7 @@ struct GraphicsDeviceOptions
 {
     bool gpu_timing = false;
     bool vsync = true;
+    bool capture = false;
 };
 
 GraphicsDeviceCreation create_graphics_device(Renderer renderer, SDL_Window* window, const GraphicsDeviceOptions& options = {});

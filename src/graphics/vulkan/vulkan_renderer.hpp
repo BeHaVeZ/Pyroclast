@@ -5,6 +5,7 @@
 #include <vulkan/vulkan.h>
 
 #include <atomic>
+#include <optional>
 #include <vector>
 
 namespace pyroclast
@@ -90,6 +91,23 @@ struct VulkanTiming
     double period = 0;
 };
 
+struct VulkanCapture
+{
+    VulkanCapture() = default;
+    VulkanCapture(const VulkanCapture&) = delete;
+    VulkanCapture& operator=(const VulkanCapture&) = delete;
+    ~VulkanCapture();
+    VkDevice device = VK_NULL_HANDLE;
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    VkDeviceSize size = 0;
+    VkExtent2D extent{};
+    bool pending = false;
+};
+
+std::optional<std::uint32_t> find_memory_type(VkPhysicalDevice physical, std::uint32_t type_bits,
+    VkMemoryPropertyFlags required, VkMemoryPropertyFlags preferred);
+
 class VulkanRenderer final : public GraphicsDevice
 {
 public:
@@ -109,6 +127,7 @@ public:
     RenderResult render(const Frame& frame) override;
     bool wait_idle() override;
     std::optional<GpuTimings> completed_gpu_timings() const override { return gpu_timings_; }
+    std::optional<CapturedImage> read_capture() override;
     std::string_view adapter_name() const override { return adapter_name_; }
 
 private:
@@ -119,6 +138,8 @@ private:
     bool read_timestamps(std::size_t frame);
     bool create_frames();
     bool create_swapchain();
+    bool create_capture_buffer(VkDeviceSize size);
+    bool record_capture(VkCommandBuffer command, VkImage image);
     bool create_upscale_pipeline();
     bool size_target(class VulkanRenderTarget& target);
     void upscale(VkCommandBuffer command, const class VulkanRenderTarget& source);
@@ -135,6 +156,7 @@ private:
     VulkanTiming timing_;
     std::array<VulkanFrameSlot, 2> frames_{};
     VulkanSwapchain swapchain_;
+    VulkanCapture capture_;
     SDL_Window* window_ = nullptr;
     std::string adapter_name_;
     VkFormat format_ = VK_FORMAT_UNDEFINED;
@@ -143,6 +165,7 @@ private:
     int height_ = 0;
     bool rebuild_ = false;
     bool vsync_ = true;
+    bool capture_enabled_ = false;
     std::optional<GpuTimings> gpu_timings_;
     std::uint64_t timing_sample_id_ = 0;
 };

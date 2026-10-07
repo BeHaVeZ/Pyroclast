@@ -20,7 +20,8 @@ bool ExplosionRenderer::initialize(GraphicsDevice& device, bool half_resolution_
     return smoke_target_ != nullptr;
 }
 
-RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& particles, float aspect_ratio, double elapsed_seconds)
+RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& particles, float aspect_ratio, double elapsed_seconds,
+    bool capture)
 {
     assert(std::isfinite(aspect_ratio) && aspect_ratio > 0);
     const auto work = particles.plan(elapsed_seconds);
@@ -30,7 +31,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
         {smoke_target_.get(), nullptr, {&work.smoke, 1}},
         {nullptr, smoke_target_.get(), {&work.emissive, 1}}};
     const std::span<const Pass> passes = smoke_target_ ? std::span<const Pass>(half_resolution) : std::span<const Pass>(full_resolution);
-    const auto result = device.render({particles.particles(), passes, background_color, &work.dispatch, aspect_ratio});
+    const auto result = device.render({particles.particles(), passes, background_color, &work.dispatch, aspect_ratio, capture});
     if (result == RenderResult::submitted)
     {
         particles.commit(work);

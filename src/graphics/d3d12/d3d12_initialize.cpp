@@ -180,6 +180,7 @@ bool D3D12Renderer::create_render_targets()
 bool D3D12Renderer::initialize(SDL_Window* window, const GraphicsDeviceOptions& options)
 {
     vsync_ = options.vsync;
+    capture_enabled_ = options.capture;
     if (!create_device() || !create_swapchain(window) || !check_validation())
     {
         return false;

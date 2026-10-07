@@ -45,6 +45,7 @@ bool VulkanRenderer::validation_ok() const
 bool VulkanRenderer::initialize(SDL_Window* window, const GraphicsDeviceOptions& options)
 {
     vsync_ = options.vsync;
+    capture_enabled_ = options.capture;
     window_ = window;
     if (!create_instance())
     {
@@ -245,7 +246,7 @@ bool VulkanRenderer::create_device()
     {
         return false;
     }
-    passes_.device = timing_.device = swapchain_.device = vk_.device;
+    passes_.device = timing_.device = swapchain_.device = capture_.device = vk_.device;
     for (auto& slot : frames_) slot.device = vk_.device;
     vkGetDeviceQueue(vk_.device, vk_.queue_family, 0, &vk_.queue);
     VkPhysicalDeviceProperties properties{};

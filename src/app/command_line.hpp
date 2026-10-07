@@ -17,6 +17,8 @@ struct ApplicationOptions
     bool half_smoke = false;
     std::uint32_t explosions = 1;
     std::optional<std::uint32_t> profile_tick;
+    std::optional<std::uint32_t> exit_after;
+    std::string capture_path;
 };
 
 struct CommandLineResult

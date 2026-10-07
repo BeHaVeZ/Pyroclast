@@ -17,6 +17,8 @@ struct TestCase
     std::uint32_t explosions = 1;
     std::optional<std::uint32_t> profile_tick;
     bool half_smoke = false;
+    std::optional<std::uint32_t> exit_after;
+    std::string_view capture_path;
 };
 }
 
@@ -24,6 +26,16 @@ int main()
 {
     using enum pyroclast::Renderer;
     const TestCase cases[] = {
+        {"exit after", {"--exit-after=600"}, d3d12, false, {}, false, 1, {}, false, 600},
+        {"exit after zero", {"--exit-after=0"}, d3d12, false, "Expected --exit-after"},
+        {"exit after empty", {"--exit-after="}, d3d12, false, "Expected --exit-after"},
+        {"exit after too large", {"--exit-after=10000001"}, d3d12, false, "Expected --exit-after"},
+        {"exit after duplicate", {"--exit-after=1", "--exit-after=2"}, d3d12, false, "only once"},
+        {"capture at profile tick", {"--profile-tick=180", "--capture=out/a.png"}, d3d12, false, {}, false, 1, 180, false, {}, "out/a.png"},
+        {"capture before profile tick", {"--capture=a.png", "--profile-tick=0"}, d3d12, false, {}, false, 1, 0, false, {}, "a.png"},
+        {"capture without profile tick", {"--capture=a.png"}, d3d12, false, "--capture requires --profile-tick"},
+        {"capture empty path", {"--capture=", "--profile-tick=0"}, d3d12, false, "Expected --capture"},
+        {"capture duplicate", {"--profile-tick=0", "--capture=a.png", "--capture=b.png"}, d3d12, false, "only once"},
         {"half smoke", {"--smoke-resolution=half"}, d3d12, false, {}, false, 1, {}, true},
         {"full smoke", {"--smoke-resolution=full"}, d3d12, false, {}},
         {"invalid smoke resolution", {"--smoke-resolution=quarter"}, d3d12, false, "Expected --smoke-resolution"},
@@ -76,7 +88,8 @@ int main()
             {test.arguments.begin(), test.arguments.size()});
         const bool passed = test.error_fragment.empty()
             ? result.error.empty() && result.options.renderer == test.renderer &&
-                result.options.show_help == test.show_help && result.options.gpu_timing == test.gpu_timing && result.options.explosions == test.explosions && result.options.profile_tick == test.profile_tick && result.options.half_smoke == test.half_smoke
+                result.options.show_help == test.show_help && result.options.gpu_timing == test.gpu_timing && result.options.explosions == test.explosions && result.options.profile_tick == test.profile_tick && result.options.half_smoke == test.half_smoke &&
+                result.options.exit_after == test.exit_after && result.options.capture_path == test.capture_path
             : result.error.find(test.error_fragment) != std::string::npos;
         if (!passed)
         {

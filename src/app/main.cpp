@@ -10,6 +10,26 @@
 
 namespace
 {
+int save_capture(pyroclast::GraphicsDevice& device, const std::string& path)
+{
+    auto image = device.read_capture();
+    if (!image)
+    {
+        return 1;
+    }
+    SDL_Surface* surface = SDL_CreateSurfaceFrom(static_cast<int>(image->width), static_cast<int>(image->height),
+        SDL_PIXELFORMAT_RGBA32, image->rgba.data(), static_cast<int>(image->width * 4));
+    const bool saved = surface && SDL_SavePNG(surface, path.c_str());
+    SDL_DestroySurface(surface);
+    if (!saved)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Save capture '%s' failed: %s", path.c_str(), SDL_GetError());
+        return 1;
+    }
+    SDL_Log("Captured frame: %s (%ux%u).", path.c_str(), image->width, image->height);
+    return 0;
+}
+
 struct SdlCleanup final
 {
     SdlCleanup() = default;
@@ -30,6 +50,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, pyro
     pyroclast::FrameBaseline baseline({pyroclast::renderer_name(options.renderer), std::string(renderer.adapter_name()),
         demo.explosion_count(), demo.capacity(), profile_tick, options.half_smoke});
     auto previous_time = SDL_GetPerformanceCounter();
+    std::uint32_t submitted_frames = 0;
     while (true)
     {
         SDL_Event event{};
@@ -83,8 +104,9 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, pyro
                 const double elapsed = static_cast<double>(start - previous_time) /
                     static_cast<double>(SDL_GetPerformanceFrequency());
                 previous_time = start;
+                const bool capture = !options.capture_path.empty() && !demo.has_pending_steps();
                 const auto result = explosions.render(renderer, demo,
-                    static_cast<float>(width) / static_cast<float>(height), elapsed);
+                    static_cast<float>(width) / static_cast<float>(height), elapsed, capture);
                 if (result == pyroclast::RenderResult::failed) return 1;
                 if (result == pyroclast::RenderResult::submitted)
                 {
@@ -92,6 +114,12 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, pyro
                         static_cast<double>(SDL_GetPerformanceFrequency());
                     if (!profile_tick || !demo.has_pending_steps())
                         baseline.record(milliseconds, renderer.completed_gpu_timings());
+                    if (capture) return save_capture(renderer, options.capture_path);
+                    if (options.exit_after && ++submitted_frames >= *options.exit_after)
+                    {
+                        SDL_Log("Exiting after %u submitted frames.", submitted_frames);
+                        return 0;
+                    }
                 }
                 else baseline.disable();
                 continue;
@@ -132,7 +160,8 @@ int run_application(const pyroclast::ApplicationOptions& options)
 
     const pyroclast::GraphicsDeviceOptions device_options{
         .gpu_timing = options.gpu_timing || options.profile_tick.has_value(),
-        .vsync = !options.profile_tick.has_value()};
+        .vsync = !options.profile_tick.has_value(),
+        .capture = !options.capture_path.empty()};
     auto creation = pyroclast::create_graphics_device(options.renderer, window.get(), device_options);
     if (!creation.device)
     {
@@ -172,13 +201,16 @@ int main(int argc, char** argv)
     if (result.options.show_help)
     {
         std::puts(
-            "Usage: Pyroclast.exe [--renderer=d3d12|vulkan] [--explosions=1|10|50|100] [--gpu-timing] [--profile-tick=N] [--smoke-resolution=full|half] [--help]\n"
+            "Usage: Pyroclast.exe [--renderer=d3d12|vulkan] [--explosions=1|10|50|100] [--gpu-timing] [--profile-tick=N] [--smoke-resolution=full|half]\n"
+            "                     [--capture=FILE.png] [--exit-after=N] [--help]\n"
             "  --renderer=d3d12   Request Direct3D 12 (default).\n"
             "  --renderer=vulkan  Request Vulkan.\n"
             "  --explosions=N     Simultaneous explosion group (1, 10, 50, 100; default 1).\n"
             "  --profile-tick=N   Freeze at tick 0-480; enable timestamps and disable VSync.\n"
             "  --smoke-resolution=full|half  Select smoke rendering resolution (default full).\n"
             "  --gpu-timing       Enable GPU timestamp measurements.\n"
+            "  --capture=FILE.png Write the first frame drawn at the profile tick, then exit (requires --profile-tick).\n"
+            "  --exit-after=N     Exit after N submitted frames.\n"
             "  --help             Print usage and exit.\n"
             "Both renderers run the same GPU explosion effect.");
         return 0;

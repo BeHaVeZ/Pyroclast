@@ -43,6 +43,11 @@ bool VulkanRenderer::create_swapchain()
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Vulkan surface lacks a compatible UNORM color attachment format.");
         return false;
     }
+    if (capture_enabled_ && !(capabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Vulkan surface images cannot be copied for --capture.");
+        return false;
+    }
     format_ = chosen->format;
     if (!passes_.backbuffer)
     {
@@ -96,7 +101,7 @@ bool VulkanRenderer::create_swapchain()
     info.imageColorSpace = chosen->colorSpace;
     info.imageExtent = swapchain_.extent;
     info.imageArrayLayers = 1;
-    info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | (capture_enabled_ ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0);
     info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     info.preTransform = capabilities.currentTransform;
     for (const auto mode : {VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
