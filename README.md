@@ -56,6 +56,20 @@ It is not affiliated with Bohemia Interactive, Arma, Enfusion, or Blastcore, and
 
 ## Current milestone
 
+**M14a - Explosion events, effect slabs and scripted scenarios** (complete)
+
+- Explosions are events with their own place and time: a left click on the terrain places one (the
+  view ray is cast against the heightfield), Space restarts the startup group, and scripted scenarios
+  submit them by simulation tick. Each effect lives until its last particle has died, then frees its
+  slot.
+- The particle pool is 128 slabs, one per effect slot. Only active slabs are simulated and drawn; a
+  slot's generation tells the GPU to respawn its slab, and random streams come from the event's seed, so
+  an effect looks the same in any slab. Bursts open around the surface normal.
+- `--scenario=single|grid-10|grid-50|grid-100|barrage` runs a script at one tick per frame with VSync
+  off and prints one JSON summary (average, median, p95, p99 and max of CPU frame time and GPU draw and
+  compute intervals; effects started, dropped, peak); the barrage walks 80 impacts across the range,
+  four a second. `--effect-lines` (or L) draws each effect's origin, normal and nominal reach.
+
 **M13b - HDR and tonemapping** (complete)
 
 - The scene renders in linear HDR into a 16-bit float target; the last pass tonemaps it (exposure,
@@ -199,8 +213,12 @@ windows pause rendering and wait for events.
 
 Controls:
 
-- **Space:** trigger/restart the selected deterministic explosion group, including while paused.
-- **R:** clear the pool; retain the pause setting.
+- **Left click:** an explosion where the cursor points on the terrain (they add up; slots that are
+  still busy drop new events, counted in the overlay).
+- **Space:** trigger/restart the selected deterministic explosion group, including while paused; it
+  replaces every effect.
+- **R:** clear every effect; retain the pause setting.
+- **L:** show or hide each effect's origin, surface normal and nominal reach as lines.
 - **P:** pause or resume simulation.
 - **N:** advance one 1/60-second step while paused.
 - **W/A/S/D:** fly forward, left, back, right; **Q/E:** down, up; hold **Shift** to fly four times
@@ -223,22 +241,18 @@ Scaling scenarios are selected at startup with `--explosions=1`, `10`, `50`, or
 ```
 
 In your existing Visual Studio launch configuration, add `"--explosions=100"`
-to `args` beside the renderer argument. **F5** starts that scenario; **Space**
-restarts the group. Counts are fixed for the process lifetime. All effects spawn
-simultaneously on a deterministic grid, 9 m apart, on the flat range; smoke overlaps as it expands. A new
-trigger replaces the previous group. Startup logs report the selected count,
-pool capacity, burst count, and particle-state bytes.
+to `args` beside the renderer argument. **F5** starts that group; **Space**
+restarts it. All its effects start together on a deterministic grid, 9 m apart, on the flat range;
+smoke overlaps as it expands. The pool always holds 128 effect slots of 2,560 particles (327,680
+records, 15.7 MB); only the slots of active effects are simulated and drawn, each record by every
+dispatch and draw while its effect lives (there is no per-particle compaction yet).
 
-| Explosions | Pool slots | Active slots at spawn | Particle-state bytes |
-|---:|---:|---:|---:|
-| 1 | 8,192 | 2,560 | 393,216 |
-| 10 | 25,600 | 25,600 | 1,228,800 |
-| 50 | 128,000 | 128,000 | 6,144,000 |
-| 100 | 256,000 | 256,000 | 12,288,000 |
+Scripted scenarios replace the group and the interactive clock; each run ends with one JSON line:
 
-These are bounded baseline workloads. Dead slots still participate in the dispatch, and draws cover
-every record of the group; there is no compaction or adaptive budget yet. GPU timestamp results
-provide initial scaling evidence, with the limitations described below.
+```powershell
+.\out\build\windows-x64\Release\Pyroclast.exe --scenario=barrage
+.\out\build\windows-x64\Release\Pyroclast.exe --renderer=vulkan --scenario=grid-100 --smoke-resolution=half
+```
 
 Renderer selection happens at startup and defaults to D3D12:
 
@@ -308,8 +322,9 @@ code includes. `shaders/explosion.hlsli` shares layer classification and determi
 - DXIL and bytecode headers: `out/build/windows-x64/generated/shaders/<configuration>/d3d12/`
 - SPIR-V and bytecode headers: `out/build/windows-x64/generated/shaders/<configuration>/vulkan/`
 
-The particle workload is one dispatch of 64-thread groups over the pool and one draw of six vertices
-per particle of the group (two in half-resolution mode); the range adds the terrain (393,216 vertices),
+The particle workload is one dispatch of 64-thread groups over the active effects' slabs (40 groups per
+effect) and one draw of six vertices per particle of every active effect (two in half-resolution mode);
+with no active effect there is neither; the range adds the terrain (393,216 vertices),
 the sky and the tonemap pass to the backbuffer.
 Each backend orders the previous frame's draws before the next update, and compute
 writes before the vertex shaders read them. No per-frame descriptor allocation,
@@ -332,8 +347,9 @@ not part of the measurement, so the sample is skipped while it is on) and leave 
 window focused and untouched. After 120 warmup frames and 600 samples, the log
 reports average, median, and p99 CPU resize/render-call time, including GPU fence
 and VSync presentation waits. Controls, focus loss, minimize, resize, or skipped
-submissions discard this sample. The sample covers the evolving startup explosion and smoke; it finishes before
-all smoke dies on a 240 Hz display.
+submissions discard this sample. The sample covers the evolving startup explosion and smoke and stops,
+with a log line, if the group retires (8 s after it starts) before it completes, which happens on
+displays below about 90 Hz; use `--profile-tick` or `--scenario` there.
 This is a presentation-paced consistency baseline, not GPU simulation time or a
 throughput comparison; GPU profiling is required
 before optimization claims.
@@ -349,9 +365,11 @@ and do not replace a profiler or prove scaling performance.
 For a controlled fixed-state measurement, append `--profile-tick=180` (any integer
 0-480 is accepted). This automatically enables timestamps and requests VSync off.
 The application advances to that tick, freezes, then warms up 120 frames and
-samples 600. At tick 180 only smoke remains; tick 480 checks the drained pool.
-The measured compute dispatch has **zero integration steps** but still reads and
-writes all records. This isolates pool/rendering costs rather than force costs.
+samples 600. At tick 180 only smoke remains; at tick 470 nearly every particle is dead but the effects are
+still active, so their slabs are still dispatched and drawn; at tick 480 the group has retired and only the
+range and the tonemap remain. The measured compute dispatch has **zero integration steps** but still reads
+and writes every record of the active effects' slabs. This isolates pool/rendering costs rather than force
+costs.
 Input, focus loss, resize, minimize, or skipped frames invalidate the sample.
 D3D12 uses Present interval zero; Vulkan requires IMMEDIATE presentation and
 reports a useful error if unavailable. Desktop compositing can still affect CPU
