@@ -22,6 +22,17 @@ ID3D12Resource* native(const Buffer* buffer)
 {
     return buffer ? static_cast<const D3D12Buffer*>(buffer)->resource.Get() : nullptr;
 }
+
+// Metadata 1 marks an ANSI string, which PIX reads without WinPixEventRuntime.
+void begin_event(ID3D12GraphicsCommandList* commands, const char* label)
+{
+    if (label) commands->BeginEvent(1, label, static_cast<UINT>(std::strlen(label) + 1));
+}
+
+void end_event(ID3D12GraphicsCommandList* commands, const char* label)
+{
+    if (label) commands->EndEvent();
+}
 }
 
 bool D3D12Renderer::check(HRESULT result, const char* operation)
@@ -145,10 +156,12 @@ void D3D12Renderer::bind(const Bindings& bindings, bool graphics)
 
 void D3D12Renderer::draw(const Draw& draw)
 {
+    begin_event(command_list_.Get(), draw.label);
     command_list_->SetPipelineState(static_cast<const D3D12GraphicsPipeline&>(draw.pipeline).state.Get());
     command_list_->SetGraphicsRoot32BitConstants(root_draw_constants, binding_layout::draw_constant_words, draw.constants.data(), 0);
     bind(draw.bindings, true);
     command_list_->DrawInstanced(draw.vertex_count, draw.instance_count, 0, 0);
+    end_event(command_list_.Get(), draw.label);
 }
 
 bool D3D12Renderer::owns(const Frame& frame) const
@@ -242,10 +255,12 @@ RenderResult D3D12Renderer::render(const Frame& frame)
         for (auto* buffer : dispatch.bindings.write) if (buffer) buffer_states_.require(native(buffer), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         for (const auto* buffer : dispatch.bindings.read) if (buffer) buffer_states_.require(native(buffer), buffer_read_state);
         buffer_states_.flush(command_list_.Get());
+        begin_event(command_list_.Get(), dispatch.label);
         command_list_->SetPipelineState(static_cast<const D3D12ComputePipeline&>(dispatch.pipeline).state.Get());
         command_list_->SetComputeRoot32BitConstants(root_draw_constants, binding_layout::draw_constant_words, dispatch.constants.data(), 0);
         bind(dispatch.bindings, false);
         command_list_->Dispatch(dispatch.groups[0], dispatch.groups[1], dispatch.groups[2]);
+        end_event(command_list_.Get(), dispatch.label);
     }
     for (const auto& pass : frame.passes)
     {
@@ -269,6 +284,7 @@ RenderResult D3D12Renderer::render(const Frame& frame)
     for (const auto& pass : frame.passes)
     {
         const auto* target = static_cast<const D3D12RenderTarget*>(pass.target);
+        begin_event(command_list_.Get(), pass.label);
         const auto resting_state = target ? D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE : D3D12_RESOURCE_STATE_PRESENT;
         D3D12_RESOURCE_BARRIER barrier{};
         barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -292,6 +308,7 @@ RenderResult D3D12Renderer::render(const Frame& frame)
         barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
         barrier.Transition.StateAfter = resting_state;
         command_list_->ResourceBarrier(1, &barrier);
+        end_event(command_list_.Get(), pass.label);
     }
     if (timestamps_)
     {

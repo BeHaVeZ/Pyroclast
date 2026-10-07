@@ -79,6 +79,18 @@ bool VulkanRenderer::create_instance()
     std::vector<const char*> extensions(sdl_extensions, sdl_extensions + count);
     extensions.push_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
     extensions.push_back(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
+    if (!check(vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr), "Enumerate Vulkan instance extensions"))
+    {
+        return false;
+    }
+    std::vector<VkExtensionProperties> available_extensions(count);
+    if (!check(vkEnumerateInstanceExtensionProperties(nullptr, &count, available_extensions.data()), "Read Vulkan instance extensions"))
+    {
+        return false;
+    }
+    const bool debug_utils = std::any_of(available_extensions.begin(), available_extensions.end(),
+        [](const auto& extension) { return std::strcmp(extension.extensionName, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0; });
+    if (debug_utils) extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     std::vector<const char*> layers;
     VkDebugUtilsMessengerCreateInfoEXT debug{};
     debug.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
@@ -109,7 +121,11 @@ bool VulkanRenderer::create_instance()
         return false;
     }
     layers.push_back("VK_LAYER_KHRONOS_validation");
-    extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    if (!debug_utils)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Vulkan Debug requires VK_EXT_debug_utils for validation messages.");
+        return false;
+    }
     extensions.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
     const VkValidationFeatureEnableEXT enabled = VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT;
     VkValidationFeaturesEXT validation{};
@@ -131,6 +147,11 @@ bool VulkanRenderer::create_instance()
     if (!check(vkCreateInstance(&info, nullptr, &vk_.instance), "Create Vulkan 1.3 instance with surface maintenance support"))
     {
         return false;
+    }
+    if (debug_utils)
+    {
+        vk_.begin_label = reinterpret_cast<PFN_vkCmdBeginDebugUtilsLabelEXT>(vkGetInstanceProcAddr(vk_.instance, "vkCmdBeginDebugUtilsLabelEXT"));
+        vk_.end_label = reinterpret_cast<PFN_vkCmdEndDebugUtilsLabelEXT>(vkGetInstanceProcAddr(vk_.instance, "vkCmdEndDebugUtilsLabelEXT"));
     }
 #ifndef NDEBUG
     debug.pNext = nullptr;

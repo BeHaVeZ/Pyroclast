@@ -87,6 +87,7 @@ struct Dispatch
     Bindings bindings;
     DrawConstants constants{};
     std::array<std::uint32_t, 3> groups{1, 1, 1};
+    const char* label = nullptr;
 };
 
 struct Draw
@@ -96,6 +97,7 @@ struct Draw
     DrawConstants constants{};
     std::uint32_t vertex_count = 0;
     std::uint32_t instance_count = 1;
+    const char* label = nullptr;
 };
 
 struct Pass
@@ -103,6 +105,7 @@ struct Pass
     RenderTarget* target = nullptr;
     std::array<const RenderTarget*, binding_layout::texture_slots> inputs{};
     std::span<const Draw> draws;
+    const char* label = nullptr;
 };
 
 struct Frame

@@ -23,6 +23,8 @@ struct VulkanContext
     VkDevice device = VK_NULL_HANDLE;
     VkQueue queue = VK_NULL_HANDLE;
     std::uint32_t queue_family = 0;
+    PFN_vkCmdBeginDebugUtilsLabelEXT begin_label = nullptr;
+    PFN_vkCmdEndDebugUtilsLabelEXT end_label = nullptr;
     std::atomic_uint64_t validation_warnings{0};
     std::atomic_uint64_t validation_errors{0};
 };
@@ -157,6 +159,8 @@ private:
     void push_bindings(VkCommandBuffer command, VkPipelineBindPoint point, const Bindings& bindings,
         const VulkanFrameSlot& slot, std::span<const RenderTarget* const> inputs);
     void set_viewport(VkCommandBuffer command, VkExtent2D extent);
+    void begin_label(VkCommandBuffer command, const char* label) const;
+    void end_label(VkCommandBuffer command, const char* label) const;
     // Records commands into a one-off command buffer and waits for them; startup and resize only.
     template <typename Record> bool submit_immediately(const char* operation, Record&& record);
     bool allocate_buffer(VulkanBuffer& buffer, VkBufferUsageFlags usage,

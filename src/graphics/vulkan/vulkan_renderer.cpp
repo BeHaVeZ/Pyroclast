@@ -110,6 +110,20 @@ void VulkanRenderer::set_viewport(VkCommandBuffer command, VkExtent2D extent)
     vkCmdSetScissor(command, 0, 1, &scissor);
 }
 
+void VulkanRenderer::begin_label(VkCommandBuffer command, const char* label) const
+{
+    if (!label || !vk_.begin_label) return;
+    VkDebugUtilsLabelEXT info{};
+    info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
+    info.pLabelName = label;
+    vk_.begin_label(command, &info);
+}
+
+void VulkanRenderer::end_label(VkCommandBuffer command, const char* label) const
+{
+    if (label && vk_.end_label) vk_.end_label(command);
+}
+
 void transition_image(VkCommandBuffer command, VkImage image, VkImageLayout from, VkImageLayout to,
     VkPipelineStageFlags2 source_stage, VkAccessFlags2 source_access,
     VkPipelineStageFlags2 destination_stage, VkAccessFlags2 destination_access)
@@ -290,10 +304,12 @@ RenderResult VulkanRenderer::render(const Frame& frame)
             memory_barrier(command, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
         }
+        begin_label(command, dispatch.label);
         vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, static_cast<const VulkanComputePipeline&>(dispatch.pipeline).pipeline);
         vkCmdPushConstants(command, bindings_.layout, constant_stages, 0, constant_bytes, dispatch.constants.data());
         push_bindings(command, VK_PIPELINE_BIND_POINT_COMPUTE, dispatch.bindings, slot, {});
         vkCmdDispatch(command, dispatch.groups[0], dispatch.groups[1], dispatch.groups[2]);
+        end_label(command, dispatch.label);
     }
     if (!frame.dispatches.empty())
     {
@@ -309,6 +325,7 @@ RenderResult VulkanRenderer::render(const Frame& frame)
     for (const auto& pass : frame.passes)
     {
         const auto* target = static_cast<const VulkanRenderTarget*>(pass.target);
+        begin_label(command, pass.label);
         if (target)
         {
             transition_image(command, target->image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
@@ -342,10 +359,12 @@ RenderResult VulkanRenderer::render(const Frame& frame)
         set_viewport(command, extent);
         for (const auto& draw : pass.draws)
         {
+            begin_label(command, draw.label);
             vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, static_cast<const VulkanGraphicsPipeline&>(draw.pipeline).pipeline);
             vkCmdPushConstants(command, bindings_.layout, constant_stages, 0, constant_bytes, draw.constants.data());
             push_bindings(command, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.bindings, slot, pass.inputs);
             vkCmdDraw(command, draw.vertex_count, draw.instance_count, 0, 0);
+            end_label(command, draw.label);
         }
         vkCmdEndRendering(command);
         if (target)
@@ -354,6 +373,7 @@ RenderResult VulkanRenderer::render(const Frame& frame)
                 VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
                 VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
         }
+        end_label(command, pass.label);
     }
     if (!frame.capture)
     {

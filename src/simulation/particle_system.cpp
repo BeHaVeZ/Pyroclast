@@ -61,9 +61,9 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds)
     const DrawConstants smoke_range{emissive_count, particle_layout::particle_layer_smoke};
     const DrawConstants emissive_range{0, particle_layout::particle_layer_emissive};
     return {
-        {*compute_, simulation, parameters, {(capacity_ + group_size - 1) / group_size, 1, 1}},
-        {*smoke_graphics_, drawing, smoke_range, 6, capacity_ - emissive_count},
-        {*graphics_, drawing, emissive_range, 6, emissive_count},
+        {*compute_, simulation, parameters, {(capacity_ + group_size - 1) / group_size, 1, 1}, "Particle simulation"},
+        {*smoke_graphics_, drawing, smoke_range, 6, capacity_ - emissive_count, "Smoke"},
+        {*graphics_, drawing, emissive_range, 6, emissive_count, "Light"},
         steps};
 }
 
