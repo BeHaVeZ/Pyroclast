@@ -134,7 +134,9 @@ void VulkanRenderer::push_bindings(VkCommandBuffer command, VkPipelineBindPoint 
     for (std::uint32_t index = 0; index < inputs.size(); ++index)
     {
         if (!inputs[index]) continue;
-        images[index] = {VK_NULL_HANDLE, static_cast<const VulkanRenderTarget*>(inputs[index])->view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+        const auto* input = static_cast<const VulkanRenderTarget*>(inputs[index]);
+        images[index] = {VK_NULL_HANDLE, input->view, input->description().format == TargetFormat::depth ?
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
         auto& write = writes[count++];
         write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         write.dstBinding = binding_layout::texture_binding + index;

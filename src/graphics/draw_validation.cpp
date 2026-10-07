@@ -43,16 +43,55 @@ const char* validate_frame(const Frame& frame)
         {
             return "The last pass, and only the last, must draw to the backbuffer.";
         }
-        const auto earlier = frame.passes.first(index);
-        if (std::any_of(earlier.begin(), earlier.end(), [&pass](const Pass& other) { return other.target == pass.target; }))
+        if (pass.target && pass.target->description().format != TargetFormat::color)
         {
-            return "A render target is drawn by more than one pass.";
+            return "A pass's colour target must have the colour format.";
+        }
+        const auto earlier = frame.passes.first(index);
+        const auto drawn_earlier = [&earlier](const RenderTarget* target) {
+            return std::any_of(earlier.begin(), earlier.end(), [target](const Pass& other) { return other.target == target; });
+        };
+        const auto depth_written_earlier = [&earlier](const RenderTarget* target) {
+            return std::any_of(earlier.begin(), earlier.end(), [target](const Pass& other) { return other.depth == target && other.depth_write; });
+        };
+        if (pass.load && (!pass.target || !drawn_earlier(pass.target)))
+        {
+            return "A pass can load only a target drawn earlier in the frame.";
+        }
+        if (!pass.load && pass.target && drawn_earlier(pass.target))
+        {
+            return "A render target is drawn by more than one pass without loading it.";
+        }
+        if (pass.depth)
+        {
+            if (pass.depth->description().format != TargetFormat::depth)
+            {
+                return "A pass's depth target must have the depth format.";
+            }
+            if (pass.depth->description().divisor != (pass.target ? pass.target->description().divisor : 1))
+            {
+                return "A depth target must be the size of its pass's colour target.";
+            }
+            if (pass.depth_write == depth_written_earlier(pass.depth))
+            {
+                return pass.depth_write ? "A depth target is cleared and written by more than one pass." :
+                    "A read-only depth target must be written by an earlier pass of the frame.";
+            }
+        }
+        else if (pass.depth_write)
+        {
+            return "A writable depth pass needs a depth target.";
         }
         for (const auto* input : pass.inputs)
         {
-            if (input && std::none_of(earlier.begin(), earlier.end(), [input](const Pass& other) { return other.target == input; }))
+            if (!input) continue;
+            if (!drawn_earlier(input) && !depth_written_earlier(input))
             {
                 return "A pass input must be a target drawn earlier in the frame.";
+            }
+            if (input == pass.target || (input == pass.depth && pass.depth_write))
+            {
+                return "A pass cannot sample a target it writes.";
             }
         }
         for (const auto& draw : pass.draws)
@@ -64,6 +103,14 @@ const char* validate_frame(const Frame& frame)
             if (std::any_of(draw.bindings.write.begin(), draw.bindings.write.end(), [](const Buffer* buffer) { return buffer != nullptr; }))
             {
                 return "Draws cannot bind writable buffers.";
+            }
+            if ((draw.pipeline.depth() == DepthMode::none) != (pass.depth == nullptr))
+            {
+                return "A pipeline's depth mode must match whether its pass has a depth target.";
+            }
+            if (draw.pipeline.depth() == DepthMode::test_write && !pass.depth_write)
+            {
+                return "A depth-writing pipeline needs a writable depth target.";
             }
         }
     }

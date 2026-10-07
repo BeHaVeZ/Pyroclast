@@ -171,6 +171,7 @@ bool D3D12Renderer::create_swapchain(SDL_Window* window)
         return false;
     }
     rtv_stride_ = device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    dsv_stride_ = device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
     return create_render_targets();
 }
 

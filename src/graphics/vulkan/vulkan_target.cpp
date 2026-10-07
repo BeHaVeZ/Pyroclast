@@ -19,13 +19,16 @@ std::unique_ptr<RenderTarget> VulkanRenderer::create_render_target(const RenderT
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Render target divisor must be at least one.");
         return nullptr;
     }
+    const bool depth = description.format == TargetFormat::depth;
     VkFormatProperties properties{};
-    vkGetPhysicalDeviceFormatProperties(vk_.physical, format_, &properties);
-    constexpr auto required = VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT |
+    vkGetPhysicalDeviceFormatProperties(vk_.physical, depth ? depth_format : format_, &properties);
+    const VkFormatFeatureFlags required = depth ? VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT :
+        VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT |
         VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
     if ((properties.optimalTilingFeatures & required) != required)
     {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Vulkan color format cannot be rendered to and linearly sampled.");
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, depth ? "Vulkan D32 depth cannot be a depth attachment and sampled." :
+            "Vulkan color format cannot be rendered to and linearly sampled.");
         return nullptr;
     }
     auto target = std::make_unique<VulkanRenderTarget>(description);
@@ -53,15 +56,17 @@ bool VulkanRenderer::size_target(VulkanRenderTarget& target)
     target.image = VK_NULL_HANDLE;
     target.memory = VK_NULL_HANDLE;
 
+    const bool depth = target.description().format == TargetFormat::depth;
+    const auto format = depth ? depth_format : format_;
     VkImageCreateInfo texture{};
     texture.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     texture.imageType = VK_IMAGE_TYPE_2D;
-    texture.format = format_;
+    texture.format = format;
     texture.extent = {extent.width, extent.height, 1};
     texture.mipLevels = texture.arrayLayers = 1;
     texture.samples = VK_SAMPLE_COUNT_1_BIT;
     texture.tiling = VK_IMAGE_TILING_OPTIMAL;
-    texture.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    texture.usage = (depth ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) | VK_IMAGE_USAGE_SAMPLED_BIT;
     if (!check(vkCreateImage(vk_.device, &texture, nullptr, &target.image), "Create render target image")) return false;
     VkMemoryRequirements requirements{};
     vkGetImageMemoryRequirements(vk_.device, target.image, &requirements);
@@ -81,11 +86,11 @@ bool VulkanRenderer::size_target(VulkanRenderTarget& target)
     view.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     view.image = target.image;
     view.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    view.format = format_;
-    view.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    view.format = format;
+    view.subresourceRange = {static_cast<VkImageAspectFlags>(depth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT), 0, 1, 0, 1};
     if (!check(vkCreateImageView(vk_.device, &view, nullptr, &target.view), "Create render target view")) return false;
     target.extent = extent;
-    SDL_Log("Vulkan render target: %ux%u, UNORM8.", extent.width, extent.height);
+    SDL_Log("Vulkan render target: %ux%u, %s.", extent.width, extent.height, depth ? "D32" : "UNORM8");
     return validation_ok();
 }
 }

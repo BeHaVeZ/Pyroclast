@@ -16,7 +16,7 @@ std::unique_ptr<GraphicsPipeline> D3D12Renderer::create_graphics_pipeline(
 {
     const auto vertex_shader = d3d12_shader(shaders.vertex_shader);
     const auto pixel_shader = d3d12_shader(shaders.pixel_shader);
-    auto pipeline = std::make_unique<D3D12GraphicsPipeline>(shaders.blend);
+    auto pipeline = std::make_unique<D3D12GraphicsPipeline>(shaders.blend, shaders.depth);
     pipeline->owner = this;
     D3D12_FEATURE_DATA_SHADER_MODEL shader_model{D3D_SHADER_MODEL_6_0};
     if (!check(device_->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL,
@@ -42,9 +42,10 @@ std::unique_ptr<GraphicsPipeline> D3D12Renderer::create_graphics_pipeline(
     description.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
     description.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
     description.RasterizerState.DepthClipEnable = TRUE;
-    description.DepthStencilState.DepthEnable = FALSE;
-    description.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
-    description.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+    if (shaders.depth != DepthMode::none) description.DSVFormat = depth_format;
+    description.DepthStencilState.DepthEnable = shaders.depth == DepthMode::test || shaders.depth == DepthMode::test_write;
+    description.DepthStencilState.DepthWriteMask = shaders.depth == DepthMode::test_write ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
+    description.DepthStencilState.DepthFunc = description.DepthStencilState.DepthEnable ? D3D12_COMPARISON_FUNC_GREATER_EQUAL : D3D12_COMPARISON_FUNC_ALWAYS;
     auto& blend = description.BlendState.RenderTarget[0];
     blend.BlendEnable = shaders.blend != BlendMode::opaque;
     blend.SrcBlend = D3D12_BLEND_ONE;

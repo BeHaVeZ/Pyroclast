@@ -127,9 +127,9 @@ bool D3D12Renderer::wait_idle()
         wait_for_fence(value) && check_validation();
 }
 
-void D3D12Renderer::set_target(D3D12_CPU_DESCRIPTOR_HANDLE rtv, int width, int height)
+void D3D12Renderer::set_target(D3D12_CPU_DESCRIPTOR_HANDLE rtv, const D3D12_CPU_DESCRIPTOR_HANDLE* dsv, int width, int height)
 {
-    command_list_->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+    command_list_->OMSetRenderTargets(1, &rtv, FALSE, dsv);
     const D3D12_VIEWPORT viewport{0, 0, static_cast<float>(width), static_cast<float>(height), 0, 1};
     const D3D12_RECT scissor{0, 0, width, height};
     command_list_->RSSetViewports(1, &viewport);
@@ -185,7 +185,8 @@ bool D3D12Renderer::owns(const Frame& frame) const
     }
     for (const auto& pass : frame.passes)
     {
-        if (!target_owned(pass.target) || !std::all_of(pass.inputs.begin(), pass.inputs.end(), target_owned)) return false;
+        if (!target_owned(pass.target) || !target_owned(pass.depth) ||
+            !std::all_of(pass.inputs.begin(), pass.inputs.end(), target_owned)) return false;
         for (const auto& draw : pass.draws)
         {
             const auto* pipeline = dynamic_cast<const D3D12GraphicsPipeline*>(&draw.pipeline);
@@ -223,7 +224,8 @@ RenderResult D3D12Renderer::render(const Frame& frame)
     }
     for (const auto& pass : frame.passes)
     {
-        if (pass.target && !size_target(static_cast<D3D12RenderTarget&>(*pass.target)))
+        if ((pass.target && !size_target(static_cast<D3D12RenderTarget&>(*pass.target))) ||
+            (pass.depth && !size_target(static_cast<D3D12RenderTarget&>(*pass.depth))))
         {
             return RenderResult::failed;
         }
@@ -288,21 +290,38 @@ RenderResult D3D12Renderer::render(const Frame& frame)
     for (const auto& pass : frame.passes)
     {
         const auto* target = static_cast<const D3D12RenderTarget*>(pass.target);
+        const auto* depth = static_cast<const D3D12RenderTarget*>(pass.depth);
         const auto region = begin_region(pass.label, "Pass");
         begin_event(command_list_.Get(), pass.label);
-        const auto resting_state = target ? D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE : D3D12_RESOURCE_STATE_PRESENT;
-        D3D12_RESOURCE_BARRIER barrier{};
-        barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barrier.Transition.pResource = target ? target->texture.Get() : backbuffer;
-        barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-        barrier.Transition.StateBefore = resting_state;
-        barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-        command_list_->ResourceBarrier(1, &barrier);
+        std::array<D3D12_RESOURCE_BARRIER, 2> barriers{};
+        UINT barrier_count = 0;
+        const auto transition = [&barriers, &barrier_count](ID3D12Resource* resource, D3D12_RESOURCE_STATES from, D3D12_RESOURCE_STATES to) {
+            auto& barrier = barriers[barrier_count++];
+            barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barrier.Transition.pResource = resource;
+            barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            barrier.Transition.StateBefore = from;
+            barrier.Transition.StateAfter = to;
+        };
+        transition(target ? target->texture.Get() : backbuffer, target ? color_resting_state : D3D12_RESOURCE_STATE_PRESENT,
+            D3D12_RESOURCE_STATE_RENDER_TARGET);
+        if (depth && pass.depth_write) transition(depth->texture.Get(), depth_resting_state, D3D12_RESOURCE_STATE_DEPTH_WRITE);
+        command_list_->ResourceBarrier(barrier_count, barriers.data());
 
         const auto view = target ? target->render_view->GetCPUDescriptorHandleForHeapStart() : backbuffer_view;
-        set_target(view, target ? target->width : width_, target ? target->height : height_);
+        D3D12_CPU_DESCRIPTOR_HANDLE depth_view{};
+        if (depth)
+        {
+            depth_view = depth->render_view->GetCPUDescriptorHandleForHeapStart();
+            if (!pass.depth_write) depth_view.ptr += dsv_stride_;
+        }
+        set_target(view, depth ? &depth_view : nullptr, target ? target->width : width_, target ? target->height : height_);
         const auto& clear_color = target ? target->description().clear_color : frame.clear_color;
-        command_list_->ClearRenderTargetView(view, clear_color.data(), 0, nullptr);
+        if (!pass.load) command_list_->ClearRenderTargetView(view, clear_color.data(), 0, nullptr);
+        if (depth && pass.depth_write)
+        {
+            command_list_->ClearDepthStencilView(depth_view, D3D12_CLEAR_FLAG_DEPTH, depth->description().clear_depth, 0, 0, nullptr);
+        }
         for (UINT slot_index = 0; slot_index < pass.inputs.size(); ++slot_index)
         {
             const auto* input = static_cast<const D3D12RenderTarget*>(pass.inputs[slot_index]);
@@ -320,9 +339,11 @@ RenderResult D3D12Renderer::render(const Frame& frame)
             end_region(overlay_region);
         }
 
-        barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-        barrier.Transition.StateAfter = resting_state;
-        command_list_->ResourceBarrier(1, &barrier);
+        for (UINT index = 0; index < barrier_count; ++index)
+        {
+            std::swap(barriers[index].Transition.StateBefore, barriers[index].Transition.StateAfter);
+        }
+        command_list_->ResourceBarrier(barrier_count, barriers.data());
         end_event(command_list_.Get(), pass.label);
     }
     if (timestamps_)

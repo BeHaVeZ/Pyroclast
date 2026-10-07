@@ -166,7 +166,7 @@ std::unique_ptr<GraphicsPipeline> VulkanRenderer::create_graphics_pipeline(
     {
         return nullptr;
     }
-    auto pipeline = std::make_unique<VulkanGraphicsPipeline>(shaders.blend);
+    auto pipeline = std::make_unique<VulkanGraphicsPipeline>(shaders.blend, shaders.depth);
     pipeline->device = vk_.device;
     pipeline->owner = this;
     VkPipelineShaderStageCreateInfo stages[2]{};
@@ -211,6 +211,11 @@ std::unique_ptr<GraphicsPipeline> VulkanRenderer::create_graphics_pipeline(
     blend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     blend.attachmentCount = 1;
     blend.pAttachments = &attachment;
+    VkPipelineDepthStencilStateCreateInfo depth{};
+    depth.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    depth.depthTestEnable = shaders.depth == DepthMode::test || shaders.depth == DepthMode::test_write;
+    depth.depthWriteEnable = shaders.depth == DepthMode::test_write;
+    depth.depthCompareOp = VK_COMPARE_OP_GREATER_OR_EQUAL;
     const VkDynamicState states[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
     VkPipelineDynamicStateCreateInfo dynamic{};
     dynamic.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
@@ -226,12 +231,14 @@ std::unique_ptr<GraphicsPipeline> VulkanRenderer::create_graphics_pipeline(
     info.pRasterizationState = &raster;
     info.pMultisampleState = &samples;
     info.pColorBlendState = &blend;
+    info.pDepthStencilState = &depth;
     info.pDynamicState = &dynamic;
     info.layout = bindings_.layout;
     VkPipelineRenderingCreateInfo rendering{};
     rendering.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
     rendering.colorAttachmentCount = 1;
     rendering.pColorAttachmentFormats = &format_;
+    rendering.depthAttachmentFormat = shaders.depth != DepthMode::none ? depth_format : VK_FORMAT_UNDEFINED;
     info.pNext = &rendering;
     if (!check(vkCreateGraphicsPipelines(vk_.device, VK_NULL_HANDLE, 1, &info, nullptr, &pipeline->pipeline), "Create Vulkan graphics pipeline"))
     {

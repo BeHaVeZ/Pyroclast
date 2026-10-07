@@ -22,6 +22,8 @@ namespace pyroclast
 {
 enum class BlendMode { opaque, additive, premultiplied_alpha };
 
+enum class DepthMode { none, ignore, test, test_write };
+
 class Buffer
 {
 public:
@@ -36,12 +38,14 @@ private:
 class GraphicsPipeline
 {
 public:
-    explicit GraphicsPipeline(BlendMode blend) : blend_(blend) {}
+    explicit GraphicsPipeline(BlendMode blend, DepthMode depth = DepthMode::none) : blend_(blend), depth_(depth) {}
     virtual ~GraphicsPipeline() = default;
     BlendMode blend() const { return blend_; }
+    DepthMode depth() const { return depth_; }
 
 private:
     BlendMode blend_;
+    DepthMode depth_;
 };
 
 class ComputePipeline
@@ -55,12 +59,17 @@ struct GraphicsPipelineDescription
     Shader vertex_shader;
     Shader pixel_shader;
     BlendMode blend = BlendMode::opaque;
+    DepthMode depth = DepthMode::none;
 };
+
+enum class TargetFormat { color, depth };
 
 struct RenderTargetDescription
 {
     std::uint32_t divisor = 1;
     std::array<float, 4> clear_color{};
+    TargetFormat format = TargetFormat::color;
+    float clear_depth = 0;
 };
 
 class RenderTarget
@@ -107,6 +116,9 @@ struct Pass
     std::array<const RenderTarget*, binding_layout::texture_slots> inputs{};
     std::span<const Draw> draws;
     const char* label = nullptr;
+    bool load = false;
+    RenderTarget* depth = nullptr;
+    bool depth_write = false;
 };
 
 struct Frame

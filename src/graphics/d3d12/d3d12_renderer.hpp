@@ -43,6 +43,10 @@ private:
     static constexpr UINT frame_count = 2;
     static constexpr UINT backbuffer_count = 2;
     static constexpr DXGI_FORMAT backbuffer_format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    static constexpr DXGI_FORMAT depth_format = DXGI_FORMAT_D32_FLOAT;
+    static constexpr D3D12_RESOURCE_STATES color_resting_state = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    static constexpr D3D12_RESOURCE_STATES depth_resting_state =
+        D3D12_RESOURCE_STATE_DEPTH_READ | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     // Shader-visible descriptors: a null SRV, then render target SRVs, then Dear ImGui's textures.
     static constexpr UINT shader_descriptor_capacity = 64;
     static constexpr UINT overlay_descriptor_first = 48;
@@ -88,7 +92,7 @@ private:
     bool owns(const Frame& frame) const;
     void bind(const Bindings& bindings, bool graphics);
     void draw(const Draw& draw);
-    void set_target(D3D12_CPU_DESCRIPTOR_HANDLE rtv, int width, int height);
+    void set_target(D3D12_CPU_DESCRIPTOR_HANDLE rtv, const D3D12_CPU_DESCRIPTOR_HANDLE* dsv, int width, int height);
     bool record_capture(ID3D12Resource* backbuffer);
     bool create_overlay();
     void destroy_overlay();
@@ -122,6 +126,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> pending_upload_buffer_;
     std::uint64_t next_fence_value_ = 1;
     UINT rtv_stride_ = 0;
+    UINT dsv_stride_ = 0;
     int width_ = 0;
     int height_ = 0;
     bool occluded_ = false;

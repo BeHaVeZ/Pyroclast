@@ -113,7 +113,8 @@ struct VulkanCapture
 
 void transition_image(VkCommandBuffer command, VkImage image, VkImageLayout from, VkImageLayout to,
     VkPipelineStageFlags2 source_stage, VkAccessFlags2 source_access,
-    VkPipelineStageFlags2 destination_stage, VkAccessFlags2 destination_access);
+    VkPipelineStageFlags2 destination_stage, VkAccessFlags2 destination_access,
+    VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT);
 void transition_buffer(VkCommandBuffer command, VkBuffer buffer,
     VkPipelineStageFlags2 source_stage, VkAccessFlags2 source_access,
     VkPipelineStageFlags2 destination_stage, VkAccessFlags2 destination_access);
@@ -148,6 +149,7 @@ public:
     std::string_view adapter_name() const override { return adapter_name_; }
 
 private:
+    static constexpr VkFormat depth_format = VK_FORMAT_D32_SFLOAT;
     bool create_instance(bool gpu_validation);
     bool create_device(std::string_view requested_adapter);
     bool create_bindings();

@@ -90,5 +90,37 @@ int main()
     check("dispatch reading and writing one buffer", validate(one_pass, {{compute, aliased, {}, {1, 1, 1}}}), "readable and writable");
     check("dispatch reading one buffer and writing another", validate(one_pass, {{compute, separate, {}, {1, 1, 1}}}), nullptr);
     check("dispatches in sequence", validate(one_pass, {dispatch, {compute, separate, {}, {4, 1, 1}}}), nullptr);
+
+    RenderTarget scene({1, {}});
+    RenderTarget second_scene({1, {}});
+    RenderTarget depth({1, {}, TargetFormat::depth});
+    const GraphicsPipeline writes_depth(BlendMode::opaque, DepthMode::test_write);
+    const GraphicsPipeline tests_depth(BlendMode::premultiplied_alpha, DepthMode::test);
+    const GraphicsPipeline ignores_depth(BlendMode::opaque, DepthMode::ignore);
+    const Draw terrain{writes_depth, reads, {}, 6, 1};
+    const Draw blended_particles{tests_depth, reads, {}, 6, 100};
+    const Draw copy_ignoring_depth{ignores_depth, {}, {}, 3, 1};
+    const Draw copy{light, {}, {}, 3, 1};
+    const Pass opaque{&scene, {}, {&terrain, 1}, nullptr, false, &depth, true};
+    const Pass blended{&scene, {&depth, nullptr}, {&blended_particles, 1}, nullptr, true, &depth, false};
+    const Pass present{nullptr, {&scene, nullptr}, {&copy, 1}};
+    check("opaque, blended and present passes", validate({opaque, blended, present}), nullptr);
+    const Draw over_scene[] = {copy_ignoring_depth, blended_particles};
+    check("backbuffer pass with read-only depth", validate(
+        {opaque, {nullptr, {&scene, &depth}, over_scene, nullptr, false, &depth, false}}), nullptr);
+
+    check("load without an earlier pass", validate({{&scene, {}, {}, nullptr, true}, present}), "load only");
+    check("backbuffer load", validate({{nullptr, {}, {}, nullptr, true}}), "load only");
+    check("colour pass on a depth target", validate({{&depth, {}, {}}, {nullptr, {}, {}}}), "colour format");
+    check("depth pass on a colour target", validate({{&scene, {}, {}, nullptr, false, &half, true}, present}), "depth format");
+    check("depth target of another size", validate({{&half, {}, {}, nullptr, false, &depth, true}, {nullptr, {&half, nullptr}, {}}}), "size");
+    check("depth cleared twice", validate({opaque, {&second_scene, {}, {}, nullptr, false, &depth, true}, present}), "more than one pass");
+    check("read-only depth never written", validate({{nullptr, {}, {}, nullptr, false, &depth, false}}), "written by an earlier pass");
+    check("writable depth without a target", validate({{nullptr, {}, {}, nullptr, false, nullptr, true}}), "needs a depth target");
+    check("sampling the loaded target", validate({opaque, {&scene, {&scene, nullptr}, {}, nullptr, true}, present}), "cannot sample");
+    check("depth sampled before it is written", validate({{&scene, {&depth, nullptr}, {&terrain, 1}, nullptr, false, &depth, true}, present}), "drawn earlier");
+    check("depthless pipeline in a depth pass", validate({opaque, {&scene, {}, {&copy, 1}, nullptr, true, &depth, false}, present}), "depth mode");
+    check("depth pipeline without a depth target", validate({opaque, {nullptr, {&scene, nullptr}, {&blended_particles, 1}}}), "depth mode");
+    check("depth writes against read-only depth", validate({opaque, {&scene, {}, {&terrain, 1}, nullptr, true, &depth, false}, present}), "depth-writing");
     return failures == 0 ? 0 : 1;
 }
