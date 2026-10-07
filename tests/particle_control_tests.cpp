@@ -17,7 +17,12 @@ public:
     {
         if (!initial.empty())
         {
-            heights_uploaded = initial.size() == pyroclast::Terrain::resolution * pyroclast::Terrain::resolution * sizeof(float);
+            heights_uploaded |= initial.size() == pyroclast::Terrain::resolution * pyroclast::Terrain::resolution * sizeof(float);
+            if (initial.size() == pyroclast::particle_layout::maximum_effect_classes * sizeof(pyroclast::EffectClass))
+            {
+                uploaded_classes.resize(pyroclast::particle_layout::maximum_effect_classes);
+                std::memcpy(uploaded_classes.data(), initial.data(), initial.size());
+            }
             return std::make_unique<pyroclast::Buffer>(size);
         }
         zeroed_sizes.push_back(size);
@@ -111,12 +116,13 @@ public:
             passes[1].target == half_target && !passes[1].depth && with_depth(passes[1], nullptr) && draws(passes[1], {offscreen}) &&
             records(passes[1].draws[0], 0, layout::light_list_first, layout::smoke_arguments_offset) && passes[1].draws[0].constants[3] == 2 &&
             over_scene(passes[2]) && with_depth(passes[2], half_target) && draws(passes[2], {composite, particles}) &&
-            records(passes[2].draws[1], layout::light_list_first, ParticleSystem::capacity - layout::light_list_first, layout::light_arguments_offset) &&
+            records(passes[2].draws[1], layout::light_list_first, ParticleSystem::capacity, layout::light_arguments_offset) &&
             passes[2].draws[0].vertex_count == 3 && present_pass(passes[3]);
         return result;
     }
 
     std::vector<std::uint32_t> zeroed_sizes;
+    std::vector<pyroclast::EffectClass> uploaded_classes;
     std::vector<std::pair<const pyroclast::ComputePipeline*, pyroclast::Shader>> compute_shaders;
     bool heights_uploaded = false;
     bool depth_cleared_far = false;
@@ -166,9 +172,17 @@ int main()
     ParticleSystem system;
     namespace layout = particle_layout;
     constexpr std::uint32_t all_groups = ParticleSystem::effect_slots * groups;
-    check(system.initialize(device, range.heights(), targets) && device.zeroed_sizes == std::vector<std::uint32_t>{
-        ParticleSystem::capacity * layout::particle_stride, all_groups * 8, all_groups * 4, ParticleSystem::capacity * 4, layout::arguments_bytes},
-        "a zero-filled pool with one slab per effect slot, alive masks and offsets per group, an alive list and arguments");
+    const auto classes = effect_classes();
+    check(system.initialize(device, range.heights(), targets, classes) && device.zeroed_sizes == std::vector<std::uint32_t>{
+        ParticleSystem::capacity * layout::particle_stride, all_groups * 8, all_groups * 4, 2 * ParticleSystem::capacity * 4, layout::arguments_bytes},
+        "a zero-filled pool with one slab per effect slot, alive masks and offsets per group, alive lists and arguments");
+    bool uploaded = device.uploaded_classes.size() == layout::maximum_effect_classes;
+    for (std::size_t index = 0; uploaded && index < device.uploaded_classes.size(); ++index)
+    {
+        const auto& expected = index < classes.size() ? classes[index] : EffectClass{};
+        uploaded = std::memcmp(&device.uploaded_classes[index], &expected, sizeof(EffectClass)) == 0;
+    }
+    check(uploaded, "the effect classes are uploaded once, in index order, the rest zero");
     const auto idle = system.plan(1.0 / 60, 0);
     check(idle.effects == 0 && idle.steps == 1, "no active effect: nothing to simulate or draw");
     const auto three = submit(system, 1.0 / 60, 3);
@@ -182,13 +196,15 @@ int main()
         device.shader_of(scatter.pipeline) == Shader::particle_scatter, "simulation, scan and scatter, in that order");
     check(simulation.groups[0] == 3 * groups && three.steps == 2 && simulation.constants[0] == three.steps && simulation.constants[1] == 3 &&
         simulation.constants[2] == ParticleSystem::capacity && simulation.bindings.write[0] == pool && masks &&
-        simulation.bindings.read[0] == &range.heights(), "the simulation covers the active slabs, 40 groups each, and writes their alive masks");
+        simulation.bindings.read[0] == &range.heights() && simulation.bindings.read[1],
+        "the simulation covers the active slabs, 40 groups each, by their classes, and writes their alive masks");
+    const auto* class_buffer = simulation.bindings.read[1];
     check(scan.groups[0] == 1 && scan.constants[0] == 3 * groups && scan.constants[1] == system.tick() && scan.constants[2] == 0 &&
-        scan.bindings.read[0] == masks &&
+        scan.bindings.read[0] == masks && scan.bindings.read[1] == class_buffer &&
         offsets && arguments && arguments->size() == layout::arguments_bytes,
         "one scan group turns the masks into offsets and arguments stamped with the tick after the steps");
     check(scatter.groups[0] == 3 * groups && scatter.constants[0] == 3 && scatter.constants[1] == 0 && scatter.bindings.read[0] == masks &&
-        scatter.bindings.read[1] == offsets && alive && alive->size() == ParticleSystem::capacity * 4,
+        scatter.bindings.read[1] == offsets && scatter.bindings.read[2] == class_buffer && alive && alive->size() == 2 * ParticleSystem::capacity * 4,
         "the scatter writes one list of every alive particle without offscreen smoke");
     check(three.counters.source == arguments && three.counters.offset == layout::counters_offset &&
         three.counters.size == sizeof(ParticleCounters), "the counter record is read back from the arguments");
@@ -196,14 +212,14 @@ int main()
         std::uint32_t depth_scale, std::uint32_t offset) {
         return &draw.pipeline == pipeline && draw.constants[0] == ParticleSystem::capacity && draw.constants[1] == first &&
             draw.constants[2] == count && draw.constants[3] == depth_scale && draw.indirect == arguments && draw.indirect_offset == offset &&
-            draw.bindings.read[0] == pool && draw.bindings.read[1] == alive;
+            draw.bindings.read[0] == pool && draw.bindings.read[1] == alive && draw.bindings.read[2] == class_buffer;
     };
     check(draws(three.particles, device.particles, 0, ParticleSystem::capacity, 1, layout::particle_arguments_offset),
         "every layer is drawn from the whole list");
     const auto layered = system.plan(0, 3, 2);
     check(layered.dispatches[1].constants[2] == 1 && layered.dispatches[2].constants[1] == 1 &&
         draws(layered.offscreen_smoke, device.offscreen, 0, layout::light_list_first, 2, layout::smoke_arguments_offset) &&
-        draws(layered.light, device.particles, layout::light_list_first, ParticleSystem::capacity - layout::light_list_first, 1,
+        draws(layered.light, device.particles, layout::light_list_first, ParticleSystem::capacity, 1,
             layout::light_arguments_offset), "offscreen smoke and light are drawn from a list per layer");
     ReadbackData record;
     const std::uint32_t words[] = {7, 30, 10, 20};
@@ -215,7 +231,7 @@ int main()
     check(!ParticleSystem::counters(record), "a readback of another size is no counter record");
 
     ParticleSystem timed;
-    timed.initialize(device, range.heights(), targets);
+    timed.initialize(device, range.heights(), targets, classes);
     std::uint32_t ticks = 0;
     for (int frame = 0; frame < 240; ++frame) ticks += submit(timed, 1.0 / 240).steps;
     check(ticks == 60 && timed.tick() == 60, "240 Hz presentation still advances 60 simulation ticks per second");
@@ -238,7 +254,7 @@ int main()
     check(submit(timed, 0).steps == 1 && submit(timed, 5.0).steps == 1, "scripted runs advance one tick per frame whatever the elapsed time");
 
     ParticleSystem profile;
-    profile.initialize(device, range.heights(), targets);
+    profile.initialize(device, range.heights(), targets, classes);
     profile.prepare_profile(180);
     profile.plan(1, 1);
     check(profile.has_pending_steps(), "skipped profile preparation retains ticks");
@@ -247,7 +263,7 @@ int main()
     check(submit(profile, 1).steps == 0, "profile state stays frozen regardless of elapsed time");
 
     ParticleSystem rendered;
-    rendered.initialize(device, range.heights(), targets);
+    rendered.initialize(device, range.heights(), targets, classes);
     ExplosionSystem effects(ParticleSystem::effect_slots);
     const auto camera = range.view(RangeView::overview);
     ExplosionRenderer full_resolution;
@@ -279,7 +295,7 @@ int main()
         rendered.tick() == before_skip, "a skipped frame keeps its simulation time");
     device.result = RenderResult::submitted;
     rendered.set_fixed_ticks(true);
-    for (std::uint32_t tick = rendered.tick(); tick < start_tick + ExplosionSystem::effect_ticks; ++tick)
+    for (std::uint32_t tick = rendered.tick(); tick < start_tick + effect_ticks(ExplosionPreset::small_he, SurfaceType::dirt); ++tick)
         full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 0, {});
     check(effects.active().size() == 10, "effects live until their last particle has died");
     full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 0, {});
@@ -289,7 +305,7 @@ int main()
     TestRange ordered_range;
     ordered_range.initialize(ordered_device, hdr);
     ParticleSystem ordered_particles;
-    ordered_particles.initialize(ordered_device, ordered_range.heights(), targets);
+    ordered_particles.initialize(ordered_device, ordered_range.heights(), targets, classes);
     ExplosionSystem ordered_effects(ParticleSystem::effect_slots);
     for (const auto& event : group_events(ordered_range.terrain(), 100)) ordered_effects.submit(event);
     ExplosionRenderer ordered;

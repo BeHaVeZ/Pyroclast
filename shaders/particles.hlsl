@@ -1,3 +1,4 @@
+#include "effect_classes.hlsli"
 #include "explosion.hlsli"
 #include "frame_constants.hlsli"
 
@@ -14,6 +15,7 @@ struct DrawConstants
 ConstantBuffer<DrawConstants> draw : register(b0);
 ByteAddressBuffer particles : register(t0);
 ByteAddressBuffer alive : register(t1);
+ByteAddressBuffer classes : register(t2);
 Texture2D<float> scene_depth : register(t9);
 
 struct PixelInput
@@ -39,9 +41,11 @@ PixelInput vs_main(uint vertex : SV_VertexID, uint instance : SV_InstanceID)
         output.position = float4(0, 0, 0, 1);
         return output;
     }
-    uint local = record % explosion_particles;
-    bool smoke = local < smoke_particles;
-    uint emissive_local = local - smoke_particles;
+    uint slot = record / explosion_particles;
+    uint effect_class = frame.effect_states[slot].w;
+    uint layer_index = group_layer(classes, effect_class, (record % explosion_particles) / simulation_group_size);
+    Layer layer = load_layer(classes, effect_class, layer_index);
+    bool smoke = smoke_like(layer_index);
     uint address = record * particle_stride;
     float4 position = asfloat(particles.Load4(address + particle_position_offset));
     float lifetime = asfloat(particles.Load(address + particle_velocity_offset + 12));
@@ -49,9 +53,8 @@ PixelInput vs_main(uint vertex : SV_VertexID, uint instance : SV_InstanceID)
     float age = position.w;
     float2 corner = corners[vertex];
     float progress = lifetime > 0 ? saturate(age / max(lifetime, 0.001)) : 1;
-    bool fireball = !smoke && emissive_local < fireball_particles;
-    if (smoke) size *= 1 + 0.55 * age;
-    else if (fireball) size *= 1 + 1.8 * progress;
+    if (smoke) size *= 1 + layer.growth * age;
+    else size *= 1 + layer.progress_growth * progress;
     float softness = max(size, 0.1);
     float distance = max(mul(frame.view_projection, float4(position.xyz, 1)).w, frame.camera_position.w);
     float pixels = size * frame.projection.x / distance;
@@ -67,15 +70,13 @@ PixelInput vs_main(uint vertex : SV_VertexID, uint instance : SV_InstanceID)
     output.distance = output.position.w;
     output.softness = softness;
     output.uv = flat ? 0 : corner;
-    float3 hot = float3(4.0, 2.4, 0.3);
-    float3 cool = float3(1.8, 0.03, 0.003);
-    output.color = float4(lerp(hot, cool, progress),
-        (fireball ? 0.05 : 0.6) * (1 - progress) * (1 - progress) * coverage);
+    output.color = float4(lerp(layer.first_color, layer.second_color, progress),
+        layer.strength * (1 - progress) * (1 - progress) * coverage);
     if (smoke)
     {
         float temperature = smoke_temperature(age);
-        float opacity = 0.08 * saturate(age / 0.25) * (1 - progress) * (1 - progress) * coverage;
-        output.color = float4(lerp(float3(0.11, 0.12, 0.13), float3(0.20, 0.10, 0.045), temperature), opacity);
+        float opacity = layer.strength * saturate(age * layer.fade_in_rate) * (1 - progress) * (1 - progress) * coverage;
+        output.color = float4(lerp(layer.first_color, layer.second_color, temperature), opacity);
     }
     output.occlusion = smoke ? 1 : 0;
     return output;

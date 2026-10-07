@@ -1,3 +1,4 @@
+#include "effect_classes.hlsli"
 #include "explosion.hlsli"
 #include "frame_constants.hlsli"
 #include "terrain.hlsli"
@@ -14,10 +15,10 @@ struct Parameters
 #endif
 ConstantBuffer<Parameters> parameters : register(b0);
 ByteAddressBuffer heights : register(t0);
+ByteAddressBuffer classes : register(t1);
 RWByteAddressBuffer particles : register(u0);
 RWByteAddressBuffer alive_masks : register(u1);
 
-static const float gravity = 9.81;
 static const float3 wind = float3(2.0, 0, 0);
 
 groupshared uint alive_bits[2];
@@ -31,14 +32,16 @@ float3 around_normal(float3 direction, float3 normal)
 
 bool simulate(uint slot, uint local, uint record)
 {
-    bool smoke = local < smoke_particles;
-    bool fireball = !smoke && local - smoke_particles < fireball_particles;
+    uint4 state = frame.effect_states[slot];
+    uint layer_index = group_layer(classes, state.w, local / simulation_group_size);
+    if (layer_index >= layer_count) return false;
+    Layer layer = load_layer(classes, state.w, layer_index);
+    if (local - layer.first_group * simulation_group_size >= layer.count) return false;
     uint address = record * particle_stride;
     float4 position = asfloat(particles.Load4(address + particle_position_offset));
     float4 velocity = asfloat(particles.Load4(address + particle_velocity_offset));
     float size = asfloat(particles.Load(address + particle_size_offset));
     uint generation = particles.Load(address + particle_generation_offset);
-    uint4 state = frame.effect_states[slot];
     if (generation != state.y)
     {
         generation = state.y;
@@ -46,44 +49,32 @@ bool simulate(uint slot, uint local, uint record)
         float3 normal = frame.effect_normals[slot].xyz;
         uint id = state.x * explosion_particles + local;
         float3 direction = around_normal(particle_direction(id), normal);
-        if (smoke)
-        {
-            position.xyz = origin + direction * particle_random(id, 3) * 1.75;
-            velocity.xyz = direction * (2.5 + particle_random(id, 2) * 3.75) + float3(0, 3.0, 0);
-            velocity.w = 6.0 + particle_random(id, 4) * 2.0;
-            size = 1.0 + particle_random(id, 5) * 1.0;
-        }
-        else
-        {
-            float speed = fireball ? 2.0 + particle_random(id, 2) * 6.25 : 6.0 + particle_random(id, 2) * 10.0;
-            position.xyz = origin + direction * particle_random(id, 3) * 0.625;
-            velocity.xyz = direction * speed + float3(0, fireball ? 1.25 : 4.0, 0);
-            velocity.w = fireball ? 0.35 + particle_random(id, 4) * 0.45 : 1.0 + particle_random(id, 4) * 1.2;
-            size = fireball ? 1.0 + particle_random(id, 5) * 0.625 : 0.06 + particle_random(id, 5) * 0.08;
-        }
+        position.xyz = origin + direction * particle_random(id, 3) * layer.radius;
+        velocity.xyz = direction * (layer.speed_min + particle_random(id, 2) * layer.speed_range) + float3(0, layer.up_kick, 0);
+        velocity.w = layer.lifetime_min + particle_random(id, 4) * layer.lifetime_range;
+        size = layer.size_min + particle_random(id, 5) * layer.size_range;
         position.w = 0;
+        if (layer.delay_range > 0) position.w = -particle_random(id, 7) * layer.delay_range;
     }
+    bool smoke = smoke_like(layer_index);
     const float dt = 1.0 / 60.0;
     for (uint step = 0; step < min(parameters.steps, maximum_simulation_steps); ++step)
     {
         if (velocity.w > 0)
         {
             position.w += dt;
-            if (smoke)
-            {
-                float temperature = smoke_temperature(position.w);
-                velocity.xyz += (wind - velocity.xyz) * (1.4 * dt);
-                velocity.y += 5.0 * temperature * dt;
-            }
-            else if (!fireball) velocity.y -= gravity * dt;
+            if (position.w < 0) continue;
+            if (layer.drag > 0) velocity.xyz += (wind - velocity.xyz) * (layer.drag * dt);
+            if (layer.buoyancy > 0) velocity.y += layer.buoyancy * smoke_temperature(position.w) * dt;
+            if (layer.gravity > 0) velocity.y -= layer.gravity * dt;
             position.xyz += velocity.xyz * dt;
             float ground = terrain_height(heights, position.xz) + (smoke ? size : 0);
             if (position.y < ground)
             {
                 position.y = ground;
-                bool bounce = !fireball && !smoke && velocity.y < 0;
-                if (bounce) velocity.xz *= 0.7;
-                velocity.y = bounce ? -velocity.y * 0.35 : max(velocity.y, 0);
+                bool bounce = layer.restitution > 0 && velocity.y < 0;
+                if (bounce) velocity.xz *= layer.friction;
+                velocity.y = bounce ? -velocity.y * layer.restitution : max(velocity.y, 0);
             }
             if (position.w >= velocity.w) velocity.w = 0;
         }
@@ -91,7 +82,7 @@ bool simulate(uint slot, uint local, uint record)
     particles.Store4(address + particle_position_offset, asuint(position));
     particles.Store4(address + particle_velocity_offset, asuint(velocity));
     particles.Store2(address + particle_size_offset, uint2(asuint(size), generation));
-    return velocity.w > 0;
+    return velocity.w > 0 && position.w >= 0;
 }
 
 [numthreads(simulation_group_size, 1, 1)]

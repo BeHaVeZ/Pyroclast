@@ -1,5 +1,6 @@
 #pragma once
 
+#include "explosion_presets.hpp"
 #include "../graphics/graphics_device.hpp"
 
 #include <array>
@@ -58,14 +59,11 @@ class ParticleSystem final
 public:
     static constexpr std::uint32_t effect_slots = particle_layout::maximum_effects;
     static constexpr std::uint32_t slab_records = particle_layout::explosion_particles;
-    static constexpr std::uint32_t emissive_particles = particle_layout::emissive_particles;
-    static constexpr std::uint32_t smoke_particles = particle_layout::smoke_particles;
     static constexpr std::uint32_t capacity = effect_slots * slab_records;
     static constexpr std::uint32_t groups_per_slab = particle_layout::slab_groups;
-    static_assert(slab_records % particle_layout::simulation_group_size == 0 &&
-        smoke_particles % particle_layout::simulation_group_size == 0);
+    static_assert(slab_records % particle_layout::simulation_group_size == 0);
 
-    bool initialize(GraphicsDevice& device, const Buffer& heights, ParticleTargets targets);
+    bool initialize(GraphicsDevice& device, const Buffer& heights, ParticleTargets targets, std::span<const EffectClass> classes);
     const Buffer& particles() const { return *particles_; }
     std::uint32_t tick() const { return tick_; }
     ParticleWork plan(double elapsed_seconds, std::uint32_t active_effects, std::uint32_t offscreen_divisor = 0);
@@ -85,6 +83,7 @@ private:
     std::unique_ptr<Buffer> offsets_;
     std::unique_ptr<Buffer> alive_;
     std::unique_ptr<Buffer> arguments_;
+    std::unique_ptr<Buffer> classes_;
     const Buffer* heights_ = nullptr;
     std::unique_ptr<GraphicsPipeline> graphics_;
     std::unique_ptr<GraphicsPipeline> offscreen_graphics_;

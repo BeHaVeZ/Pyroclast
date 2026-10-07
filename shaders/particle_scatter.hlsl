@@ -1,3 +1,4 @@
+#include "effect_classes.hlsli"
 #include "frame_constants.hlsli"
 
 struct Parameters
@@ -11,6 +12,7 @@ struct Parameters
 ConstantBuffer<Parameters> parameters : register(b0);
 ByteAddressBuffer alive_masks : register(t0);
 ByteAddressBuffer offsets : register(t1);
+ByteAddressBuffer classes : register(t2);
 RWByteAddressBuffer alive : register(u0);
 
 [numthreads(simulation_group_size, 1, 1)]
@@ -25,9 +27,9 @@ void cs_main(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID)
     uint place = low ? countbits(bits.x & (bit - 1)) : countbits(bits.x) + countbits(bits.y & (bit - 1));
     uint slot = frame.effect_order[rank / 4][rank % 4];
     uint local = (group.x % slab_groups) * simulation_group_size + thread.x;
-    bool light = local >= smoke_particles;
+    bool light = !smoke_like(group_layer(classes, frame.effect_states[min(slot, maximum_effects - 1)].w, group.x % slab_groups));
     uint index = (parameters.layered != 0 && light ? light_list_first : 0) + offsets.Load(group.x * 4) + place;
-    if (slot < maximum_effects && index < maximum_effects * explosion_particles)
+    if (slot < maximum_effects && index < light_list_first + maximum_effects * explosion_particles)
     {
         alive.Store(index * 4, slot * explosion_particles + local);
     }

@@ -27,7 +27,7 @@ void ExplosionSystem::start(std::uint32_t tick)
 {
     std::erase_if(active_, [this, tick](std::uint32_t index) {
         auto& slot = slots_[index];
-        if (tick - slot.start_tick < effect_ticks) return false;
+        if (tick - slot.start_tick < slot.lifetime_ticks) return false;
         slot.active = false;
         return true;
     });
@@ -44,6 +44,8 @@ void ExplosionSystem::start(std::uint32_t tick)
         slot.origin = event.position;
         slot.normal = event.normal;
         slot.seed = event.seed;
+        slot.effect_class = effect_class_index(event.preset, event.surface);
+        slot.lifetime_ticks = effect_ticks(event.preset, event.surface);
         slot.start_tick = tick;
         slot.active = true;
         slot.generation = slot.generation == 0xffffffffu ? 1 : slot.generation + 1;

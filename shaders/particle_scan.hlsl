@@ -1,4 +1,5 @@
-#include "particle_layout.hlsli"
+#include "effect_classes.hlsli"
+#include "frame_constants.hlsli"
 
 struct Parameters
 {
@@ -11,6 +12,7 @@ struct Parameters
 #endif
 ConstantBuffer<Parameters> parameters : register(b0);
 ByteAddressBuffer alive_masks : register(t0);
+ByteAddressBuffer classes : register(t1);
 RWByteAddressBuffer offsets : register(u0);
 RWByteAddressBuffer arguments : register(u1);
 
@@ -18,9 +20,13 @@ static const uint maximum_groups = maximum_effects * slab_groups;
 groupshared uint group_values[maximum_groups];
 groupshared uint2 sums[scan_threads];
 
+static const uint smoke_flag = 0x80000000u;
+
 bool smoke_group(uint group)
 {
-    return group % slab_groups < smoke_groups;
+    uint rank = min(group / slab_groups, maximum_effects - 1);
+    uint slot = min(frame.effect_order[rank / 4][rank % 4], maximum_effects - 1);
+    return smoke_like(group_layer(classes, frame.effect_states[slot].w, group % slab_groups));
 }
 
 [numthreads(scan_threads, 1, 1)]
@@ -30,7 +36,7 @@ void cs_main(uint thread : SV_GroupIndex)
     for (uint loaded = thread; loaded < group_count; loaded += scan_threads)
     {
         uint2 bits = alive_masks.Load2(loaded * 8);
-        group_values[loaded] = countbits(bits.x) + countbits(bits.y);
+        group_values[loaded] = (countbits(bits.x) + countbits(bits.y)) | (smoke_group(loaded) ? smoke_flag : 0);
     }
     GroupMemoryBarrierWithGroupSync();
     uint run = (group_count + scan_threads - 1) / scan_threads;
@@ -39,8 +45,9 @@ void cs_main(uint thread : SV_GroupIndex)
     uint2 total = uint2(0, 0);
     for (uint group = first; group < last; ++group)
     {
-        if (smoke_group(group)) total.x += group_values[group];
-        else total.y += group_values[group];
+        uint count = group_values[group] & ~smoke_flag;
+        if (group_values[group] & smoke_flag) total.x += count;
+        else total.y += count;
     }
     sums[thread] = total;
     GroupMemoryBarrierWithGroupSync();
@@ -54,8 +61,8 @@ void cs_main(uint thread : SV_GroupIndex)
     uint2 before = sums[thread] - total;
     for (uint group = first; group < last; ++group)
     {
-        uint count = group_values[group];
-        bool smoke = smoke_group(group);
+        uint count = group_values[group] & ~smoke_flag;
+        bool smoke = (group_values[group] & smoke_flag) != 0;
         group_values[group] = parameters.layered != 0 ? (smoke ? before.x : before.y) : before.x + before.y;
         if (smoke) before.x += count;
         else before.y += count;

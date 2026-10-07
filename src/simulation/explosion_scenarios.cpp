@@ -1,5 +1,6 @@
 #include "explosion_scenarios.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 
@@ -54,12 +55,17 @@ std::optional<Scenario> make_scenario(std::string_view name, const Terrain& terr
             const float z = 12.0f * jitter(2 * index + 1);
             scenario.events.push_back({index * interval, on_ground(terrain, x, z, 1000 + index)});
         }
-        scenario.duration_ticks = (impacts - 1) * interval + ExplosionSystem::effect_ticks;
-        return scenario;
     }
-    const std::uint32_t count = name == "single" ? 1 : name == "grid-10" ? 10 : name == "grid-50" ? 50 : 100;
-    for (const auto& event : group_events(terrain, count)) scenario.events.push_back({0, event});
-    scenario.duration_ticks = ExplosionSystem::effect_ticks;
+    else
+    {
+        const std::uint32_t count = name == "single" ? 1 : name == "grid-10" ? 10 : name == "grid-50" ? 50 : 100;
+        for (const auto& event : group_events(terrain, count)) scenario.events.push_back({0, event});
+    }
+    for (const auto& scripted : scenario.events)
+    {
+        scenario.duration_ticks = std::max(scenario.duration_ticks,
+            scripted.tick + effect_ticks(scripted.event.preset, scripted.event.surface));
+    }
     return scenario;
 }
 }

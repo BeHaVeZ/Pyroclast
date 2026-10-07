@@ -56,7 +56,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
         const auto& slot = slots[index];
         constants.effect_origins[index] = {slot.origin.x, slot.origin.y, slot.origin.z, 0};
         constants.effect_normals[index] = {slot.normal.x, slot.normal.y, slot.normal.z, 0};
-        constants.effect_states[index] = {slot.seed, slot.generation, slot.start_tick, 0};
+        constants.effect_states[index] = {slot.seed, slot.generation, slot.start_tick, slot.effect_class};
     }
     std::vector<std::uint32_t> order(active.begin(), active.end());
     const auto distance = [&slots, &camera](std::uint32_t slot) {

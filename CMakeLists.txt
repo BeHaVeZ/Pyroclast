@@ -60,6 +60,7 @@ add_executable(Pyroclast
     src/simulation/particle_system.cpp
     src/simulation/explosion_system.cpp
     src/simulation/explosion_scenarios.cpp
+    src/simulation/explosion_presets.cpp
     src/simulation/terrain.cpp
     src/graphics/graphics_device.cpp
     src/graphics/adapter_name.cpp
@@ -103,7 +104,7 @@ if(BUILD_TESTING)
     add_test(NAME command_line COMMAND CommandLineTests)
     list(APPEND project_targets CommandLineTests)
     add_executable(ParticleControlTests tests/particle_control_tests.cpp src/simulation/particle_system.cpp
-        src/simulation/explosion_system.cpp src/simulation/explosion_scenarios.cpp
+        src/simulation/explosion_system.cpp src/simulation/explosion_scenarios.cpp src/simulation/explosion_presets.cpp
         src/simulation/terrain.cpp src/core/math.cpp src/app/explosion_renderer.cpp src/app/camera.cpp
         src/app/test_range.cpp src/graphics/draw_validation.cpp)
     target_include_directories(ParticleControlTests PRIVATE src)
@@ -128,7 +129,7 @@ if(BUILD_TESTING)
     add_test(NAME terrain COMMAND TerrainTests)
     list(APPEND project_targets TerrainTests)
     add_executable(ExplosionSystemTests tests/explosion_system_tests.cpp src/simulation/explosion_system.cpp
-        src/simulation/explosion_scenarios.cpp src/simulation/terrain.cpp src/core/math.cpp)
+        src/simulation/explosion_scenarios.cpp src/simulation/explosion_presets.cpp src/simulation/terrain.cpp src/core/math.cpp)
     target_include_directories(ExplosionSystemTests PRIVATE src)
     add_test(NAME explosion_system COMMAND ExplosionSystemTests)
     list(APPEND project_targets ExplosionSystemTests)
