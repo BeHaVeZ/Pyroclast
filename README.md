@@ -8,8 +8,10 @@ Early development.
 
 The project runs a GPU explosion and smoke effect in a 3D test range (terrain, sky, depth, a
 free-fly camera) on D3D12 and Vulkan, with a Dear ImGui engineering overlay. Explosions are events placed
-by clicks or scripts, and the GPU decides which particles are alive and how many to draw. Presets and
-layered effects, the smoke model, showcase and benchmark modes follow.
+by clicks or scripts, built from seven presets of layered effects (flash, fireball, sparks, blast smoke,
+plume, ground dust, debris, temporary lights) that respond to the surface they hit, and the GPU decides
+which particles are alive and how many to draw. The smoke model, environment interaction, showcase and
+benchmark modes follow.
 
 ## Core question
 
@@ -55,6 +57,26 @@ This project is an independent technical exploration.
 It is not affiliated with Bohemia Interactive, Arma, Enfusion, or Blastcore, and does not use proprietary engine source code.
 
 ## Current milestone
+
+**M15 - Presets, layered composition and surface response** (complete)
+
+- Seven presets: small impact, small HE, artillery HE, heavy, fuel/fire, dust-heavy ground blast and a
+  stress test. They differ only by parameters: each is a table of layers that the GPU reads, and every
+  preset runs the same kernels.
+- Layers: a flash; the fireball; sparks drawn as streaks along their motion; blast smoke; a plume fed
+  for seconds (its particles are born over time); ground dust rolling out over the surface and staying
+  near it; and debris drawn as lit, opaque boxes that tumble, bounce and come to rest on the ground.
+- A concrete pad on the range. Explosions on concrete raise less and lighter dust, throw more and smaller
+  grey fragments and strike more sparks; on dirt they throw dark soil clods.
+- Temporary lights: each preset's flash and glow light the terrain, the debris and the smoke (at most 16
+  lights, the brightest first).
+- `--preset=NAME` selects the preset of groups, profiles and scenarios; `--disable=LIST` hides layers or
+  the lights; `--scenario=presets` fires all seven in a row. The overlay picks the preset a click places
+  and toggles layers and lights.
+- Measured (RTX 4090): 16 temporary lights cost nothing measurable, and the new workloads are dominated
+  by smoke and fireball fill: from 0.16 ms (100 small impacts) to 12.7 ms (100 heavy explosions) of
+  drawing at the 3 s mark, against 18-52 µs of simulation. Opaque debris saves drawing time by hiding
+  smoke behind it. Scalability work on such frames is M19.
 
 **M14b - GPU particle lifecycle** (complete)
 
@@ -233,8 +255,9 @@ windows pause rendering and wait for events.
 
 Controls:
 
-- **Left click:** an explosion where the cursor points on the terrain (they add up; slots that are
-  still busy drop new events, counted in the overlay).
+- **Left click:** an explosion of the selected preset where the cursor points on the terrain, responding
+  to the surface there (they add up; slots that are still busy drop new events, counted in the overlay).
+  The overlay selects the preset and shows or hides each layer and the lights.
 - **Space:** trigger/restart the selected deterministic explosion group, including while paused; it
   replaces every effect.
 - **R:** clear every effect; retain the pause setting.
@@ -247,8 +270,9 @@ Controls:
 - **F1:** hide or show the overlay. Its buttons do the same as the keys above; while you type into or
   click on the overlay, the keys do not reach the application.
 
-Fireball particles last 0.35-0.8 seconds; sparks last 1-2.2 seconds; smoke lasts
-6-8 seconds, rounded to simulation ticks. Only the range remains after the burst dies.
+In the default small HE preset, fireball particles last 0.35-0.8 seconds, sparks 1-2.2 seconds, debris
+4-7 seconds and smoke 6-8 seconds, rounded to simulation ticks; presets with a plume last up to 12
+seconds. Only the range remains after the effects die.
 Minimizing freezes simulation. Long stalls discard excess catch-up time to keep
 GPU work bounded. Resizing preserves state.
 
@@ -272,6 +296,14 @@ Scripted scenarios replace the group and the interactive clock; each run ends wi
 ```powershell
 .\out\build\windows-x64\Release\Pyroclast.exe --scenario=barrage
 .\out\build\windows-x64\Release\Pyroclast.exe --renderer=vulkan --scenario=grid-100 --smoke-resolution=half
+.\out\build\windows-x64\Release\Pyroclast.exe --scenario=presets
+```
+
+Presets and layers apply to groups, profiles and scenarios:
+
+```powershell
+.\out\build\windows-x64\Release\Pyroclast.exe --preset=artillery-he --explosions=10
+.\out\build\windows-x64\Release\Pyroclast.exe --preset=stress-test --explosions=100 --profile-tick=45 --disable=debris,lights
 ```
 
 Renderer selection happens at startup and defaults to D3D12:
