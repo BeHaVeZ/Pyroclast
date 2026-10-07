@@ -56,8 +56,12 @@ target_link_libraries(Pyroclast PRIVATE SDL3::SDL3-static d3d12 dxgi Vulkan::Vul
 
 include(cmake/Shaders.cmake)
 
+# Validation tooling: compares in-app captures (see tools/captures.py).
+add_executable(ImageDiff tools/image_diff/image_diff.cpp tools/image_diff/image_compare.cpp)
+target_link_libraries(ImageDiff PRIVATE SDL3::SDL3-static)
+
 include(CTest)
-set(project_targets Pyroclast)
+set(project_targets Pyroclast ImageDiff)
 if(BUILD_TESTING)
     add_executable(CommandLineTests tests/command_line_tests.cpp src/app/command_line.cpp)
     target_include_directories(CommandLineTests PRIVATE src)
@@ -77,6 +81,10 @@ if(BUILD_TESTING)
     target_include_directories(FrameStatisticsTests PRIVATE src)
     add_test(NAME frame_statistics COMMAND FrameStatisticsTests)
     list(APPEND project_targets FrameStatisticsTests)
+    add_executable(ImageCompareTests tests/image_compare_tests.cpp tools/image_diff/image_compare.cpp)
+    target_include_directories(ImageCompareTests PRIVATE tools)
+    add_test(NAME image_compare COMMAND ImageCompareTests)
+    list(APPEND project_targets ImageCompareTests)
 endif()
 
 foreach(target IN LISTS project_targets)
