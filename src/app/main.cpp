@@ -280,6 +280,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
     auto camera = sandbox.range.view(options.view);
     FlightControls flight;
     const auto profile_tick = options.profile_tick;
+    const bool unattended = scenario.has_value() || !options.capture_path.empty();
     pyroclast::FrameBaseline baseline({pyroclast::renderer_name(options.renderer), std::string(renderer.adapter_name()),
         static_cast<std::uint32_t>(sandbox.group.size()), pyroclast::ParticleSystem::capacity, profile_tick, options.half_smoke,
         pyroclast::view_name(options.view), pyroclast::scene_format_name(options.scene_format), std::string(pyroclast::preset_name(options.preset)),
@@ -328,7 +329,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                 baseline.disable();
                 if (scenario) scenario->invalidate("the window was minimized, unfocused or resized");
             }
-            if (scenario) continue;
+            if (unattended) continue;
             if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.windowID == window_id && event.button.button == SDL_BUTTON_RIGHT)
             {
                 flight.looking = SDL_SetWindowRelativeMouseMode(window, true);
@@ -395,7 +396,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                 const double elapsed = static_cast<double>(start - previous_time) /
                     static_cast<double>(SDL_GetPerformanceFrequency());
                 previous_time = start;
-                const auto input = flight.input(!scenario && (!ui || !ui->wants_keyboard()));
+                const auto input = flight.input(!unattended && (!ui || !ui->wants_keyboard()));
                 if (input.move.x != 0 || input.move.y != 0 || input.move.z != 0 || input.look.x != 0 || input.look.y != 0)
                 {
                     baseline.disable();
@@ -419,7 +420,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                         sandbox.click_preset, sandbox.layer_mask, sandbox.renderer.lights()};
                     commands.clear();
                     overlay = ui->build(snapshot, commands);
-                    if (!scenario) for (const auto command : commands) apply(command, sandbox);
+                    if (!unattended) for (const auto command : commands) apply(command, sandbox);
                 }
                 if (scenario) scenario->submit_due(sandbox);
                 const bool capture = !options.capture_path.empty() && !demo.has_pending_steps();
