@@ -7,9 +7,9 @@
 Early development.
 
 The project runs a GPU explosion and smoke effect in a 3D test range (terrain, sky, depth, a
-free-fly camera) on D3D12 and Vulkan, with a Dear ImGui engineering overlay. Explosion events and
-presets, the GPU particle lifecycle, layered effects, the smoke model, showcase and benchmark modes
-follow.
+free-fly camera) on D3D12 and Vulkan, with a Dear ImGui engineering overlay. Explosions are events placed
+by clicks or scripts, and the GPU decides which particles are alive and how many to draw. Presets and
+layered effects, the smoke model, showcase and benchmark modes follow.
 
 ## Core question
 
@@ -55,6 +55,26 @@ This project is an independent technical exploration.
 It is not affiliated with Bohemia Interactive, Arma, Enfusion, or Blastcore, and does not use proprietary engine source code.
 
 ## Current milestone
+
+**M14b - GPU particle lifecycle** (complete)
+
+- The GPU decides what is alive and how much is drawn. Each frame the simulation also marks the alive
+  records of every 64-record group; one compute group scans those marks into list offsets, indirect draw
+  arguments and live counts; a scatter writes the alive records' indices. The particle draws are indirect
+  and read only alive particles. The lists keep the previous draw order (effects back to front, each in
+  record order), so every image is identical to M14a's and the counts repeat exactly from run to run, on
+  both APIs and on other GPUs.
+- Measured against M14a (RTX 4090, interleaved runs): frames where dead particles dominate draw up to 47%
+  faster (100 effects at tick 470, half resolution, Vulkan), and the Vulkan half-resolution gap found in
+  M12 turns out to be dead light particles drawn as empty quads (about 110 µs on Vulkan, 7 µs on D3D12);
+  it is gone.
+  Dense young smoke is unchanged (it is limited by blending). The new kernels cost a fixed 3-5 µs per frame
+  at light loads; a faster simulation kernel pays for them at 100 effects. Appending with atomics was
+  3-12 µs cheaper but made blending order, and so images, change between runs, so it was rejected.
+- The rendering interface gained indirect draws and a small per-frame readback. The overlay shows live
+  particle counts, the fixed-state JSON reports `"alive"`, and scenario summaries report peak and mean
+  live counts and a checksum of every count, which must repeat across runs. `tools/ab.py --matrix
+  scenarios` compares two builds on the scripted scenarios, interleaved.
 
 **M14a - Explosion events, effect slabs and scripted scenarios** (complete)
 
@@ -244,8 +264,8 @@ In your existing Visual Studio launch configuration, add `"--explosions=100"`
 to `args` beside the renderer argument. **F5** starts that group; **Space**
 restarts it. All its effects start together on a deterministic grid, 9 m apart, on the flat range;
 smoke overlaps as it expands. The pool always holds 128 effect slots of 2,560 particles (327,680
-records, 15.7 MB); only the slots of active effects are simulated and drawn, each record by every
-dispatch and draw while its effect lives (there is no per-particle compaction yet).
+records, 15.7 MB); only the slots of active effects are simulated, and only their alive particles are
+drawn.
 
 Scripted scenarios replace the group and the interactive clock; each run ends with one JSON line:
 
@@ -322,13 +342,13 @@ code includes. `shaders/explosion.hlsli` shares layer classification and determi
 - DXIL and bytecode headers: `out/build/windows-x64/generated/shaders/<configuration>/d3d12/`
 - SPIR-V and bytecode headers: `out/build/windows-x64/generated/shaders/<configuration>/vulkan/`
 
-The particle workload is one dispatch of 64-thread groups over the active effects' slabs (40 groups per
-effect) and one draw of six vertices per particle of every active effect (two in half-resolution mode);
-with no active effect there is neither; the range adds the terrain (393,216 vertices),
-the sky and the tonemap pass to the backbuffer.
-Each backend orders the previous frame's draws before the next update, and compute
-writes before the vertex shaders read them. No per-frame descriptor allocation,
-particle upload, or particle readback is needed.
+The particle workload is three dispatches (the simulation over the active effects' slabs in 64-thread
+groups, 40 per effect; a one-group scan; a scatter over the same groups) and one indirect draw of six
+vertices per alive particle (two draws in half-resolution mode, smoke and light); with no active effect
+there is none of it; the range adds the terrain (393,216 vertices), the sky and the tonemap pass to the
+backbuffer. Each backend orders the previous frame's draws before the next update, and compute writes
+before the draws read them, as data or as draw arguments. No per-frame descriptor allocation or particle
+upload is needed; the only readback is a 16-byte counter record per frame.
 
 Debug disables shader optimization and includes debug information; Release uses
 `-O3`. SPIR-V targets the Vulkan 1.1 environment (unchanged when the API moved to 1.3, so the
@@ -365,11 +385,12 @@ and do not replace a profiler or prove scaling performance.
 For a controlled fixed-state measurement, append `--profile-tick=180` (any integer
 0-480 is accepted). This automatically enables timestamps and requests VSync off.
 The application advances to that tick, freezes, then warms up 120 frames and
-samples 600. At tick 180 only smoke remains; at tick 470 nearly every particle is dead but the effects are
-still active, so their slabs are still dispatched and drawn; at tick 480 the group has retired and only the
-range and the tonemap remain. The measured compute dispatch has **zero integration steps** but still reads
-and writes every record of the active effects' slabs. This isolates pool/rendering costs rather than force
-costs.
+samples 600. At tick 180 only smoke remains (51,200 alive particles at 100 effects); at tick 470 nearly
+every particle is dead (4,239 alive) but the effects are still active, so their slabs are still simulated;
+at tick 480 the group has retired and only the range and the tonemap remain. The measured simulation has
+**zero integration steps** but still reads and writes every record of the active effects' slabs, then
+compacts the alive ones. This isolates pool/rendering costs rather than force costs. The JSON record's
+`"alive"` is the live particle count the GPU reported.
 Input, focus loss, resize, minimize, or skipped frames invalidate the sample.
 D3D12 uses Present interval zero; Vulkan requires IMMEDIATE presentation and
 reports a useful error if unavailable. Desktop compositing can still affect CPU
@@ -403,8 +424,9 @@ python tools/captures.py capture --config Debug --out out/baselines/mine
 python tools/captures.py capture --config Debug --out out/baselines/mine --views ground,hill,aerial --ticks 60,180
 python tools/captures.py compare out/baselines/mine out/baselines/theirs   # exact by default
 python tools/captures.py cross-api out/baselines/mine                      # max 2 levels, 99.9% within 1
-# Interleaved A/B timing of two builds (directories containing Pyroclast.exe)
+# Interleaved A/B timing of two builds (directories containing Pyroclast.exe), on frozen states or scenarios
 python tools/ab.py --a C:/baseline/out/build/windows-x64/Release --b out/build/windows-x64/Release --runs 5
+python tools/ab.py --a C:/baseline/out/build/windows-x64/Release --b out/build/windows-x64/Release --matrix scenarios
 # Interactive lifecycle under native validation: controls, 30 resizes, minimize/restore, minimized start
 powershell -File tools/lifecycle.ps1 -Configuration Debug -Renderer vulkan -SmokeResolution half
 ```
