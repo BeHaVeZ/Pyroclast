@@ -53,11 +53,11 @@ Camera TestRange::view(RangeView name) const
         camera.look_at({0, 6, 0});
         break;
     case RangeView::ground:
-        camera.position = {14, 1.7f, 26};
-        camera.look_at({0, 5, 0});
+        camera.position = {0, 1.7f, 58};
+        camera.look_at({6, 5, 0});
         break;
     case RangeView::hill:
-        camera.position = {-60, terrain_.height(-60, 205) + 3, 205};
+        camera.position = {190, terrain_.height(190, 0) + 2, 0};
         camera.look_at({0, 6, 0});
         break;
     case RangeView::aerial:

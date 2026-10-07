@@ -110,7 +110,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, pyro
     FlightControls flight;
     const auto profile_tick = options.profile_tick;
     pyroclast::FrameBaseline baseline({pyroclast::renderer_name(options.renderer), std::string(renderer.adapter_name()),
-        demo.explosion_count(), demo.capacity(), profile_tick, options.half_smoke});
+        demo.explosion_count(), demo.capacity(), profile_tick, options.half_smoke, pyroclast::view_name(options.view)});
     if (ui)
     {
         baseline.disable();

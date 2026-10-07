@@ -21,6 +21,7 @@ struct SampleDescription
     std::uint32_t capacity = 0;
     std::optional<std::uint32_t> profile_tick;
     bool half_resolution_smoke = false;
+    std::string view = "overview";
 };
 
 class FrameBaseline final

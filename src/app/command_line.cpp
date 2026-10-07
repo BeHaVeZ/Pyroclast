@@ -230,4 +230,16 @@ const char* renderer_name(Renderer renderer)
 {
     return renderer == Renderer::d3d12 ? "d3d12" : "vulkan";
 }
+
+const char* view_name(RangeView view)
+{
+    switch (view)
+    {
+    case RangeView::overview: return "overview";
+    case RangeView::ground: return "ground";
+    case RangeView::hill: return "hill";
+    case RangeView::aerial: return "aerial";
+    }
+    return "overview";
+}
 }

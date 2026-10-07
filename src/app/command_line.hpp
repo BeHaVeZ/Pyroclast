@@ -36,4 +36,5 @@ struct CommandLineResult
 // Arguments exclude the executable name.
 CommandLineResult parse_command_line(std::span<const char* const> arguments);
 const char* renderer_name(Renderer renderer);
+const char* view_name(RangeView view);
 }
