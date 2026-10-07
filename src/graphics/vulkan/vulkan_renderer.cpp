@@ -384,6 +384,7 @@ RenderResult VulkanRenderer::render(const Frame& frame)
     }
     if (frame.overlay)
     {
+        if (timing_.pool) vkCmdWriteTimestamp2(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, timing_.pool, query + 3);
         const auto region = begin_region(command, "Overlay", "Overlay");
         begin_label(command, "Overlay");
         record_overlay(command, frame.overlay, image.view, swapchain_.extent);
@@ -396,7 +397,7 @@ RenderResult VulkanRenderer::render(const Frame& frame)
             VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
             VK_PIPELINE_STAGE_2_NONE, VK_ACCESS_2_NONE);
     }
-    if (timing_.pool) vkCmdWriteTimestamp2(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, timing_.pool, query + 3);
+    if (timing_.pool && !frame.overlay) vkCmdWriteTimestamp2(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, timing_.pool, query + 3);
     if (frame.capture && !record_capture(command, image.image))
     {
         return RenderResult::failed;

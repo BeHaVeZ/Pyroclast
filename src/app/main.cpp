@@ -145,7 +145,6 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, pyro
                 const double elapsed = static_cast<double>(start - previous_time) /
                     static_cast<double>(SDL_GetPerformanceFrequency());
                 previous_time = start;
-                const bool capture = !options.capture_path.empty() && !demo.has_pending_steps();
                 ImDrawData* overlay = nullptr;
                 if (ui)
                 {
@@ -158,6 +157,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, pyro
                     overlay = ui->build(snapshot, commands);
                     for (const auto command : commands) apply(command, demo);
                 }
+                const bool capture = !options.capture_path.empty() && !demo.has_pending_steps();
                 const auto result = explosions.render(renderer, demo,
                     static_cast<float>(width) / static_cast<float>(height), elapsed, capture, overlay);
                 if (result == pyroclast::RenderResult::failed) return 1;

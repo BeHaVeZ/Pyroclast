@@ -312,6 +312,7 @@ RenderResult D3D12Renderer::render(const Frame& frame)
         end_region(region);
         if (!target && frame.overlay)
         {
+            if (timestamps_) command_list_->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query + 3);
             const auto overlay_region = begin_region("Overlay", "Overlay");
             begin_event(command_list_.Get(), "Overlay");
             record_overlay(frame.overlay, view);
@@ -326,7 +327,7 @@ RenderResult D3D12Renderer::render(const Frame& frame)
     }
     if (timestamps_)
     {
-        command_list_->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query + 3);
+        if (!frame.overlay) command_list_->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query + 3);
         command_list_->ResolveQueryData(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query, 4 + 2 * slot.region_count,
             timestamp_readback_.Get(), query * sizeof(std::uint64_t));
     }
