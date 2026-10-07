@@ -79,7 +79,9 @@ float4 ps_main(PixelInput input) : SV_Target
 {
     float radius = dot(input.uv, input.uv);
     if (radius >= 1) discard;
-    uint2 texel = min(uint2(input.position.xy * draw.depth_scale), uint2(frame.viewport.xy) - 1);
+    uint2 depth_size;
+    scene_depth.GetDimensions(depth_size.x, depth_size.y);
+    uint2 texel = min(uint2(input.position.xy * draw.depth_scale), depth_size - 1);
     float scene = frame.camera_position.w / max(scene_depth.Load(int3(texel, 0)), 1e-9);
     float fade = saturate((scene - input.distance) / input.softness);
     float alpha = (1.0 - radius) * input.color.a * fade;

@@ -30,7 +30,8 @@ PixelInput vs_main(uint vertex : SV_VertexID)
 float grid_line(float2 xz, float spacing)
 {
     float2 coordinate = xz / spacing;
-    float2 distance = abs(frac(coordinate - 0.5) - 0.5) / max(fwidth(coordinate), 1e-4);
+    float2 width = abs(ddx_fine(coordinate)) + abs(ddy_fine(coordinate));
+    float2 distance = abs(frac(coordinate - 0.5) - 0.5) / max(width, 1e-4);
     return 1 - saturate(min(distance.x, distance.y));
 }
 

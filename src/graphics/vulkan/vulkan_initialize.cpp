@@ -254,6 +254,14 @@ bool VulkanRenderer::create_device(std::string_view requested_adapter)
             skip("missing feature ", !vulkan13.dynamicRendering ? "dynamicRendering" : "synchronization2");
             continue;
         }
+        VkFormatProperties depth_properties{};
+        vkGetPhysicalDeviceFormatProperties(adapter, depth_format, &depth_properties);
+        constexpr VkFormatFeatureFlags depth_features = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+        if ((depth_properties.optimalTilingFeatures & depth_features) != depth_features)
+        {
+            skip("D32_SFLOAT cannot be a sampled depth attachment");
+            continue;
+        }
         const bool present_fences = has_maintenance && maintenance.swapchainMaintenance1;
         bool queue_found = false;
         vkGetPhysicalDeviceQueueFamilyProperties(adapter, &count, nullptr);
@@ -293,8 +301,8 @@ bool VulkanRenderer::create_device(std::string_view requested_adapter)
     if (!vk_.physical)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-            "No hardware Vulkan 1.3 adapter supports a graphics/compute/present queue, dynamic rendering, synchronization2 "
-            "and VK_KHR_push_descriptor.");
+            "No hardware Vulkan 1.3 adapter supports a graphics/compute/present queue, dynamic rendering, synchronization2, "
+            "VK_KHR_push_descriptor and sampled D32_SFLOAT depth attachments.");
         return false;
     }
     vk_.present_fences = best_present_fences;

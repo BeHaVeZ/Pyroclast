@@ -80,8 +80,9 @@ void cs_main(uint3 thread : SV_DispatchThreadID)
             if (position.y < ground)
             {
                 position.y = ground;
-                velocity.y = fireball || smoke ? max(velocity.y, 0) : -velocity.y * 0.35;
-                if (!fireball && !smoke) velocity.xz *= 0.7;
+                bool bounce = !fireball && !smoke && velocity.y < 0;
+                if (bounce) velocity.xz *= 0.7;
+                velocity.y = bounce ? -velocity.y * 0.35 : max(velocity.y, 0);
             }
             if (position.w >= velocity.w) velocity.w = 0;
         }
