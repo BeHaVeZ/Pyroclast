@@ -1,6 +1,7 @@
 #include "effect_classes.hlsli"
 #include "explosion.hlsli"
 #include "frame_constants.hlsli"
+#include "noise.hlsli"
 #include "terrain.hlsli"
 
 struct Parameters
@@ -8,7 +9,7 @@ struct Parameters
     uint steps;
     uint effect_count;
     uint record_count;
-    uint reserved;
+    uint tick;
 };
 #ifdef __spirv__
 [[vk::push_constant]]
@@ -19,7 +20,23 @@ ByteAddressBuffer classes : register(t1);
 RWByteAddressBuffer particles : register(u0);
 RWByteAddressBuffer alive_masks : register(u1);
 
-static const float3 wind = float3(2.0, 0, 0);
+float3 wind_at(float height)
+{
+    return frame.wind.xyz * (0.35 + 0.65 * saturate(height / 15));
+}
+
+float3 vortex_flow(Flow flow, float3 origin, float3 position, float seconds)
+{
+    float2 ring = ring_at(flow, seconds);
+    float3 offset = position - origin;
+    float radial_distance = length(offset.xz);
+    float2 outward = radial_distance > 1e-4 ? offset.xz / radial_distance : float2(0, 0);
+    float2 from_core = float2(radial_distance - ring.y, offset.y - ring.x);
+    float decay = exp(-max(seconds - flow.rise_time, 0) / max(flow.decay_time, 1e-3));
+    float2 turn = flow.strength * decay * float2(from_core.y, -from_core.x) /
+        (dot(from_core, from_core) + flow.core_radius * flow.core_radius);
+    return float3(outward.x * turn.x, turn.y, outward.y * turn.x);
+}
 
 groupshared uint alive_bits[2];
 
@@ -70,6 +87,11 @@ bool simulate(uint slot, uint local, uint record)
     }
     bool smoke = smoke_like(layer_index);
     bool debris = layer_index == layer_debris;
+    uint mask = frame.light_state.y;
+    Flow flow = load_flow(classes, state.w);
+    float3 effect_origin = frame.effect_origins[slot].xyz;
+    bool vortex = smoke && flow.strength > 0 && mask_enabled(mask, vortex_mask_bit);
+    bool curl = smoke && layer.turbulence > 0 && mask_enabled(mask, curl_mask_bit);
     float spin_rate = debris ? (particle_random(state.x * explosion_particles + local, 10) - 0.5) * 24 : 0;
     const float dt = 1.0 / 60.0;
     for (uint step = 0; step < min(parameters.steps, maximum_simulation_steps); ++step)
@@ -78,11 +100,19 @@ bool simulate(uint slot, uint local, uint record)
         {
             position.w += dt;
             if (position.w < 0) continue;
-            if (layer.drag > 0) velocity.xyz += (wind - velocity.xyz) * (layer.drag * dt);
-            if (layer.buoyancy > 0) velocity.y += layer.buoyancy * smoke_temperature(position.w) * dt;
+            float terrain = terrain_height(heights, position.xz);
+            if (layer.drag > 0)
+            {
+                float seconds = float(parameters.tick + step + 1 - state.z) / 60.0;
+                float3 air = wind_at(position.y - terrain);
+                if (vortex) air += vortex_flow(flow, effect_origin, position.xyz, seconds);
+                if (curl) air += curl_noise(position.xyz * 0.125 - float3(0, seconds * 0.2, 0)) * (layer.turbulence * exp(-0.3 * position.w));
+                velocity.xyz += (air - velocity.xyz) * (layer.drag * dt);
+            }
+            if (layer.buoyancy > 0) velocity.y += layer.buoyancy * layer_temperature(layer, position.w) * dt;
             if (layer.gravity > 0) velocity.y -= layer.gravity * dt;
             position.xyz += velocity.xyz * dt;
-            float terrain = terrain_height(heights, position.xz);
+            terrain = terrain_height(heights, position.xz);
             float ground = terrain + (smoke ? size : debris ? size * 0.5 : 0);
             if (position.y < ground)
             {
@@ -93,6 +123,11 @@ bool simulate(uint slot, uint local, uint record)
                 if (debris && dot(velocity.xyz, velocity.xyz) < 0.5) velocity.xyz = 0;
             }
             if (debris) spin += spin_rate * dt * saturate(length(velocity.xyz) * 0.25);
+            if (smoke && layer.spawn != spawn_ring)
+            {
+                float clearance = position.y - terrain;
+                if (clearance < 2 * size) velocity.y += (2 * size - clearance) * 1.5 * dt;
+            }
             if (layer.spawn == spawn_ring) position.y = min(position.y, terrain + size + 0.3 * position.w);
             if (position.w >= velocity.w) velocity.w = 0;
         }

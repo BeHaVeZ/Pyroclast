@@ -1,7 +1,5 @@
 #include "particle_layout.hlsli"
 
-float smoke_temperature(float age) { return exp(-0.45 * age); }
-
 uint particle_hash(uint value)
 {
     value ^= value >> 16;

@@ -76,7 +76,8 @@ struct Sandbox
     bool debug_lines = false;
     std::uint32_t next_seed = 100000;
     pyroclast::ExplosionPreset click_preset = pyroclast::ExplosionPreset::small_he;
-    std::uint32_t layer_mask = pyroclast::particle_layout::all_layers_mask;
+    std::uint32_t layer_mask = pyroclast::particle_layout::full_mask;
+    pyroclast::WindSettings wind;
     std::optional<pyroclast::ParticleCounters> counters;
     std::uint64_t counter_sample = 0;
 
@@ -140,6 +141,7 @@ void apply(pyroclast::UiCommand command, Sandbox& sandbox)
         if (command.value < pyroclast::preset_count) sandbox.click_preset = static_cast<pyroclast::ExplosionPreset>(command.value);
         break;
     case Kind::toggle_layer: sandbox.layer_mask ^= 1u << (command.value & 31); break;
+    case Kind::set_wind: sandbox.wind = command.wind; break;
     }
 }
 
@@ -212,7 +214,7 @@ public:
         const auto compute = statistics(compute_ms_);
         std::printf("{\"scenario\":\"%.*s\",\"valid\":%s,\"build\":\"%s\",\"renderer\":\"%s\",\"gpu\":%s,\"width\":%d,\"height\":%d,"
             "\"smoke_resolution\":\"%s\",\"scene_format\":\"%s\",\"view\":\"%s\",\"overlay\":%s,\"effect_lines\":%s,\"gpu_regions\":%s,"
-            "\"preset\":\"%.*s\",\"layer_mask\":%u,\"ticks\":%u,\"frames\":%zu,\"effects_started\":%llu,\"effects_dropped\":%llu,\"peak_effects\":%u,"
+            "\"preset\":\"%.*s\",\"layer_mask\":%u,\"wind\":[%.2f,%.1f,%.2f],\"ticks\":%u,\"frames\":%zu,\"effects_started\":%llu,\"effects_dropped\":%llu,\"peak_effects\":%u,"
             "\"particles\":{\"samples\":%zu,\"peak_alive\":%u,\"mean_alive\":%.3f,\"checksum\":\"%016llx\"},\"cpu_ms\":%s,"
             "\"gpu_ms\":{\"samples\":%zu,\"draw\":%s,\"compute\":%s}}\n",
             static_cast<int>(scenario_.name.size()), scenario_.name.data(), valid_ ? "true" : "false", pyroclast::build_configuration,
@@ -220,7 +222,8 @@ public:
             pyroclast::scene_format_name(options.scene_format), pyroclast::view_name(options.view), overlay ? "true" : "false",
             sandbox.debug_lines ? "true" : "false", options.gpu_regions ? "true" : "false",
             static_cast<int>(pyroclast::preset_name(options.preset).size()), pyroclast::preset_name(options.preset).data(),
-            sandbox.layer_mask, scenario_.duration_ticks, frames,
+            sandbox.layer_mask, static_cast<double>(sandbox.wind.speed), static_cast<double>(sandbox.wind.direction_degrees),
+            static_cast<double>(sandbox.wind.gustiness), scenario_.duration_ticks, frames,
             static_cast<unsigned long long>(sandbox.effects.started()), static_cast<unsigned long long>(sandbox.effects.dropped()),
             peak_effects_, counter_samples_, peak_alive_, mean_alive, static_cast<unsigned long long>(checksum_), cpu.c_str(),
             draw_ms_.size(), draw.c_str(), compute.c_str());
@@ -284,7 +287,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
     pyroclast::FrameBaseline baseline({pyroclast::renderer_name(options.renderer), std::string(renderer.adapter_name()),
         static_cast<std::uint32_t>(sandbox.group.size()), pyroclast::ParticleSystem::capacity, profile_tick, options.half_smoke,
         pyroclast::view_name(options.view), pyroclast::scene_format_name(options.scene_format), std::string(pyroclast::preset_name(options.preset)),
-        options.layer_mask});
+        options.layer_mask, options.wind});
     if (scenario) baseline.disable();
     if (ui)
     {
@@ -417,7 +420,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                         pyroclast::scene_format_name(options.scene_format), pyroclast::TestRange::exposure,
                         {camera.position.x, camera.position.y, camera.position.z},
                         camera.yaw * 180 / std::numbers::pi_v<float>, camera.pitch * 180 / std::numbers::pi_v<float>, flight.speed,
-                        sandbox.click_preset, sandbox.layer_mask, sandbox.renderer.lights()};
+                        sandbox.click_preset, sandbox.layer_mask, sandbox.renderer.lights(), sandbox.wind};
                     commands.clear();
                     overlay = ui->build(snapshot, commands);
                     if (!unattended) for (const auto command : commands) apply(command, sandbox);
@@ -425,7 +428,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                 if (scenario) scenario->submit_due(sandbox);
                 const bool capture = !options.capture_path.empty() && !demo.has_pending_steps();
                 const auto result = sandbox.renderer.render(renderer, demo, sandbox.effects, sandbox.range, camera, width, height, elapsed,
-                    {capture, overlay, sandbox.debug_lines, sandbox.layer_mask});
+                    {capture, overlay, sandbox.debug_lines, sandbox.layer_mask, sandbox.wind});
                 if (result == pyroclast::RenderResult::failed) return 1;
                 const auto counters = sandbox.poll_counters(renderer);
                 if (scenario && counters) scenario->count(*counters);
@@ -538,8 +541,10 @@ int run_application(const pyroclast::ApplicationOptions& options)
     sandbox->debug_lines = options.effect_lines;
     sandbox->click_preset = options.preset;
     sandbox->layer_mask = options.layer_mask;
+    sandbox->wind = options.wind;
     const auto preset = pyroclast::preset_name(options.preset);
-    SDL_Log("Preset: %.*s; layer mask 0x%02x.", static_cast<int>(preset.size()), preset.data(), options.layer_mask);
+    SDL_Log("Preset: %.*s; mask 0x%04x; wind %.1f m/s towards %.0f deg, gustiness %.2f.", static_cast<int>(preset.size()), preset.data(),
+        options.layer_mask, options.wind.speed, options.wind.direction_degrees, options.wind.gustiness);
     std::optional<ScenarioRun> scenario;
     if (!options.scenario.empty())
     {

@@ -79,7 +79,7 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_e
     const auto groups = std::max(active_effects * groups_per_slab, 1u);
     const bool layered = offscreen_divisor != 0;
     constexpr auto light_first = particle_layout::light_list_first;
-    const DrawConstants parameters{steps, active_effects, capacity, 0};
+    const DrawConstants parameters{steps, active_effects, capacity, tick_};
     const DrawConstants scan_parameters{active_effects * groups_per_slab, tick_ + steps, layered ? 1u : 0u};
     const DrawConstants scatter_parameters{active_effects, layered ? 1u : 0u};
     const DrawConstants both_layers{capacity, 0, capacity, 1};

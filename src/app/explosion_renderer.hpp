@@ -4,6 +4,7 @@
 #include "test_range.hpp"
 #include "../simulation/explosion_system.hpp"
 #include "../simulation/particle_system.hpp"
+#include "../simulation/wind.hpp"
 
 namespace pyroclast
 {
@@ -17,7 +18,8 @@ public:
         bool capture = false;
         ImDrawData* overlay = nullptr;
         bool debug_lines = false;
-        std::uint32_t layer_mask = particle_layout::all_layers_mask;
+        std::uint32_t layer_mask = particle_layout::full_mask;
+        WindSettings wind;
     };
     RenderResult render(GraphicsDevice& device, ParticleSystem& particles, ExplosionSystem& effects, const TestRange& range,
         const Camera& camera, int width, int height, double elapsed_seconds, const FrameOptions& options);

@@ -58,20 +58,42 @@ struct LayerParameters
     float fade_in_rate = 0;
     float4 first_color;
     float4 second_color;
+    float cooling = 0;
+    float heat = 0;
+    float expansion = 0;
+    float turbulence = 0;
+    float emission = 0;
+    float shadow_density = 0;
+    std::array<float, 10> reserved_smoke{};
 };
 static_assert(sizeof(LayerParameters) == particle_layout::layer_stride && offsetof(LayerParameters, radius) == 16 &&
     offsetof(LayerParameters, lifetime_min) == 32 && offsetof(LayerParameters, delay_range) == 48 &&
     offsetof(LayerParameters, buoyancy) == 64 && offsetof(LayerParameters, growth) == 80 &&
-    offsetof(LayerParameters, first_color) == 96 && offsetof(LayerParameters, second_color) == 112);
+    offsetof(LayerParameters, first_color) == 96 && offsetof(LayerParameters, second_color) == 112 &&
+    offsetof(LayerParameters, cooling) == 128 && offsetof(LayerParameters, emission) == 144);
+
+struct FlowParameters
+{
+    float strength = 0;
+    float rise_height = 0;
+    float rise_time = 1;
+    float ring_radius = 0;
+    float ring_growth = 0;
+    float core_radius = 1;
+    float decay_time = 1;
+    float cloud_radius = 0;
+};
+static_assert(sizeof(FlowParameters) == 32);
 
 struct EffectClass
 {
     std::array<std::uint8_t, particle_layout::class_layers_offset> group_layers{};
     std::array<LayerParameters, particle_layout::layer_count> layers{};
-    std::array<std::uint8_t, particle_layout::class_stride - particle_layout::class_layers_offset -
-        particle_layout::layer_count * particle_layout::layer_stride> padding{};
+    FlowParameters flow;
+    std::array<std::uint8_t, particle_layout::class_stride - particle_layout::class_flow_offset - sizeof(FlowParameters)> padding{};
 };
-static_assert(sizeof(EffectClass) == particle_layout::class_stride && particle_layout::slab_groups <= particle_layout::class_layers_offset);
+static_assert(sizeof(EffectClass) == particle_layout::class_stride && offsetof(EffectClass, flow) == particle_layout::class_flow_offset &&
+    particle_layout::slab_groups <= particle_layout::class_layers_offset);
 
 inline constexpr std::string_view preset_names = "small-impact, small-he, artillery-he, heavy, fuel-fire, dust-blast, stress-test";
 std::string_view preset_name(ExplosionPreset preset);

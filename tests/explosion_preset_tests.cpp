@@ -1,7 +1,9 @@
 #include "simulation/effect_lights.hpp"
 #include "simulation/explosion_presets.hpp"
 #include "simulation/terrain.hpp"
+#include "simulation/wind.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -143,6 +145,40 @@ int main()
         Terrain::surface(54, 18) == SurfaceType::concrete && Terrain::surface(17.9f, 0) == SurfaceType::dirt &&
         Terrain::surface(0, 0) == SurfaceType::dirt && Terrain::surface(30, -18.1f) == SurfaceType::dirt,
         "the pad is concrete, edges included; the rest of the range is dirt");
+
+    const auto flow = [](ExplosionPreset preset) { return make_effect_class(preset, SurfaceType::dirt).flow; };
+    check(flow(ExplosionPreset::small_impact).strength == 0 && flow(ExplosionPreset::small_impact).cloud_radius == 0 &&
+        flow(ExplosionPreset::small_he).strength < flow(ExplosionPreset::artillery_he).strength &&
+        flow(ExplosionPreset::artillery_he).strength < flow(ExplosionPreset::heavy).strength &&
+        flow(ExplosionPreset::artillery_he).rise_height < flow(ExplosionPreset::heavy).rise_height &&
+        flow(ExplosionPreset::heavy).core_radius > 0 && flow(ExplosionPreset::heavy).rise_time > 0,
+        "flow fields grow with the preset; the small impact has none");
+    bool smoke_parameters = true;
+    for (const auto& effect : classes)
+    {
+        const auto& smoke = layer(effect, EffectLayer::blast_smoke);
+        smoke_parameters = smoke_parameters && smoke.heat > 0 && smoke.cooling > 0 && smoke.turbulence > 0 && smoke.shadow_density > 0;
+    }
+    check(smoke_parameters, "every class's blast smoke is hot, cools, is turbulent and casts shadow");
+
+    const WindSettings settings{4, 90, 0.5f};
+    const auto steady = wind_velocity(settings, 1234, false);
+    check(std::abs(steady.x) < 1e-5f && std::abs(steady.z - 4) < 1e-5f && steady.y == 0, "a steady wind blows at its speed towards its heading");
+    bool gusty = true;
+    float lowest = 1e9f;
+    float highest = 0;
+    for (std::uint32_t tick = 0; tick < 60 * 120 && gusty; ++tick)
+    {
+        const auto wind = wind_velocity(settings, tick, true);
+        const float speed = std::sqrt(wind.x * wind.x + wind.z * wind.z);
+        lowest = std::min(lowest, speed);
+        highest = std::max(highest, speed);
+        const auto again = wind_velocity(settings, tick, true);
+        gusty = speed >= 4 * 0.5f - 1e-4f && speed <= 4 * 1.5f + 1e-4f && again.x == wind.x && again.z == wind.z &&
+            std::abs(std::atan2(wind.z, wind.x) - 1.5707963f) <= 0.5f * 12 * 3.1415927f / 180 + 1e-4f;
+    }
+    check(gusty && highest - lowest > 2.0f, "gusts are deterministic, bounded by the gustiness, and vary the speed");
+    check(wind_velocity({4, 0, 0}, 77, true).x == 4, "no gustiness, no gusts");
 
     return failures == 0 ? 0 : 1;
 }

@@ -2,6 +2,7 @@
 
 #include "../graphics/graphics_device.hpp"
 #include "../simulation/particle_system.hpp"
+#include "../simulation/wind.hpp"
 
 #include <memory>
 #include <span>
@@ -42,15 +43,17 @@ struct DiagnosticsSnapshot
     float camera_pitch = 0;
     float camera_speed = 0;
     ExplosionPreset click_preset = ExplosionPreset::small_he;
-    std::uint32_t layer_mask = particle_layout::all_layers_mask;
+    std::uint32_t layer_mask = particle_layout::full_mask;
     std::uint32_t lights = 0;
+    WindSettings wind;
 };
 
 struct UiCommand
 {
-    enum class Kind { trigger, clear, toggle_pause, step, toggle_debug_lines, select_preset, toggle_layer };
+    enum class Kind { trigger, clear, toggle_pause, step, toggle_debug_lines, select_preset, toggle_layer, set_wind };
     Kind kind;
     std::uint32_t value = 0;
+    WindSettings wind;
 };
 
 class DebugUi final

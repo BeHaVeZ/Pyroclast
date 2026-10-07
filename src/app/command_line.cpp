@@ -3,9 +3,12 @@
 #include "../simulation/explosion_scenarios.hpp"
 
 #include <charconv>
+#include <cmath>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <system_error>
+#include <utility>
 
 namespace pyroclast
 {
@@ -22,6 +25,23 @@ std::optional<std::uint32_t> parse_count(std::string_view value, std::uint32_t m
     }
     return parsed_value;
 }
+}
+
+std::optional<std::uint32_t> disable_bit(std::string_view name)
+{
+    for (std::uint32_t layer = 0; layer < particle_layout::layer_count; ++layer)
+    {
+        if (layer_name(static_cast<EffectLayer>(layer)) == name) return layer;
+    }
+    constexpr std::pair<std::string_view, std::uint32_t> others[] = {{"lights", particle_layout::lights_mask_bit},
+        {"curl", particle_layout::curl_mask_bit}, {"vortex", particle_layout::vortex_mask_bit}, {"gusts", particle_layout::gusts_mask_bit},
+        {"shading", particle_layout::shading_mask_bit}, {"shadow", particle_layout::shadow_mask_bit},
+        {"emission", particle_layout::emission_mask_bit}};
+    for (const auto& [other, bit] : others)
+    {
+        if (other == name) return bit;
+    }
+    return std::nullopt;
 }
 
 namespace
@@ -46,6 +66,7 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
     bool scenario_specified = false;
     bool preset_specified = false;
     bool disable_specified = false;
+    bool wind_specified = false;
     bool capture_specified = false;
     bool view_specified = false;
     const auto set_once = [&result](bool& flag, const char* name) {
@@ -160,6 +181,34 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
             }
             result.options.preset = *preset;
         }
+        else if (option.starts_with("--wind="))
+        {
+            if (wind_specified)
+            {
+                result.error = "Specify --wind only once.";
+                return result;
+            }
+            wind_specified = true;
+            const auto values = option.substr(std::string_view("--wind=").size());
+            float parsed[3]{};
+            std::size_t start = 0;
+            bool valid = true;
+            for (int index = 0; index < 3 && valid; ++index)
+            {
+                const auto comma = values.find(',', start);
+                const auto text = values.substr(start, comma == std::string_view::npos ? std::string_view::npos : comma - start);
+                const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), parsed[index]);
+                valid = !text.empty() && error == std::errc() && end == text.data() + text.size() && std::isfinite(parsed[index]) &&
+                    (index == 2) == (comma == std::string_view::npos);
+                start = comma + 1;
+            }
+            if (!valid || parsed[0] < 0 || parsed[0] > 40 || parsed[2] < 0 || parsed[2] > 1)
+            {
+                result.error = "Expected --wind=SPEED,DIRECTION,GUSTINESS (0-40 m/s, degrees, 0-1).";
+                return result;
+            }
+            result.options.wind = {parsed[0], parsed[1], parsed[2]};
+        }
         else if (option.starts_with("--disable="))
         {
             if (disable_specified)
@@ -173,17 +222,13 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
             {
                 const auto comma = list.find(',', start);
                 const auto name = list.substr(start, comma == std::string_view::npos ? std::string_view::npos : comma - start);
-                std::uint32_t bit = name == "lights" ? particle_layout::lights_mask_bit : 32;
-                for (std::uint32_t layer = 0; layer < particle_layout::layer_count; ++layer)
-                {
-                    if (layer_name(static_cast<EffectLayer>(layer)) == name) bit = layer;
-                }
-                if (bit == 32 || name.empty())
+                const auto bit = disable_bit(name);
+                if (!bit)
                 {
                     result.error = "Expected --disable=<comma-separated " + or_list(disable_names) + ">.";
                     return result;
                 }
-                result.options.layer_mask &= ~(1u << bit);
+                result.options.layer_mask &= ~(1u << *bit);
                 if (comma == std::string_view::npos) break;
                 start = comma + 1;
             }

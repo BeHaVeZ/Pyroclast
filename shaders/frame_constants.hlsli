@@ -25,5 +25,9 @@ struct FrameConstants
     float4 light_positions[maximum_lights];
     float4 light_colors[maximum_lights];
     uint4 light_state;
+    uint4 clock;
+    float4 wind;
+    float4 sun_billboard;
+    float4 up_billboard;
 };
 ConstantBuffer<FrameConstants> frame : register(b1);

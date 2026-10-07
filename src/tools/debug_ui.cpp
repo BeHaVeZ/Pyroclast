@@ -149,15 +149,24 @@ ImDrawData* DebugUi::build(const DiagnosticsSnapshot& snapshot, std::vector<UiCo
             }
             ImGui::EndCombo();
         }
-        for (std::uint32_t bit = 0; bit <= particle_layout::layer_count; ++bit)
+        constexpr std::pair<const char*, std::uint32_t> toggles[] = {{"dust", 0}, {"smoke", 1}, {"plume", 2}, {"flash", 3},
+            {"fireball", 4}, {"sparks", 5}, {"debris", 6}, {"lights", particle_layout::lights_mask_bit},
+            {"curl", particle_layout::curl_mask_bit}, {"vortex", particle_layout::vortex_mask_bit}, {"gusts", particle_layout::gusts_mask_bit},
+            {"shading", particle_layout::shading_mask_bit}, {"shadow", particle_layout::shadow_mask_bit},
+            {"emission", particle_layout::emission_mask_bit}};
+        for (std::size_t index = 0; index < std::size(toggles); ++index)
         {
-            const std::uint32_t mask_bit = bit == particle_layout::layer_count ? particle_layout::lights_mask_bit : bit;
-            const auto name = bit == particle_layout::layer_count ? std::string_view("lights") : layer_name(static_cast<EffectLayer>(bit));
+            const auto [name, mask_bit] = toggles[index];
             bool shown = ((snapshot.layer_mask >> mask_bit) & 1) != 0;
-            if (bit % 4 != 0) ImGui::SameLine();
-            if (ImGui::Checkbox(std::string(name).c_str(), &shown)) commands.push_back({UiCommand::Kind::toggle_layer, mask_bit});
+            if (index % 4 != 0) ImGui::SameLine();
+            if (ImGui::Checkbox(name, &shown)) commands.push_back({UiCommand::Kind::toggle_layer, mask_bit});
         }
         ImGui::Text("Temporary lights: %u", snapshot.lights);
+        auto wind = snapshot.wind;
+        bool changed = ImGui::SliderFloat("Wind speed (m/s)", &wind.speed, 0, 20, "%.1f");
+        changed |= ImGui::SliderFloat("Wind heading (deg)", &wind.direction_degrees, -180, 180, "%.0f");
+        changed |= ImGui::SliderFloat("Gustiness", &wind.gustiness, 0, 1, "%.2f");
+        if (changed) commands.push_back({UiCommand::Kind::set_wind, 0, wind});
         if (ImGui::Button("Trigger (Space)")) commands.push_back({UiCommand::Kind::trigger});
         ImGui::SameLine();
         if (ImGui::Button("Clear (R)")) commands.push_back({UiCommand::Kind::clear});

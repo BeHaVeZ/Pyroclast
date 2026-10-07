@@ -38,7 +38,13 @@ static const uint layer_debris = 6;
 static const uint layer_count = 7;
 static const uint no_layer = 255;
 static const uint lights_mask_bit = 7;
-static const uint all_layers_mask = 0xff;
+static const uint curl_mask_bit = 8;
+static const uint vortex_mask_bit = 9;
+static const uint gusts_mask_bit = 10;
+static const uint shading_mask_bit = 11;
+static const uint shadow_mask_bit = 12;
+static const uint emission_mask_bit = 13;
+static const uint full_mask = 0x3fff;
 
 static const uint spawn_burst = 0;
 static const uint spawn_ring = 1;
@@ -46,6 +52,7 @@ static const uint spawn_ring = 1;
 static const uint maximum_lights = 16;
 
 static const uint maximum_effect_classes = 16;
-static const uint class_stride = 1024;
+static const uint class_stride = 2048;
 static const uint class_layers_offset = 64;
-static const uint layer_stride = 128;
+static const uint layer_stride = 192;
+static const uint class_flow_offset = class_layers_offset + layer_count * layer_stride;

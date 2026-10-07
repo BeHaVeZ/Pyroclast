@@ -20,9 +20,9 @@ constexpr std::uint32_t groups_for(std::uint32_t count)
 
 constexpr float4 hot_emission{4.0f, 2.4f, 0.3f, 0};
 constexpr float4 cool_emission{1.8f, 0.03f, 0.003f, 0};
-constexpr float4 cold_smoke{0.11f, 0.12f, 0.13f, 0};
-constexpr float4 hot_smoke{0.20f, 0.10f, 0.045f, 0};
-constexpr float4 sooty_smoke{0.045f, 0.04f, 0.038f, 0};
+constexpr float4 cold_smoke{0.30f, 0.30f, 0.31f, 0};
+constexpr float4 hot_smoke{0.24f, 0.16f, 0.10f, 0};
+constexpr float4 sooty_smoke{0.13f, 0.12f, 0.115f, 0};
 
 LayerParameters ground_dust(std::uint32_t count, float reach, float size)
 {
@@ -41,6 +41,11 @@ LayerParameters ground_dust(std::uint32_t count, float reach, float size)
     layer.growth = 0.45f;
     layer.strength = 0.11f;
     layer.fade_in_rate = 6.0f;
+    layer.cooling = 2.0f;
+    layer.heat = 0.1f;
+    layer.expansion = 0.3f;
+    layer.turbulence = 0.8f;
+    layer.shadow_density = 0.05f;
     return layer;
 }
 
@@ -58,11 +63,17 @@ LayerParameters blast_smoke(std::uint32_t count, float scale, float4 cold = cold
     layer.size_range = 1.0f * scale;
     layer.drag = 1.4f;
     layer.buoyancy = 5.0f;
-    layer.growth = 0.55f;
-    layer.strength = 0.08f;
+    layer.growth = 0.4f;
+    layer.strength = 0.11f;
     layer.fade_in_rate = 4.0f;
     layer.first_color = cold;
     layer.second_color = hot_smoke;
+    layer.cooling = 0.45f;
+    layer.heat = 1.0f;
+    layer.expansion = 0.6f;
+    layer.turbulence = 1.2f;
+    layer.emission = 0.6f;
+    layer.shadow_density = 0.12f;
     return layer;
 }
 
@@ -82,11 +93,17 @@ LayerParameters plume(std::uint32_t count, float scale, float feed_seconds, floa
     layer.delay_range = feed_seconds;
     layer.drag = 0.9f;
     layer.buoyancy = 7.0f;
-    layer.growth = 0.5f;
-    layer.strength = 0.06f;
+    layer.growth = 0.35f;
+    layer.strength = 0.08f;
     layer.fade_in_rate = 2.0f;
     layer.first_color = cold;
     layer.second_color = hot_smoke;
+    layer.cooling = 0.25f;
+    layer.heat = 0.9f;
+    layer.expansion = 0.5f;
+    layer.turbulence = 1.5f;
+    layer.emission = 0.4f;
+    layer.shadow_density = 0.12f;
     return layer;
 }
 
@@ -243,6 +260,21 @@ Layers preset_layers(ExplosionPreset preset)
     return layers;
 }
 
+FlowParameters preset_flow(ExplosionPreset preset)
+{
+    switch (preset)
+    {
+    case ExplosionPreset::small_impact: return {};
+    case ExplosionPreset::small_he: return {3.5f, 7, 1.5f, 1.5f, 2.5f, 2.5f, 2.0f, 1.2f};
+    case ExplosionPreset::artillery_he: return {9, 14, 2.2f, 2.5f, 5, 4.5f, 2.5f, 1.2f};
+    case ExplosionPreset::heavy: return {20, 26, 3.0f, 4, 9, 7.0f, 3.5f, 1.2f};
+    case ExplosionPreset::fuel_fire: return {15, 20, 2.8f, 3, 6, 5.0f, 3.5f, 1.3f};
+    case ExplosionPreset::dust_blast: return {4, 8, 2.0f, 3, 5, 5.0f, 2.0f, 1.3f};
+    case ExplosionPreset::stress_test: return {12, 18, 2.5f, 3, 6, 5.0f, 3.0f, 1.2f};
+    }
+    return {};
+}
+
 void apply_surface(Layers& layers, SurfaceType surface)
 {
     auto& dust = layers[layer_index(EffectLayer::ground_dust)];
@@ -253,15 +285,15 @@ void apply_surface(Layers& layers, SurfaceType surface)
     };
     if (surface == SurfaceType::dirt)
     {
-        dust.first_color = {0.16f, 0.13f, 0.09f, 0};
-        dust.second_color = {0.20f, 0.14f, 0.08f, 0};
+        dust.first_color = {0.50f, 0.41f, 0.29f, 0};
+        dust.second_color = {0.55f, 0.40f, 0.25f, 0};
         fragments.first_color = {0.07f, 0.05f, 0.035f, 0};
         spark.count = times(spark.count, 0.6f);
         return;
     }
     dust.count = times(dust.count, 0.6f);
-    dust.first_color = {0.25f, 0.245f, 0.23f, 0};
-    dust.second_color = {0.28f, 0.25f, 0.21f, 0};
+    dust.first_color = {0.66f, 0.65f, 0.62f, 0};
+    dust.second_color = {0.68f, 0.63f, 0.56f, 0};
     fragments.count = times(fragments.count, 1.25f);
     fragments.size_min *= 0.7f;
     fragments.size_range *= 0.7f;
@@ -335,6 +367,7 @@ EffectClass make_effect_class(ExplosionPreset preset, SurfaceType surface)
 {
     EffectClass effect;
     effect.layers = preset_layers(preset);
+    effect.flow = preset_flow(preset);
     apply_surface(effect.layers, surface);
     fit_slab(effect.layers);
     effect.group_layers.fill(static_cast<std::uint8_t>(particle_layout::no_layer));

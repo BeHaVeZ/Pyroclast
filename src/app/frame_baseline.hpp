@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../graphics/graphics_device.hpp"
+#include "../simulation/wind.hpp"
 #include <array>
 #include <cstddef>
 #include <string>
@@ -24,7 +25,8 @@ struct SampleDescription
     std::string view = "overview";
     std::string scene_format = "rgba16f";
     std::string preset = "small-he";
-    std::uint32_t layer_mask = particle_layout::all_layers_mask;
+    std::uint32_t layer_mask = particle_layout::full_mask;
+    WindSettings wind;
 };
 
 class FrameBaseline final

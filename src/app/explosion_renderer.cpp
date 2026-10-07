@@ -77,6 +77,15 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     }
     constants.light_state = {light_count, options.layer_mask, 0, 0};
     lights_ = light_count;
+    const auto drawn_tick = particles.tick() + work.steps;
+    constants.clock = {drawn_tick, 0, 0, 0};
+    const bool gusts = ((options.layer_mask >> particle_layout::gusts_mask_bit) & 1) != 0;
+    const auto wind = wind_velocity(options.wind, drawn_tick, gusts);
+    constants.wind = {wind.x, wind.y, wind.z, 0};
+    const auto towards_camera = cross(right, up);
+    const float3 sun{constants.sun_direction.x, constants.sun_direction.y, constants.sun_direction.z};
+    constants.sun_billboard = {dot(right, sun), dot(up, sun), dot(towards_camera, sun), 0};
+    constants.up_billboard = {right.y, up.y, towards_camera.y, 0};
 
     const auto opaque = range.draws();
     const Draw present{*present_, {}, {}, 3, 1, "Tonemap"};

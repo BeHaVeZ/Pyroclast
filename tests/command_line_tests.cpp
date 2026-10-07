@@ -29,7 +29,8 @@ struct TestCase
     std::string_view scenario;
     bool effect_lines = false;
     pyroclast::ExplosionPreset preset = pyroclast::ExplosionPreset::small_he;
-    std::uint32_t layer_mask = pyroclast::particle_layout::all_layers_mask;
+    std::uint32_t layer_mask = pyroclast::particle_layout::full_mask;
+    pyroclast::WindSettings wind;
 };
 }
 
@@ -59,7 +60,17 @@ int main()
         {"invalid preset", {"--preset=nuke"}, d3d12, false, "Expected --preset=small-impact, small-he, artillery-he, heavy, fuel-fire, dust-blast or stress-test"},
         {"duplicate preset", {"--preset=heavy", "--preset=heavy"}, d3d12, false, "only once"},
         {"disable layers", {"--disable=debris,lights,smoke"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {}, {}, {},
-            false, pyroclast::ExplosionPreset::small_he, 0xff & ~((1u << 6) | (1u << 7) | (1u << 1))},
+            false, pyroclast::ExplosionPreset::small_he, pyroclast::particle_layout::full_mask & ~((1u << 6) | (1u << 7) | (1u << 1))},
+        {"disable smoke features", {"--disable=curl,vortex,gusts,shading,shadow,emission"}, d3d12, false, {}, false, 1, {}, false, {}, {},
+            false, {}, false, {}, {}, {}, {}, false, pyroclast::ExplosionPreset::small_he, 0xff},
+        {"wind", {"--wind=6.5,-45,0.8"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {}, {}, {}, false,
+            pyroclast::ExplosionPreset::small_he, pyroclast::particle_layout::full_mask, {6.5f, -45.0f, 0.8f}},
+        {"wind too strong", {"--wind=41,0,0"}, d3d12, false, "Expected --wind"},
+        {"wind too gusty", {"--wind=5,0,1.5"}, d3d12, false, "Expected --wind"},
+        {"wind with two values", {"--wind=5,0"}, d3d12, false, "Expected --wind"},
+        {"wind with four values", {"--wind=5,0,0,1"}, d3d12, false, "Expected --wind"},
+        {"wind not a number", {"--wind=fast,0,0"}, d3d12, false, "Expected --wind"},
+        {"duplicate wind", {"--wind=1,0,0", "--wind=1,0,0"}, d3d12, false, "only once"},
         {"disable an unknown layer", {"--disable=smoke,clouds"}, d3d12, false, "Expected --disable"},
         {"disable nothing", {"--disable="}, d3d12, false, "Expected --disable"},
         {"disable with a trailing comma", {"--disable=smoke,"}, d3d12, false, "Expected --disable"},
@@ -148,7 +159,9 @@ int main()
                 result.options.gpu_regions == test.gpu_regions && result.options.adapter == test.adapter &&
                 result.options.view == test.view && result.options.scene_format == test.scene_format &&
                 result.options.scenario == test.scenario && result.options.effect_lines == test.effect_lines &&
-                result.options.preset == test.preset && result.options.layer_mask == test.layer_mask
+                result.options.preset == test.preset && result.options.layer_mask == test.layer_mask &&
+                result.options.wind.speed == test.wind.speed && result.options.wind.direction_degrees == test.wind.direction_degrees &&
+                result.options.wind.gustiness == test.wind.gustiness
             : result.error.find(test.error_fragment) != std::string::npos;
         if (!passed)
         {

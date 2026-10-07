@@ -30,6 +30,24 @@ struct Layer
     float fade_in_rate;
     float3 first_color;
     float3 second_color;
+    float cooling;
+    float heat;
+    float expansion;
+    float turbulence;
+    float emission;
+    float shadow_density;
+};
+
+struct Flow
+{
+    float strength;
+    float rise_height;
+    float rise_time;
+    float ring_radius;
+    float ring_growth;
+    float core_radius;
+    float decay_time;
+    float cloud_radius;
 };
 
 uint effect_class_address(uint effect_class)
@@ -79,7 +97,48 @@ Layer load_layer(ByteAddressBuffer classes, uint effect_class, uint layer_index)
     layer.fade_in_rate = look.w;
     layer.first_color = asfloat(classes.Load3(address + 96));
     layer.second_color = asfloat(classes.Load3(address + 112));
+    float4 smoke = asfloat(classes.Load4(address + 128));
+    float2 light = asfloat(classes.Load2(address + 144));
+    layer.cooling = smoke.x;
+    layer.heat = smoke.y;
+    layer.expansion = smoke.z;
+    layer.turbulence = smoke.w;
+    layer.emission = light.x;
+    layer.shadow_density = light.y;
     return layer;
+}
+
+Flow load_flow(ByteAddressBuffer classes, uint effect_class)
+{
+    uint address = effect_class_address(effect_class) + class_flow_offset;
+    float4 first = asfloat(classes.Load4(address));
+    float4 second = asfloat(classes.Load4(address + 16));
+    Flow flow;
+    flow.strength = first.x;
+    flow.rise_height = first.y;
+    flow.rise_time = first.z;
+    flow.ring_radius = first.w;
+    flow.ring_growth = second.x;
+    flow.core_radius = second.y;
+    flow.decay_time = second.z;
+    flow.cloud_radius = second.w;
+    return flow;
+}
+
+float2 ring_at(Flow flow, float seconds)
+{
+    float rise = 1 - exp(-seconds / max(flow.rise_time, 1e-3));
+    return float2(flow.rise_height * rise, flow.ring_radius + flow.ring_growth * rise);
+}
+
+float layer_temperature(Layer layer, float age)
+{
+    return layer.heat * exp(-layer.cooling * max(age, 0));
+}
+
+bool mask_enabled(uint mask, uint bit)
+{
+    return ((mask >> bit) & 1) != 0;
 }
 
 bool smoke_like(uint layer_index)
