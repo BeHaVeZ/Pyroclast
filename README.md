@@ -56,6 +56,19 @@ It is not affiliated with Bohemia Interactive, Arma, Enfusion, or Blastcore, and
 
 ## Current milestone
 
+**M13b - HDR and tonemapping** (complete)
+
+- The scene renders in linear HDR into a 16-bit float target; the last pass tonemaps it (exposure,
+  Stephen Hill's ACES fit, sRGB encoding, a fixed per-pixel dither) into the 8-bit backbuffer. Light,
+  sky and particle colours are linear radiance; fire and sparks emit several times more than a lit
+  surface, so they glow instead of clipping.
+- `--scene-format=rgba16f|r11g11b10f|rgba8` selects the scene target for comparisons (`rgba8` stores
+  linear values in 8 bits and bands; it is a cost reference). Measured on the RTX 4090 with dense smoke,
+  RGBA16F costs about +0.4 ms over 8 bits (blending is the bottleneck), and R11G11B10F is 65% slower
+  than RGBA16F, because this GPU does not blend that format at full rate. RGBA16F is the default.
+- Floating-point blending also brought D3D12 and Vulkan within one level everywhere (with far sparks drawn
+  as single pixels of the right total weight), and other vendors within 7 levels of the RTX 4090.
+
 **M13a - True 3D foundation** (complete)
 
 - World space in metres and seconds with real gravity: a 512 m procedural heightfield with a flat
@@ -297,7 +310,7 @@ code includes. `shaders/explosion.hlsli` shares layer classification and determi
 
 The particle workload is one dispatch of 64-thread groups over the pool and one draw of six vertices
 per particle of the group (two in half-resolution mode); the range adds the terrain (393,216 vertices),
-the sky and the copy to the backbuffer.
+the sky and the tonemap pass to the backbuffer.
 Each backend orders the previous frame's draws before the next update, and compute
 writes before the vertex shaders read them. No per-frame descriptor allocation,
 particle upload, or particle readback is needed.
@@ -392,14 +405,16 @@ Other diagnostic options:
 .\out\build\windows-x64\Release\Pyroclast.exe --adapter=warp --profile-tick=180 --capture=warp.png
 # GPU-based (D3D12) or GPU-assisted (Vulkan) validation of shader resource accesses; slow, Debug only
 .\out\build\windows-x64\Debug\Pyroclast.exe --explosions=100 --profile-tick=180 --gpu-validation --capture=gpuav.png
+# The same frozen state with another scene target format, or from another camera pose
+.\out\build\windows-x64\Release\Pyroclast.exe --explosions=100 --profile-tick=180 --scene-format=r11g11b10f --view=ground
 # The overlay in a capture, or no overlay in an interactive run
 .\out\build\windows-x64\Debug\Pyroclast.exe --profile-tick=60 --ui=on --capture=overlay.png
 ```
 
 Cross-vendor images are not expected to match the cross-API tolerance: the Intel UHD 770 and WARP
-differ from the RTX 4090 by up to 32 levels inside the dense 8-bit smoke of the 100-effect group, where
-blend rounding accumulates over hundreds of layers, while D3D12 and Vulkan agree within one level on
-each vendor.
+differ from the RTX 4090 by up to 7 levels inside the dense smoke of the 100-effect group (32 before the
+scene blended in floating point), and from each other by up to 2, while D3D12 and Vulkan agree within
+one level on each vendor.
 
 For the optional half-resolution smoke experiment, add
 `"--smoke-resolution=half"` to your Visual Studio launch `args`. Full resolution
@@ -408,7 +423,7 @@ render the smoke, effect by effect from back to front, into a reusable target wi
 height, cleared to transparent black; each smoke pixel fades against the full-resolution scene depth, so
 the terrain hides it. The target is then composited premultiplied over the scene with a linear-filtered
 draw (`shaders/composite.hlsl`, the target bound as a pass input), fireball and sparks are drawn at full
-resolution against the scene depth, and the scene is copied to the backbuffer. Particle simulation and
+resolution against the scene depth, and the scene is tonemapped to the backbuffer. Particle simulation and
 counts are unchanged.
 
 ```powershell
