@@ -2,6 +2,12 @@
 
   python tools/ab.py --a <dir-with-Pyroclast.exe> --b <dir> [--runs 5] [--matrix default|quick]
                      [--renderers d3d12,vulkan] [--csv out/ab/latest.csv]
+                     [--a-args="--flag=value ..."] [--b-args="..."]
+
+--a-args and --b-args append flags to every launch of that side, so one build can be compared
+under two settings (pass the same directory to --a and --b), e.g. a format or a feature toggle.
+Write them with "=" (--a-args=--scene-format=rgba8): argparse reads a separate value that starts
+with "--" as another option.
 
 Each case launches A and B alternately (ABAB, then BABA on odd runs) so slow drift between
 sessions affects both builds equally. Every launch uses --profile-tick, which freezes the
@@ -22,6 +28,7 @@ Raw per-run values are written to the CSV after every case.
 import argparse
 import csv
 import json
+import shlex
 import statistics
 import subprocess
 import sys
@@ -34,14 +41,14 @@ MATRICES = {
     "quick": [(renderer, "full", 100, 180) for renderer in ("d3d12", "vulkan")],
 }
 METRICS = ("gpu_draw", "gpu_compute", "cpu_median")
-FIELDS = ["renderer", "smoke", "explosions", "tick", "run", "build", "status", *METRICS]
+FIELDS = ["renderer", "smoke", "explosions", "tick", "run", "build", "args", "scene_format", "status", *METRICS]
 
 
-def launch(directory, case, attempts=3):
+def launch(directory, case, extra, attempts=3):
     """Returns ("ok", timings) or ("failed: reason", None)."""
     renderer, smoke, explosions, tick = case
     command = [str(Path(directory) / "Pyroclast.exe"), f"--renderer={renderer}", f"--smoke-resolution={smoke}",
-               f"--explosions={explosions}", f"--profile-tick={tick}", f"--exit-after={tick + 900}"]
+               f"--explosions={explosions}", f"--profile-tick={tick}", f"--exit-after={tick + 900}", *extra]
     for attempt in range(attempts):
         try:
             result = subprocess.run(command, capture_output=True, text=True, timeout=600)
@@ -53,7 +60,7 @@ def launch(directory, case, attempts=3):
         record = json.loads(records[-1]) if records else {}
         if record.get("gpu_ms"):
             return "ok", {"gpu_draw": record["gpu_ms"]["draw"], "gpu_compute": record["gpu_ms"]["compute"],
-                          "cpu_median": record["cpu_ms"]["median"]}
+                          "cpu_median": record["cpu_ms"]["median"], "scene_format": record.get("scene_format", "")}
         print(f"  sample invalidated (attempt {attempt + 1}/{attempts}): {' '.join(command[1:])}", flush=True)
     return "failed: no valid sample", None
 
@@ -72,7 +79,10 @@ def main():
     parser.add_argument("--matrix", default="default", choices=sorted(MATRICES))
     parser.add_argument("--renderers", default="d3d12,vulkan", help="comma-separated subset of the matrix to run")
     parser.add_argument("--csv", default="out/ab/latest.csv")
+    parser.add_argument("--a-args", default="", help="extra flags for every A launch")
+    parser.add_argument("--b-args", default="", help="extra flags for every B launch")
     arguments = parser.parse_args()
+    extra = {"A": shlex.split(arguments.a_args), "B": shlex.split(arguments.b_args)}
 
     output = Path(arguments.csv)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -85,9 +95,9 @@ def main():
             samples = {"A": [], "B": []}
             for run in range(arguments.runs):
                 for build in ("A", "B") if run % 2 == 0 else ("B", "A"):
-                    status, values = launch(arguments.a if build == "A" else arguments.b, case)
+                    status, values = launch(arguments.a if build == "A" else arguments.b, case, extra[build])
                     writer.writerow({"renderer": case[0], "smoke": case[1], "explosions": case[2], "tick": case[3],
-                                     "run": run, "build": build, "status": status, **(values or {})})
+                                     "run": run, "build": build, "args": " ".join(extra[build]), "status": status, **(values or {})})
                     if values:
                         samples[build].append(values)
                     else:
