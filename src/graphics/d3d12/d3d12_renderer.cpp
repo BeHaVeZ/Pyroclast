@@ -175,17 +175,18 @@ RenderResult D3D12Renderer::render(const Frame& frame)
             return RenderResult::failed;
         }
     }
-    const UINT index = swapchain_->GetCurrentBackBufferIndex();
-    auto& slot = frames_[index];
+    const UINT backbuffer_index = swapchain_->GetCurrentBackBufferIndex();
+    auto* backbuffer = backbuffers_[backbuffer_index].Get();
+    auto& slot = frames_[frame_index_];
 
-    if (!wait_for_fence(slot.fence_value) || !read_timestamps(index) ||
+    if (!wait_for_fence(slot.fence_value) || !read_timestamps(frame_index_) ||
         !check(slot.allocator->Reset(), "Reset frame command allocator") ||
         !check(command_list_->Reset(slot.allocator.Get(), nullptr), "Reset command list"))
     {
         return RenderResult::failed;
     }
 
-    const UINT query = index * 4;
+    const auto query = static_cast<UINT>(frame_index_) * 4;
     if (timestamps_) command_list_->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query);
     if (compute)
     {
@@ -211,7 +212,7 @@ RenderResult D3D12Renderer::render(const Frame& frame)
         command_list_->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query + 2);
     }
     auto backbuffer_view = rtv_heap_->GetCPUDescriptorHandleForHeapStart();
-    backbuffer_view.ptr += static_cast<SIZE_T>(index) * rtv_stride_;
+    backbuffer_view.ptr += static_cast<SIZE_T>(backbuffer_index) * rtv_stride_;
     command_list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     for (const auto& pass : frame.passes)
     {
@@ -219,7 +220,7 @@ RenderResult D3D12Renderer::render(const Frame& frame)
         const auto resting_state = target ? D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE : D3D12_RESOURCE_STATE_PRESENT;
         D3D12_RESOURCE_BARRIER barrier{};
         barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barrier.Transition.pResource = target ? target->texture.Get() : slot.backbuffer.Get();
+        barrier.Transition.pResource = target ? target->texture.Get() : backbuffer;
         barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
         barrier.Transition.StateBefore = resting_state;
         barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
@@ -242,7 +243,7 @@ RenderResult D3D12Renderer::render(const Frame& frame)
         command_list_->ResolveQueryData(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query, 4,
             timestamp_readback_.Get(), query * sizeof(std::uint64_t));
     }
-    if (frame.capture && !record_capture(slot.backbuffer.Get()))
+    if (frame.capture && !record_capture(backbuffer))
     {
         return RenderResult::failed;
     }
@@ -261,6 +262,7 @@ RenderResult D3D12Renderer::render(const Frame& frame)
     }
     slot.fence_value = value;
     slot.timestamps_pending = timestamps_ != nullptr;
+    frame_index_ = (frame_index_ + 1) % frames_.size();
     return check(present_result, "Present frame") && check_validation() ? RenderResult::submitted : RenderResult::failed;
 }
 
@@ -278,11 +280,11 @@ bool D3D12Renderer::resize(int width, int height)
     }
     for (auto& frame : frames_)
     {
-        frame.backbuffer.Reset();
         frame.fence_value = 0;
         frame.timestamps_pending = false;
     }
-    if (!check(swapchain_->ResizeBuffers(frame_count, static_cast<UINT>(width),
+    for (auto& buffer : backbuffers_) buffer.Reset();
+    if (!check(swapchain_->ResizeBuffers(backbuffer_count, static_cast<UINT>(width),
         static_cast<UINT>(height), backbuffer_format, 0), "Resize swapchain"))
     {
         return false;

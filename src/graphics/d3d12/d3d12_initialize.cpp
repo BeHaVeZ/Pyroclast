@@ -136,7 +136,7 @@ bool D3D12Renderer::create_swapchain(SDL_Window* window)
     description.Format = backbuffer_format;
     description.SampleDesc.Count = 1;
     description.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    description.BufferCount = frame_count;
+    description.BufferCount = backbuffer_count;
     description.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
 
     ComPtr<IDXGISwapChain1> swapchain;
@@ -151,7 +151,7 @@ bool D3D12Renderer::create_swapchain(SDL_Window* window)
 
     D3D12_DESCRIPTOR_HEAP_DESC heap_description{};
     heap_description.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-    heap_description.NumDescriptors = frame_count;
+    heap_description.NumDescriptors = backbuffer_count;
     if (!check(device_->CreateDescriptorHeap(&heap_description, IID_PPV_ARGS(&rtv_heap_)),
         "Create render target descriptor heap"))
     {
@@ -164,14 +164,14 @@ bool D3D12Renderer::create_swapchain(SDL_Window* window)
 bool D3D12Renderer::create_render_targets()
 {
     auto handle = rtv_heap_->GetCPUDescriptorHandleForHeapStart();
-    for (UINT index = 0; index < frame_count; ++index)
+    for (UINT index = 0; index < backbuffer_count; ++index)
     {
-        if (!check(swapchain_->GetBuffer(index, IID_PPV_ARGS(&frames_[index].backbuffer)),
+        if (!check(swapchain_->GetBuffer(index, IID_PPV_ARGS(&backbuffers_[index])),
             "Acquire swapchain backbuffer"))
         {
             return false;
         }
-        device_->CreateRenderTargetView(frames_[index].backbuffer.Get(), nullptr, handle);
+        device_->CreateRenderTargetView(backbuffers_[index].Get(), nullptr, handle);
         handle.ptr += rtv_stride_;
     }
     return check_validation();

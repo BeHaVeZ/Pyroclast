@@ -39,13 +39,13 @@ public:
 
 private:
     static constexpr UINT frame_count = 2;
+    static constexpr UINT backbuffer_count = 2;
     static constexpr DXGI_FORMAT backbuffer_format = DXGI_FORMAT_R8G8B8A8_UNORM;
 
     struct FrameSlot
     {
         bool timestamps_pending = false;
         Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
-        Microsoft::WRL::ComPtr<ID3D12Resource> backbuffer;
         std::uint64_t fence_value = 0;
     };
 
@@ -74,6 +74,8 @@ private:
     Microsoft::WRL::ComPtr<IDXGISwapChain3> swapchain_;
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> rtv_heap_;
     std::array<FrameSlot, frame_count> frames_;
+    std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, backbuffer_count> backbuffers_;
+    std::size_t frame_index_ = 0;
     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> command_list_;
     Microsoft::WRL::ComPtr<ID3D12Resource> upload_staging_;
     Microsoft::WRL::ComPtr<ID3D12Resource> pending_upload_buffer_;
