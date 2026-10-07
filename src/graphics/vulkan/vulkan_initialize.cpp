@@ -257,7 +257,7 @@ bool VulkanRenderer::create_device()
     {
         return false;
     }
-    passes_.device = timing_.device = swapchain_.device = capture_.device = vk_.device;
+    upscale_.device = timing_.device = swapchain_.device = capture_.device = vk_.device;
     for (auto& slot : frames_) slot.device = vk_.device;
     vkGetDeviceQueue(vk_.device, vk_.queue_family, 0, &vk_.queue);
     VkPhysicalDeviceProperties properties{};

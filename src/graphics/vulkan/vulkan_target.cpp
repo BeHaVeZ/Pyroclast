@@ -7,7 +7,6 @@ namespace pyroclast
 {
 VulkanRenderTarget::~VulkanRenderTarget()
 {
-    vkDestroyFramebuffer(device, framebuffer, nullptr);
     vkDestroyImageView(device, view, nullptr);
     vkDestroyImage(device, image, nullptr);
     vkFreeMemory(device, memory, nullptr);
@@ -25,53 +24,25 @@ bool VulkanRenderer::create_upscale_pipeline()
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Vulkan color format cannot be rendered to and linearly sampled.");
         return false;
     }
-    VkAttachmentDescription attachment{};
-    attachment.format = format_;
-    attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-    attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachment.initialLayout = attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    const VkAttachmentReference color{0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
-    VkSubpassDescription subpass{};
-    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass.colorAttachmentCount = 1;
-    subpass.pColorAttachments = &color;
-    VkSubpassDependency dependency{};
-    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-    dependency.dstSubpass = 0;
-    dependency.srcStageMask = dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    VkRenderPassCreateInfo pass{};
-    pass.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    pass.attachmentCount = 1;
-    pass.pAttachments = &attachment;
-    pass.subpassCount = 1;
-    pass.pSubpasses = &subpass;
-    pass.dependencyCount = 1;
-    pass.pDependencies = &dependency;
-    if (!check(vkCreateRenderPass(vk_.device, &pass, nullptr, &passes_.offscreen), "Create offscreen render pass")) return false;
-
     VkSamplerCreateInfo sampler{};
     sampler.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
     sampler.magFilter = sampler.minFilter = VK_FILTER_LINEAR;
     sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
     sampler.addressModeU = sampler.addressModeV = sampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    if (!check(vkCreateSampler(vk_.device, &sampler, nullptr, &passes_.upscale_sampler), "Create upscale sampler")) return false;
+    if (!check(vkCreateSampler(vk_.device, &sampler, nullptr, &upscale_.sampler), "Create upscale sampler")) return false;
     const VkDescriptorSetLayoutBinding bindings[] = {
         {0, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-        {1, VK_DESCRIPTOR_TYPE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, &passes_.upscale_sampler}};
+        {1, VK_DESCRIPTOR_TYPE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, &upscale_.sampler}};
     VkDescriptorSetLayoutCreateInfo descriptors{};
     descriptors.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     descriptors.bindingCount = 2;
     descriptors.pBindings = bindings;
-    if (!check(vkCreateDescriptorSetLayout(vk_.device, &descriptors, nullptr, &passes_.upscale_descriptors), "Create upscale descriptors")) return false;
+    if (!check(vkCreateDescriptorSetLayout(vk_.device, &descriptors, nullptr, &upscale_.descriptors), "Create upscale descriptors")) return false;
     VkPipelineLayoutCreateInfo layout{};
     layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     layout.setLayoutCount = 1;
-    layout.pSetLayouts = &passes_.upscale_descriptors;
-    if (!check(vkCreatePipelineLayout(vk_.device, &layout, nullptr, &passes_.upscale_layout), "Create upscale layout")) return false;
+    layout.pSetLayouts = &upscale_.descriptors;
+    if (!check(vkCreatePipelineLayout(vk_.device, &layout, nullptr, &upscale_.layout), "Create upscale layout")) return false;
 
     VulkanShaderModule vertex;
     VulkanShaderModule pixel;
@@ -123,9 +94,13 @@ bool VulkanRenderer::create_upscale_pipeline()
     pipeline.pMultisampleState = &samples;
     pipeline.pColorBlendState = &blend;
     pipeline.pDynamicState = &dynamic;
-    pipeline.layout = passes_.upscale_layout;
-    pipeline.renderPass = passes_.backbuffer;
-    return check(vkCreateGraphicsPipelines(vk_.device, VK_NULL_HANDLE, 1, &pipeline, nullptr, &passes_.upscale_pipeline), "Create upscale pipeline");
+    pipeline.layout = upscale_.layout;
+    VkPipelineRenderingCreateInfo rendering{};
+    rendering.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+    rendering.colorAttachmentCount = 1;
+    rendering.pColorAttachmentFormats = &format_;
+    pipeline.pNext = &rendering;
+    return check(vkCreateGraphicsPipelines(vk_.device, VK_NULL_HANDLE, 1, &pipeline, nullptr, &upscale_.pipeline), "Create upscale pipeline");
 }
 
 std::unique_ptr<RenderTarget> VulkanRenderer::create_render_target(const RenderTargetDescription& description)
@@ -135,7 +110,7 @@ std::unique_ptr<RenderTarget> VulkanRenderer::create_render_target(const RenderT
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Render target divisor must be at least one.");
         return nullptr;
     }
-    if (!passes_.upscale_pipeline && !create_upscale_pipeline()) return nullptr;
+    if (!upscale_.pipeline && !create_upscale_pipeline()) return nullptr;
     auto target = std::make_unique<VulkanRenderTarget>(description);
     target->owner = this;
     target->device = vk_.device;
@@ -150,7 +125,7 @@ std::unique_ptr<RenderTarget> VulkanRenderer::create_render_target(const RenderT
     set.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     set.descriptorPool = target->descriptor_pool;
     set.descriptorSetCount = 1;
-    set.pSetLayouts = &passes_.upscale_descriptors;
+    set.pSetLayouts = &upscale_.descriptors;
     if (!check(vkAllocateDescriptorSets(vk_.device, &set, &target->descriptor), "Allocate render target descriptor")) return nullptr;
     return validation_ok() ? std::move(target) : nullptr;
 }
@@ -167,11 +142,9 @@ bool VulkanRenderer::size_target(VulkanRenderTarget& target)
     {
         return false;
     }
-    vkDestroyFramebuffer(vk_.device, target.framebuffer, nullptr);
     vkDestroyImageView(vk_.device, target.view, nullptr);
     vkDestroyImage(vk_.device, target.image, nullptr);
     vkFreeMemory(vk_.device, target.memory, nullptr);
-    target.framebuffer = VK_NULL_HANDLE;
     target.view = VK_NULL_HANDLE;
     target.image = VK_NULL_HANDLE;
     target.memory = VK_NULL_HANDLE;
@@ -218,15 +191,6 @@ bool VulkanRenderer::size_target(VulkanRenderTarget& target)
     view.format = format_;
     view.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
     if (!check(vkCreateImageView(vk_.device, &view, nullptr, &target.view), "Create render target view")) return false;
-    VkFramebufferCreateInfo framebuffer{};
-    framebuffer.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-    framebuffer.renderPass = passes_.offscreen;
-    framebuffer.attachmentCount = 1;
-    framebuffer.pAttachments = &target.view;
-    framebuffer.width = extent.width;
-    framebuffer.height = extent.height;
-    framebuffer.layers = 1;
-    if (!check(vkCreateFramebuffer(vk_.device, &framebuffer, nullptr, &target.framebuffer), "Create render target framebuffer")) return false;
     const VkDescriptorImageInfo image{VK_NULL_HANDLE, target.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
     VkWriteDescriptorSet write{};
     write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -242,8 +206,8 @@ bool VulkanRenderer::size_target(VulkanRenderTarget& target)
 
 void VulkanRenderer::upscale(VkCommandBuffer command, const VulkanRenderTarget& source)
 {
-    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, passes_.upscale_pipeline);
-    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, passes_.upscale_layout, 0, 1, &source.descriptor, 0, nullptr);
+    vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, upscale_.pipeline);
+    vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, upscale_.layout, 0, 1, &source.descriptor, 0, nullptr);
     vkCmdDraw(command, 3, 1, 0, 0);
 }
 }

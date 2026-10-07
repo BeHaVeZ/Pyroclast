@@ -47,7 +47,6 @@ struct VulkanSwapchain
     {
         VkImage image = VK_NULL_HANDLE;
         VkImageView view = VK_NULL_HANDLE;
-        VkFramebuffer framebuffer = VK_NULL_HANDLE;
         VkSemaphore rendered = VK_NULL_HANDLE;
         VkFence presented = VK_NULL_HANDLE;
         bool present_pending = false;
@@ -64,19 +63,17 @@ struct VulkanSwapchain
     std::vector<Image> images;
 };
 
-struct VulkanPasses
+struct VulkanUpscale
 {
-    VulkanPasses() = default;
-    VulkanPasses(const VulkanPasses&) = delete;
-    VulkanPasses& operator=(const VulkanPasses&) = delete;
-    ~VulkanPasses();
+    VulkanUpscale() = default;
+    VulkanUpscale(const VulkanUpscale&) = delete;
+    VulkanUpscale& operator=(const VulkanUpscale&) = delete;
+    ~VulkanUpscale();
     VkDevice device = VK_NULL_HANDLE;
-    VkRenderPass backbuffer = VK_NULL_HANDLE;
-    VkRenderPass offscreen = VK_NULL_HANDLE;
-    VkSampler upscale_sampler = VK_NULL_HANDLE;
-    VkDescriptorSetLayout upscale_descriptors = VK_NULL_HANDLE;
-    VkPipelineLayout upscale_layout = VK_NULL_HANDLE;
-    VkPipeline upscale_pipeline = VK_NULL_HANDLE;
+    VkSampler sampler = VK_NULL_HANDLE;
+    VkDescriptorSetLayout descriptors = VK_NULL_HANDLE;
+    VkPipelineLayout layout = VK_NULL_HANDLE;
+    VkPipeline pipeline = VK_NULL_HANDLE;
 };
 
 struct VulkanTiming
@@ -104,6 +101,13 @@ struct VulkanCapture
     VkExtent2D extent{};
     bool pending = false;
 };
+
+void transition_image(VkCommandBuffer command, VkImage image, VkImageLayout from, VkImageLayout to,
+    VkPipelineStageFlags2 source_stage, VkAccessFlags2 source_access,
+    VkPipelineStageFlags2 destination_stage, VkAccessFlags2 destination_access);
+void transition_buffer(VkCommandBuffer command, VkBuffer buffer,
+    VkPipelineStageFlags2 source_stage, VkAccessFlags2 source_access,
+    VkPipelineStageFlags2 destination_stage, VkAccessFlags2 destination_access);
 
 std::optional<std::uint32_t> find_memory_type(VkPhysicalDevice physical, std::uint32_t type_bits,
     VkMemoryPropertyFlags required, VkMemoryPropertyFlags preferred);
@@ -152,7 +156,7 @@ private:
         const VkDebugUtilsMessengerCallbackDataEXT* data, void* user);
 
     VulkanContext vk_;
-    VulkanPasses passes_;
+    VulkanUpscale upscale_;
     VulkanTiming timing_;
     std::array<VulkanFrameSlot, 2> frames_{};
     VulkanSwapchain swapchain_;

@@ -56,11 +56,13 @@ def main():
     parser.add_argument("--b", required=True, help="directory containing the candidate Pyroclast.exe")
     parser.add_argument("--runs", type=int, default=5)
     parser.add_argument("--matrix", default="default", choices=sorted(MATRICES))
+    parser.add_argument("--renderers", default="d3d12,vulkan", help="comma-separated subset of the matrix to run")
     parser.add_argument("--csv", default="out/ab/latest.csv")
     arguments = parser.parse_args()
 
     rows = []
-    for case in MATRICES[arguments.matrix]:
+    renderers = arguments.renderers.split(",")
+    for case in [case for case in MATRICES[arguments.matrix] if case[0] in renderers]:
         samples = {"A": [], "B": []}
         for run in range(arguments.runs):
             order = ("A", "B") if run % 2 == 0 else ("B", "A")

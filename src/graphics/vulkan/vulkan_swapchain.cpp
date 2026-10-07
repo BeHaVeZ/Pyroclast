@@ -49,41 +49,6 @@ bool VulkanRenderer::create_swapchain()
         return false;
     }
     format_ = chosen->format;
-    if (!passes_.backbuffer)
-    {
-        VkAttachmentDescription attachment{};
-        attachment.format = format_;
-        attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-        attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-        attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-        attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        const VkAttachmentReference color{0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
-        VkSubpassDescription subpass{};
-        subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-        subpass.colorAttachmentCount = 1;
-        subpass.pColorAttachments = &color;
-        VkSubpassDependency dependency{};
-        dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-        dependency.dstSubpass = 0;
-        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        VkRenderPassCreateInfo pass{};
-        pass.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-        pass.attachmentCount = 1;
-        pass.pAttachments = &attachment;
-        pass.subpassCount = 1;
-        pass.pSubpasses = &subpass;
-        pass.dependencyCount = 1;
-        pass.pDependencies = &dependency;
-        if (!check(vkCreateRenderPass(vk_.device, &pass, nullptr, &passes_.backbuffer), "Create Vulkan render pass"))
-        {
-            return false;
-        }
-    }
     if (swapchain_.extent.width == 0 || swapchain_.extent.height == 0)
     {
         rebuild_ = true;
@@ -159,18 +124,6 @@ bool VulkanRenderer::create_swapchain()
         if (!check(vkCreateImageView(vk_.device, &view, nullptr, &image.view), "Create swapchain image view") ||
             !check(vkCreateSemaphore(vk_.device, &semaphore, nullptr, &image.rendered), "Create present-wait semaphore") ||
             !check(vkCreateFence(vk_.device, &fence, nullptr, &image.presented), "Create presentation fence"))
-        {
-            return false;
-        }
-        VkFramebufferCreateInfo framebuffer{};
-        framebuffer.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        framebuffer.renderPass = passes_.backbuffer;
-        framebuffer.attachmentCount = 1;
-        framebuffer.pAttachments = &image.view;
-        framebuffer.width = swapchain_.extent.width;
-        framebuffer.height = swapchain_.extent.height;
-        framebuffer.layers = 1;
-        if (!check(vkCreateFramebuffer(vk_.device, &framebuffer, nullptr, &image.framebuffer), "Create Vulkan framebuffer"))
         {
             return false;
         }

@@ -53,7 +53,6 @@ void VulkanSwapchain::reset()
     if (!device) return;
     for (auto& image : images)
     {
-        vkDestroyFramebuffer(device, image.framebuffer, nullptr);
         vkDestroyImageView(device, image.view, nullptr);
         vkDestroySemaphore(device, image.rendered, nullptr);
         vkDestroyFence(device, image.presented, nullptr);
@@ -64,15 +63,13 @@ void VulkanSwapchain::reset()
     extent = {};
 }
 
-VulkanPasses::~VulkanPasses()
+VulkanUpscale::~VulkanUpscale()
 {
     if (!device) return;
-    vkDestroyPipeline(device, upscale_pipeline, nullptr);
-    vkDestroyPipelineLayout(device, upscale_layout, nullptr);
-    vkDestroyDescriptorSetLayout(device, upscale_descriptors, nullptr);
-    vkDestroySampler(device, upscale_sampler, nullptr);
-    vkDestroyRenderPass(device, offscreen, nullptr);
-    vkDestroyRenderPass(device, backbuffer, nullptr);
+    vkDestroyPipeline(device, pipeline, nullptr);
+    vkDestroyPipelineLayout(device, layout, nullptr);
+    vkDestroyDescriptorSetLayout(device, descriptors, nullptr);
+    vkDestroySampler(device, sampler, nullptr);
 }
 
 VulkanTiming::~VulkanTiming()
@@ -129,6 +126,64 @@ void VulkanRenderer::draw_range(VkCommandBuffer command, const DrawRange& range,
     vkCmdPushConstants(command, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float), &aspect);
     vkCmdPushConstants(command, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, sizeof(float), sizeof(std::uint32_t), &range.layer);
     vkCmdDraw(command, 6, range.record_count, 0, 0);
+}
+
+void transition_image(VkCommandBuffer command, VkImage image, VkImageLayout from, VkImageLayout to,
+    VkPipelineStageFlags2 source_stage, VkAccessFlags2 source_access,
+    VkPipelineStageFlags2 destination_stage, VkAccessFlags2 destination_access)
+{
+    VkImageMemoryBarrier2 barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+    barrier.srcStageMask = source_stage;
+    barrier.srcAccessMask = source_access;
+    barrier.dstStageMask = destination_stage;
+    barrier.dstAccessMask = destination_access;
+    barrier.oldLayout = from;
+    barrier.newLayout = to;
+    barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = image;
+    barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    VkDependencyInfo dependency{};
+    dependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    dependency.imageMemoryBarrierCount = 1;
+    dependency.pImageMemoryBarriers = &barrier;
+    vkCmdPipelineBarrier2(command, &dependency);
+}
+
+void transition_buffer(VkCommandBuffer command, VkBuffer buffer,
+    VkPipelineStageFlags2 source_stage, VkAccessFlags2 source_access,
+    VkPipelineStageFlags2 destination_stage, VkAccessFlags2 destination_access)
+{
+    VkBufferMemoryBarrier2 barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2;
+    barrier.srcStageMask = source_stage;
+    barrier.srcAccessMask = source_access;
+    barrier.dstStageMask = destination_stage;
+    barrier.dstAccessMask = destination_access;
+    barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.buffer = buffer;
+    barrier.size = VK_WHOLE_SIZE;
+    VkDependencyInfo dependency{};
+    dependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    dependency.bufferMemoryBarrierCount = 1;
+    dependency.pBufferMemoryBarriers = &barrier;
+    vkCmdPipelineBarrier2(command, &dependency);
+}
+
+namespace
+{
+void execution_barrier(VkCommandBuffer command)
+{
+    VkMemoryBarrier2 barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
+    barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+    barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+    VkDependencyInfo dependency{};
+    dependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    dependency.memoryBarrierCount = 1;
+    dependency.pMemoryBarriers = &barrier;
+    vkCmdPipelineBarrier2(command, &dependency);
+}
 }
 
 RenderResult VulkanRenderer::render(const Frame& frame)
@@ -211,109 +266,116 @@ RenderResult VulkanRenderer::render(const Frame& frame)
     {
         return RenderResult::failed;
     }
+    const auto command = slot.command;
     const auto query = static_cast<std::uint32_t>(frame_index_) * 4;
     if (timing_.pool)
     {
-        vkCmdResetQueryPool(slot.command, timing_.pool, query, 4);
-        vkCmdWriteTimestamp(slot.command, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timing_.pool, query);
-        vkCmdPipelineBarrier(slot.command, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-            0, 0, nullptr, 0, nullptr, 0, nullptr);
+        vkCmdResetQueryPool(command, timing_.pool, query, 4);
+        vkCmdWriteTimestamp2(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, timing_.pool, query);
+        execution_barrier(command);
     }
     if (compute)
     {
-        VkBufferMemoryBarrier storage{};
-        storage.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-        storage.srcAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-        storage.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-        storage.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        storage.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        storage.buffer = vertices->buffer;
-        storage.size = VK_WHOLE_SIZE;
-        vkCmdPipelineBarrier(slot.command, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 1, &storage, 0, nullptr);
-        vkCmdBindPipeline(slot.command, VK_PIPELINE_BIND_POINT_COMPUTE, compute->pipeline);
-        vkCmdBindDescriptorSets(slot.command, VK_PIPELINE_BIND_POINT_COMPUTE, compute->layout,
+        transition_buffer(command, vertices->buffer,
+            VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+        vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, compute->pipeline);
+        vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, compute->layout,
             0, 1, &compute->descriptor, 0, nullptr);
-        vkCmdPushConstants(slot.command, compute->layout, VK_SHADER_STAGE_COMPUTE_BIT,
+        vkCmdPushConstants(command, compute->layout, VK_SHADER_STAGE_COMPUTE_BIT,
             0, 4 * sizeof(std::uint32_t), frame.compute->constants.data());
-        vkCmdDispatch(slot.command, frame.compute->group_count, 1, 1);
-        storage.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        storage.dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
-        vkCmdPipelineBarrier(slot.command, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 0, 0, nullptr, 1, &storage, 0, nullptr);
+        vkCmdDispatch(command, frame.compute->group_count, 1, 1);
+        transition_buffer(command, vertices->buffer,
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+            VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT, VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT);
     }
     if (timing_.pool)
     {
-        vkCmdWriteTimestamp(slot.command, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timing_.pool, query + 1);
-        vkCmdWriteTimestamp(slot.command, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timing_.pool, query + 2);
-        vkCmdPipelineBarrier(slot.command, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-            0, 0, nullptr, 0, nullptr, 0, nullptr);
+        vkCmdWriteTimestamp2(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, timing_.pool, query + 1);
+        vkCmdWriteTimestamp2(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, timing_.pool, query + 2);
+        execution_barrier(command);
     }
     for (const auto& pass : frame.passes)
     {
         const auto* target = static_cast<const VulkanRenderTarget*>(pass.target);
-        VkImageMemoryBarrier barrier{};
-        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
         if (target)
         {
-            barrier.image = target->image;
-            barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-            barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-            barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-            barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-            vkCmdPipelineBarrier(slot.command, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                0, 0, nullptr, 0, nullptr, 1, &barrier);
+            transition_image(command, target->image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_NONE,
+                VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+        }
+        else
+        {
+            transition_image(command, image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_NONE,
+                VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
         }
         const auto extent = target ? target->extent : swapchain_.extent;
-        VkClearValue clear{};
         const auto& clear_color = target ? target->description().clear_color : frame.clear_color;
-        std::copy(clear_color.begin(), clear_color.end(), clear.color.float32);
-        VkRenderPassBeginInfo begin_pass{};
-        begin_pass.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        begin_pass.renderPass = target ? passes_.offscreen : passes_.backbuffer;
-        begin_pass.framebuffer = target ? target->framebuffer : image.framebuffer;
-        begin_pass.renderArea.extent = extent;
-        begin_pass.clearValueCount = 1;
-        begin_pass.pClearValues = &clear;
-        vkCmdBeginRenderPass(slot.command, &begin_pass, VK_SUBPASS_CONTENTS_INLINE);
-        set_viewport(slot.command, extent);
-        if (pass.background) upscale(slot.command, static_cast<const VulkanRenderTarget&>(*pass.background));
-        for (const auto& range : pass.draws) draw_range(slot.command, range, *vertices, frame.aspect_ratio);
-        vkCmdEndRenderPass(slot.command);
+        VkRenderingAttachmentInfo color{};
+        color.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        color.imageView = target ? target->view : image.view;
+        color.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        color.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        std::copy(clear_color.begin(), clear_color.end(), color.clearValue.color.float32);
+        VkRenderingInfo rendering{};
+        rendering.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+        rendering.renderArea.extent = extent;
+        rendering.layerCount = 1;
+        rendering.colorAttachmentCount = 1;
+        rendering.pColorAttachments = &color;
+        vkCmdBeginRendering(command, &rendering);
+        set_viewport(command, extent);
+        if (pass.background) upscale(command, static_cast<const VulkanRenderTarget&>(*pass.background));
+        for (const auto& range : pass.draws) draw_range(command, range, *vertices, frame.aspect_ratio);
+        vkCmdEndRendering(command);
         if (target)
         {
-            barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-            barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-            barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            vkCmdPipelineBarrier(slot.command, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                0, 0, nullptr, 0, nullptr, 1, &barrier);
+            transition_image(command, target->image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
         }
     }
-    if (timing_.pool) vkCmdWriteTimestamp(slot.command, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timing_.pool, query + 3);
-    if (frame.capture && !record_capture(slot.command, image.image))
+    if (!frame.capture)
+    {
+        transition_image(command, image.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+            VK_PIPELINE_STAGE_2_NONE, VK_ACCESS_2_NONE);
+    }
+    if (timing_.pool) vkCmdWriteTimestamp2(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, timing_.pool, query + 3);
+    if (frame.capture && !record_capture(command, image.image))
     {
         return RenderResult::failed;
     }
-    if (!check(vkEndCommandBuffer(slot.command), "End Vulkan command buffer") ||
+    if (!check(vkEndCommandBuffer(command), "End Vulkan command buffer") ||
         !check(vkResetFences(vk_.device, 1, &slot.submitted), "Reset frame fence") ||
         !check(vkResetFences(vk_.device, 1, &image.presented), "Reset presentation fence"))
     {
         return RenderResult::failed;
     }
-    const VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    VkSubmitInfo submit{};
-    submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit.waitSemaphoreCount = 1;
-    submit.pWaitSemaphores = &slot.acquired;
-    submit.pWaitDstStageMask = &wait_stage;
-    submit.commandBufferCount = 1;
-    submit.pCommandBuffers = &slot.command;
-    submit.signalSemaphoreCount = 1;
-    submit.pSignalSemaphores = &image.rendered;
-    if (!check(vkQueueSubmit(vk_.queue, 1, &submit, slot.submitted), "Submit Vulkan frame"))
+    VkSemaphoreSubmitInfo wait{};
+    wait.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+    wait.semaphore = slot.acquired;
+    wait.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+    VkSemaphoreSubmitInfo signal{};
+    signal.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+    signal.semaphore = image.rendered;
+    signal.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+    VkCommandBufferSubmitInfo buffer{};
+    buffer.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+    buffer.commandBuffer = command;
+    VkSubmitInfo2 submit{};
+    submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+    submit.waitSemaphoreInfoCount = 1;
+    submit.pWaitSemaphoreInfos = &wait;
+    submit.commandBufferInfoCount = 1;
+    submit.pCommandBufferInfos = &buffer;
+    submit.signalSemaphoreInfoCount = 1;
+    submit.pSignalSemaphoreInfos = &signal;
+    if (!check(vkQueueSubmit2(vk_.queue, 1, &submit, slot.submitted), "Submit Vulkan frame"))
     {
         return RenderResult::failed;
     }

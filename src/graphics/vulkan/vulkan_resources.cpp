@@ -191,7 +191,11 @@ std::unique_ptr<GraphicsPipeline> VulkanRenderer::create_graphics_pipeline(
     info.pColorBlendState = &blend;
     info.pDynamicState = &dynamic;
     info.layout = pipeline->layout;
-    info.renderPass = passes_.backbuffer;
+    VkPipelineRenderingCreateInfo rendering{};
+    rendering.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+    rendering.colorAttachmentCount = 1;
+    rendering.pColorAttachmentFormats = &format_;
+    info.pNext = &rendering;
     if (!check(vkCreateGraphicsPipelines(vk_.device, VK_NULL_HANDLE, 1, &info, nullptr, &pipeline->pipeline), "Create Vulkan graphics pipeline"))
     {
         return nullptr;
