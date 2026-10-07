@@ -93,7 +93,7 @@ private:
     bool create_overlay();
     void destroy_overlay();
     void record_overlay(ImDrawData* overlay, D3D12_CPU_DESCRIPTOR_HANDLE backbuffer_view);
-    bool create_device(bool gpu_validation);
+    bool create_device(bool gpu_validation, std::string_view requested_adapter);
     bool create_timestamps();
     UINT begin_region(const char* label, const char* fallback);
     void end_region(UINT region);

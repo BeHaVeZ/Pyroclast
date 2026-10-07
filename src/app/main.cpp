@@ -227,6 +227,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
         .capture = !options.capture_path.empty(),
         .gpu_validation = options.gpu_validation,
         .gpu_regions = options.gpu_regions,
+        .adapter = options.adapter,
         .debug_overlay = ui != nullptr};
     auto creation = pyroclast::create_graphics_device(options.renderer, window.get(), device_options);
     if (!creation.device)
@@ -282,6 +283,7 @@ int main(int argc, char** argv)
             "  --exit-after=N     Exit after N submitted frames.\n"
             "  --gpu-validation   Debug only: D3D12 GPU-based or Vulkan GPU-assisted validation (slow).\n"
             "  --ui=on|off        Dear ImGui overlay (default on, off with --profile-tick). F1 hides it.\n"
+            "  --adapter=NAME     Use the GPU whose name contains NAME (case-insensitive); 'warp' is the D3D12 software rasterizer.\n"
             "  --help             Print usage and exit.\n"
             "Both renderers run the same GPU explosion effect.");
         return 0;

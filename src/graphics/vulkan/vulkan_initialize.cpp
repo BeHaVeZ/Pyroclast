@@ -1,4 +1,5 @@
 #include "vulkan_renderer.hpp"
+#include "../adapter_name.hpp"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
@@ -56,7 +57,7 @@ bool VulkanRenderer::initialize(SDL_Window* window, const GraphicsDeviceOptions&
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Create Vulkan surface failed: %s", SDL_GetError());
         return false;
     }
-    if (!create_device() || !create_frames() || !create_bindings() ||
+    if (!create_device(options.adapter) || !create_frames() || !create_bindings() ||
         !SDL_GetWindowSizeInPixels(window_, &width_, &height_) || !create_swapchain())
     {
         return false;
@@ -79,8 +80,6 @@ bool VulkanRenderer::create_instance([[maybe_unused]] bool gpu_validation)
         return false;
     }
     std::vector<const char*> extensions(sdl_extensions, sdl_extensions + count);
-    extensions.push_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
-    extensions.push_back(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
     if (!check(vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr), "Enumerate Vulkan instance extensions"))
     {
         return false;
@@ -90,8 +89,17 @@ bool VulkanRenderer::create_instance([[maybe_unused]] bool gpu_validation)
     {
         return false;
     }
-    const bool debug_utils = std::any_of(available_extensions.begin(), available_extensions.end(),
-        [](const auto& extension) { return std::strcmp(extension.extensionName, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0; });
+    const auto available = [&available_extensions](const char* name) {
+        return std::any_of(available_extensions.begin(), available_extensions.end(),
+            [name](const auto& extension) { return std::strcmp(extension.extensionName, name) == 0; });
+    };
+    vk_.surface_maintenance = available(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME) && available(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
+    if (vk_.surface_maintenance)
+    {
+        extensions.push_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+        extensions.push_back(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
+    }
+    const bool debug_utils = available(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     if (debug_utils) extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     std::vector<const char*> layers;
     VkDebugUtilsMessengerCreateInfoEXT debug{};
@@ -147,7 +155,7 @@ bool VulkanRenderer::create_instance([[maybe_unused]] bool gpu_validation)
     info.ppEnabledExtensionNames = extensions.data();
     info.enabledLayerCount = static_cast<std::uint32_t>(layers.size());
     info.ppEnabledLayerNames = layers.data();
-    if (!check(vkCreateInstance(&info, nullptr, &vk_.instance), "Create Vulkan 1.3 instance with surface maintenance support"))
+    if (!check(vkCreateInstance(&info, nullptr, &vk_.instance), "Create Vulkan 1.3 instance"))
     {
         return false;
     }
@@ -169,8 +177,13 @@ bool VulkanRenderer::create_instance([[maybe_unused]] bool gpu_validation)
     return validation_ok();
 }
 
-bool VulkanRenderer::create_device()
+bool VulkanRenderer::create_device(std::string_view requested_adapter)
 {
+    if (is_warp_request(requested_adapter))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "WARP is a D3D12 adapter; choose a Vulkan device by name.");
+        return false;
+    }
     std::uint32_t count = 0;
     if (!check(vkEnumeratePhysicalDevices(vk_.instance, &count, nullptr), "Enumerate Vulkan adapters"))
     {
@@ -182,12 +195,22 @@ bool VulkanRenderer::create_device()
         return false;
     }
     int best_score = 0;
+    bool best_present_fences = false;
     for (const auto adapter : adapters)
     {
         VkPhysicalDeviceProperties properties{};
         vkGetPhysicalDeviceProperties(adapter, &properties);
+        const auto skip = [&properties](const char* reason, const char* detail = "") {
+            SDL_Log("Vulkan adapter %s not used: %s%s.", properties.deviceName, reason, detail);
+        };
+        if (!requested_adapter.empty() && !adapter_matches(properties.deviceName, requested_adapter))
+        {
+            skip("name does not match --adapter");
+            continue;
+        }
         if (properties.apiVersion < VK_API_VERSION_1_3 || properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU)
         {
+            skip(properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU ? "software device" : "Vulkan 1.3 is not supported");
             continue;
         }
         if (!check(vkEnumerateDeviceExtensionProperties(adapter, nullptr, &count, nullptr), "Enumerate Vulkan device extensions"))
@@ -204,9 +227,14 @@ bool VulkanRenderer::create_device()
                 return std::strcmp(extension.extensionName, name) == 0;
             });
         };
-        if (!has_extension(VK_KHR_SWAPCHAIN_EXTENSION_NAME) || !has_extension(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME) ||
-            !has_extension(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME))
+        const char* missing = nullptr;
+        for (const char* required : {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME})
         {
+            if (!missing && !has_extension(required)) missing = required;
+        }
+        if (missing)
+        {
+            skip("missing ", missing);
             continue;
         }
         VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT maintenance{};
@@ -218,10 +246,14 @@ bool VulkanRenderer::create_device()
         features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
         features.pNext = &vulkan13;
         vkGetPhysicalDeviceFeatures2(adapter, &features);
-        if (!maintenance.swapchainMaintenance1 || !vulkan13.dynamicRendering || !vulkan13.synchronization2)
+        if (!vulkan13.dynamicRendering || !vulkan13.synchronization2)
         {
+            skip("missing feature ", !vulkan13.dynamicRendering ? "dynamicRendering" : "synchronization2");
             continue;
         }
+        const bool present_fences = vk_.surface_maintenance && has_extension(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME) &&
+            maintenance.swapchainMaintenance1;
+        bool queue_found = false;
         vkGetPhysicalDeviceQueueFamilyProperties(adapter, &count, nullptr);
         std::vector<VkQueueFamilyProperties> families(count);
         vkGetPhysicalDeviceQueueFamilyProperties(adapter, &count, families.data());
@@ -241,19 +273,23 @@ bool VulkanRenderer::create_device()
             if (score > best_score)
             {
                 best_score = score;
+                best_present_fences = present_fences;
                 vk_.physical = adapter;
                 vk_.queue_family = index;
             }
+            queue_found = true;
             break;
         }
+        if (!queue_found) skip("no graphics and compute queue can present to the window");
     }
     if (!vk_.physical)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-            "No hardware Vulkan 1.3 adapter supports a graphics/compute/present queue, dynamic rendering, synchronization2, "
-            "VK_KHR_push_descriptor and VK_EXT_swapchain_maintenance1 presentation fences.");
+            "No hardware Vulkan 1.3 adapter supports a graphics/compute/present queue, dynamic rendering, synchronization2 "
+            "and VK_KHR_push_descriptor.");
         return false;
     }
+    vk_.present_fences = best_present_fences;
     const float priority = 1.0f;
     VkDeviceQueueCreateInfo queue{};
     queue.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
@@ -265,18 +301,18 @@ bool VulkanRenderer::create_device()
     maintenance.swapchainMaintenance1 = VK_TRUE;
     VkPhysicalDeviceVulkan13Features vulkan13{};
     vulkan13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-    vulkan13.pNext = &maintenance;
+    vulkan13.pNext = vk_.present_fences ? &maintenance : nullptr;
     vulkan13.dynamicRendering = VK_TRUE;
     vulkan13.synchronization2 = VK_TRUE;
-    const char* extensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME,
-        VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME};
+    std::vector<const char*> extensions{VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME};
+    if (vk_.present_fences) extensions.push_back(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
     VkDeviceCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     info.pNext = &vulkan13;
     info.queueCreateInfoCount = 1;
     info.pQueueCreateInfos = &queue;
-    info.enabledExtensionCount = static_cast<std::uint32_t>(std::size(extensions));
-    info.ppEnabledExtensionNames = extensions;
+    info.enabledExtensionCount = static_cast<std::uint32_t>(extensions.size());
+    info.ppEnabledExtensionNames = extensions.data();
     if (!check(vkCreateDevice(vk_.physical, &info, nullptr, &vk_.device), "Create Vulkan device"))
     {
         return false;
@@ -287,7 +323,8 @@ bool VulkanRenderer::create_device()
     VkPhysicalDeviceProperties properties{};
     vkGetPhysicalDeviceProperties(vk_.physical, &properties);
     adapter_name_ = properties.deviceName;
-    SDL_Log("Vulkan adapter: %s", properties.deviceName);
+    SDL_Log("Vulkan adapter: %s (present fences %s).", properties.deviceName,
+        vk_.present_fences ? "available" : "unavailable; resize and shutdown wait for device idle");
     return validation_ok();
 }
 

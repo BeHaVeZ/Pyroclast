@@ -56,6 +56,7 @@ add_executable(Pyroclast
     src/tools/debug_ui.cpp
     src/simulation/particle_system.cpp
     src/graphics/graphics_device.cpp
+    src/graphics/adapter_name.cpp
     src/graphics/draw_validation.cpp
     src/graphics/d3d12/d3d12_shaders.cpp
     src/graphics/d3d12/d3d12_initialize.cpp
@@ -91,7 +92,7 @@ target_link_libraries(ImageDiff PRIVATE SDL3::SDL3-static)
 include(CTest)
 set(project_targets Pyroclast ImageDiff)
 if(BUILD_TESTING)
-    add_executable(CommandLineTests tests/command_line_tests.cpp src/app/command_line.cpp)
+    add_executable(CommandLineTests tests/command_line_tests.cpp src/app/command_line.cpp src/graphics/adapter_name.cpp)
     target_include_directories(CommandLineTests PRIVATE src)
     add_test(NAME command_line COMMAND CommandLineTests)
     list(APPEND project_targets CommandLineTests)

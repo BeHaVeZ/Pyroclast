@@ -51,6 +51,20 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
         {
             result.options.gpu_validation = true;
         }
+        else if (option.starts_with("--adapter="))
+        {
+            if (!result.options.adapter.empty())
+            {
+                result.error = "Specify --adapter only once.";
+                return result;
+            }
+            result.options.adapter = option.substr(std::string_view("--adapter=").size());
+            if (result.options.adapter.empty())
+            {
+                result.error = "Expected --adapter=<part of the GPU name> or --adapter=warp.";
+                return result;
+            }
+        }
         else if (option.starts_with("--ui="))
         {
             if (result.options.ui)

@@ -403,7 +403,7 @@ RenderResult VulkanRenderer::render(const Frame& frame)
     }
     if (!check(vkEndCommandBuffer(command), "End Vulkan command buffer") ||
         !check(vkResetFences(vk_.device, 1, &slot.submitted), "Reset frame fence") ||
-        !check(vkResetFences(vk_.device, 1, &image.presented), "Reset presentation fence"))
+        (vk_.present_fences && !check(vkResetFences(vk_.device, 1, &image.presented), "Reset presentation fence")))
     {
         return RenderResult::failed;
     }
@@ -437,15 +437,15 @@ RenderResult VulkanRenderer::render(const Frame& frame)
     fence.pFences = &image.presented;
     VkPresentInfoKHR present{};
     present.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-    present.pNext = &fence;
+    present.pNext = vk_.present_fences ? &fence : nullptr;
     present.waitSemaphoreCount = 1;
     present.pWaitSemaphores = &image.rendered;
     present.swapchainCount = 1;
     present.pSwapchains = &swapchain_.handle;
     present.pImageIndices = &image_index;
     const VkResult result = vkQueuePresentKHR(vk_.queue, &present);
-    image.present_pending = result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR ||
-        result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_ERROR_SURFACE_LOST_KHR;
+    image.present_pending = vk_.present_fences && (result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR ||
+        result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_ERROR_SURFACE_LOST_KHR);
     frame_index_ = (frame_index_ + 1) % frames_.size();
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
     {

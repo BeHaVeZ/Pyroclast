@@ -1,4 +1,5 @@
 #include "d3d12_renderer.hpp"
+#include "../adapter_name.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -6,7 +7,7 @@ namespace pyroclast
 {
 using Microsoft::WRL::ComPtr;
 
-bool D3D12Renderer::create_device([[maybe_unused]] bool gpu_validation)
+bool D3D12Renderer::create_device([[maybe_unused]] bool gpu_validation, std::string_view requested_adapter)
 {
     UINT factory_flags = 0;
 #ifndef NDEBUG
@@ -36,15 +37,17 @@ bool D3D12Renderer::create_device([[maybe_unused]] bool gpu_validation)
         return false;
     }
 
+    const bool warp = is_warp_request(requested_adapter);
     for (UINT index = 0; ; ++index)
     {
         ComPtr<IDXGIAdapter1> adapter;
-        const HRESULT result = factory_->EnumAdapterByGpuPreference(index,
-            DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&adapter));
+        const HRESULT result = warp ? (index == 0 ? factory_->EnumWarpAdapter(IID_PPV_ARGS(&adapter)) : DXGI_ERROR_NOT_FOUND) :
+            factory_->EnumAdapterByGpuPreference(index, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&adapter));
         if (result == DXGI_ERROR_NOT_FOUND)
         {
-            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-                "No hardware adapter supports D3D12 feature level 11.0.");
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, requested_adapter.empty() ?
+                "No hardware adapter supports D3D12 feature level 11.0." :
+                "No D3D12 feature level 11.0 adapter matches the requested name.");
             return false;
         }
         if (!check(result, "Enumerate graphics adapter"))
@@ -57,9 +60,12 @@ bool D3D12Renderer::create_device([[maybe_unused]] bool gpu_validation)
         {
             return false;
         }
-        if ((description.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0 ||
-            FAILED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0,
-                __uuidof(ID3D12Device), nullptr)))
+        char adapter_name[512]{};
+        WideCharToMultiByte(CP_UTF8, 0, description.Description, -1,
+            adapter_name, static_cast<int>(sizeof(adapter_name)), nullptr, nullptr);
+        const bool wanted = warp || (requested_adapter.empty() ? (description.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) == 0 :
+            adapter_matches(adapter_name, requested_adapter));
+        if (!wanted || FAILED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), nullptr)))
         {
             continue;
         }
@@ -69,9 +75,6 @@ bool D3D12Renderer::create_device([[maybe_unused]] bool gpu_validation)
             return false;
         }
 
-        char adapter_name[512]{};
-        WideCharToMultiByte(CP_UTF8, 0, description.Description, -1,
-            adapter_name, static_cast<int>(sizeof(adapter_name)), nullptr, nullptr);
         adapter_name_ = adapter_name;
         SDL_Log("D3D12 adapter: %s", adapter_name);
         break;
@@ -191,7 +194,7 @@ bool D3D12Renderer::initialize(SDL_Window* window, const GraphicsDeviceOptions& 
 {
     vsync_ = options.vsync;
     capture_enabled_ = options.capture;
-    if (!create_device(options.gpu_validation) || !create_bindings() || !create_swapchain(window) || !check_validation())
+    if (!create_device(options.gpu_validation, options.adapter) || !create_bindings() || !create_swapchain(window) || !check_validation())
     {
         return false;
     }

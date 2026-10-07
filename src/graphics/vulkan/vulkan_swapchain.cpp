@@ -123,7 +123,7 @@ bool VulkanRenderer::create_swapchain()
         fence.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
         if (!check(vkCreateImageView(vk_.device, &view, nullptr, &image.view), "Create swapchain image view") ||
             !check(vkCreateSemaphore(vk_.device, &semaphore, nullptr, &image.rendered), "Create present-wait semaphore") ||
-            !check(vkCreateFence(vk_.device, &fence, nullptr, &image.presented), "Create presentation fence"))
+            (vk_.present_fences && !check(vkCreateFence(vk_.device, &fence, nullptr, &image.presented), "Create presentation fence")))
         {
             return false;
         }

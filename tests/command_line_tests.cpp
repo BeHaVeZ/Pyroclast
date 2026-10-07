@@ -1,4 +1,5 @@
 #include "app/command_line.hpp"
+#include "graphics/adapter_name.hpp"
 
 #include <cstdio>
 #include <initializer_list>
@@ -22,6 +23,7 @@ struct TestCase
     bool gpu_validation = false;
     std::optional<bool> ui;
     bool gpu_regions = false;
+    std::string_view adapter;
 };
 }
 
@@ -29,6 +31,10 @@ int main()
 {
     using enum pyroclast::Renderer;
     const TestCase cases[] = {
+        {"adapter by name", {"--adapter=UHD"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, "UHD"},
+        {"WARP adapter", {"--adapter=warp"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, "warp"},
+        {"empty adapter", {"--adapter="}, d3d12, false, "Expected --adapter"},
+        {"duplicate adapter", {"--adapter=a", "--adapter=b"}, d3d12, false, "only once"},
         {"GPU regions", {"--gpu-regions"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, true},
         {"overlay on", {"--ui=on"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, true},
         {"overlay off", {"--ui=off"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, false},
@@ -101,7 +107,7 @@ int main()
                 result.options.show_help == test.show_help && result.options.gpu_timing == test.gpu_timing && result.options.explosions == test.explosions && result.options.profile_tick == test.profile_tick && result.options.half_smoke == test.half_smoke &&
                 result.options.exit_after == test.exit_after && result.options.capture_path == test.capture_path &&
                 result.options.gpu_validation == test.gpu_validation && result.options.ui == test.ui &&
-                result.options.gpu_regions == test.gpu_regions
+                result.options.gpu_regions == test.gpu_regions && result.options.adapter == test.adapter
             : result.error.find(test.error_fragment) != std::string::npos;
         if (!passed)
         {
@@ -110,6 +116,12 @@ int main()
         }
     }
 
+    if (!pyroclast::adapter_matches("Intel(R) UHD Graphics 770", "uhd") || !pyroclast::adapter_matches("NVIDIA GeForce RTX 4090", "RTX 4090") ||
+        pyroclast::adapter_matches("NVIDIA GeForce RTX 4090", "radeon") || !pyroclast::adapter_matches("Microsoft Basic Render Driver", ""))
+    {
+        std::fputs("FAIL: adapter name matching\n", stderr);
+        ++failures;
+    }
     if (std::string_view(pyroclast::renderer_name(d3d12)) != "d3d12" ||
         std::string_view(pyroclast::renderer_name(vulkan)) != "vulkan")
     {

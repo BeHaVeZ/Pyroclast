@@ -23,6 +23,8 @@ struct VulkanContext
     VkDevice device = VK_NULL_HANDLE;
     VkQueue queue = VK_NULL_HANDLE;
     std::uint32_t queue_family = 0;
+    bool surface_maintenance = false;
+    bool present_fences = false;
     PFN_vkCmdBeginDebugUtilsLabelEXT begin_label = nullptr;
     PFN_vkCmdEndDebugUtilsLabelEXT end_label = nullptr;
     std::atomic_uint64_t validation_warnings{0};
@@ -147,7 +149,7 @@ public:
 
 private:
     bool create_instance(bool gpu_validation);
-    bool create_device();
+    bool create_device(std::string_view requested_adapter);
     bool create_bindings();
     bool create_shader_module(Shader shader, struct VulkanShaderModule& module);
     bool create_timestamps();

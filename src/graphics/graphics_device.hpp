@@ -177,6 +177,7 @@ struct GraphicsDeviceOptions
     bool capture = false;
     bool gpu_validation = false;
     bool gpu_regions = false;
+    std::string adapter;
     bool debug_overlay = false;
 };
 
