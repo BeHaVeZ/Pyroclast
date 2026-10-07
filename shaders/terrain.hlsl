@@ -12,10 +12,10 @@ struct PixelInput
 
 PixelInput vs_main(uint vertex : SV_VertexID)
 {
-    const uint2 corners[6] = {uint2(0, 0), uint2(1, 0), uint2(1, 1), uint2(0, 0), uint2(1, 1), uint2(0, 1)};
     const uint cells = terrain_resolution - 1;
     uint cell = min(vertex / 6, cells * cells - 1);
-    uint2 sample = uint2(cell % cells, cell / cells) + corners[vertex % 6];
+    uint corner = vertex % 6;
+    uint2 sample = uint2(cell % cells, cell / cells) + uint2((0x16u >> corner) & 1, (0x34u >> corner) & 1);
     float height = terrain_sample(heights, sample.x, sample.y);
     float dx = terrain_sample(heights, sample.x + 1, sample.y) - terrain_sample(heights, max(sample.x, 1) - 1, sample.y);
     float dz = terrain_sample(heights, sample.x, sample.y + 1) - terrain_sample(heights, sample.x, max(sample.y, 1) - 1);
