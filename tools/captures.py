@@ -1,6 +1,6 @@
 """Capture and compare fixed-state frames.
 
-  python tools/captures.py capture --config Debug --out out/baselines/<label>
+  python tools/captures.py capture --config Debug --out out/baselines/<label> [--views overview,ground,hill,aerial]
   python tools/captures.py compare <dir-a> <dir-b> [--subset] [--max-level 0] [--min-within-one 1.0]
   python tools/captures.py cross-api <dir> [--max-level 2] [--min-within-one 0.999]
 
@@ -34,15 +34,17 @@ def capture(arguments):
     executable = Path(arguments.exe) if arguments.exe else BUILD / arguments.config / "Pyroclast.exe"
     output = Path(arguments.out).resolve()
     output.mkdir(parents=True, exist_ok=True)
-    cases = itertools.product(arguments.renderers.split(","), arguments.smoke.split(","),
+    cases = itertools.product(arguments.renderers.split(","), arguments.views.split(","), arguments.smoke.split(","),
                               arguments.explosions.split(","), arguments.ticks.split(","))
     failures = 0
-    for renderer, smoke, explosions, tick in cases:
-        name = f"{renderer}-{smoke}-{explosions}-{tick}"
+    for renderer, view, smoke, explosions, tick in cases:
+        name = f"{renderer}-{smoke}-{explosions}-{tick}" + ("" if view == "overview" else f"-{view}")
         image = output / f"{name}.png"
         image.unlink(missing_ok=True)
         command = [str(executable), f"--renderer={renderer}", f"--smoke-resolution={smoke}",
                    f"--explosions={explosions}", f"--profile-tick={tick}", f"--capture={image}"]
+        if view != "overview":
+            command.append(f"--view={view}")
         try:
             result = subprocess.run(command, capture_output=True, text=True, env=run_environment(), timeout=300)
             log, code = result.stderr, result.returncode
@@ -117,6 +119,7 @@ def main():
     run.add_argument("--smoke", default="full,half")
     run.add_argument("--explosions", default="1,100")
     run.add_argument("--ticks", default="0,60,180,480")
+    run.add_argument("--views", default="overview", help="camera poses (--view) to capture from")
     for name, default_level, default_fraction in (("compare", 0, 1.0), ("cross-api", 2, 0.999)):
         command = commands.add_parser(name)
         if name == "compare":

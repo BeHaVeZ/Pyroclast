@@ -6,9 +6,10 @@
 
 Early development.
 
-The project currently runs a 2D GPU explosion and smoke prototype on D3D12 and Vulkan through a
-rendering interface that is now ready for the 3D, GPU-driven work that follows (camera, scene,
-explosion presets, GPU particle lifecycle, Dear ImGui tooling, benchmark mode).
+The project runs a GPU explosion and smoke effect in a 3D test range (terrain, sky, depth, a
+free-fly camera) on D3D12 and Vulkan, with a Dear ImGui engineering overlay. Explosion events and
+presets, the GPU particle lifecycle, layered effects, the smoke model, showcase and benchmark modes
+follow.
 
 ## Core question
 
@@ -54,6 +55,25 @@ This project is an independent technical exploration.
 It is not affiliated with Bohemia Interactive, Arma, Enfusion, or Blastcore, and does not use proprietary engine source code.
 
 ## Current milestone
+
+**M13a - True 3D foundation** (complete)
+
+- World space in metres and seconds with real gravity: a 512 m procedural heightfield with a flat
+  central test range, a 10 m / 50 m grid for scale, sun and hemisphere light, fog and a sky.
+- A free-fly camera (WASD, Q/E, Shift, right mouse button to look, wheel for speed).
+  `--view=overview|ground|hill|aerial` starts it at a named pose, which profile and capture runs keep.
+- Reverse-Z depth (32-bit float, infinite far plane). The rendering interface gained depth targets,
+  passes that load their target instead of clearing it, read-only depth attachments that the same
+  pass can sample, and per-pipeline depth modes, on both APIs.
+- 48-byte world-space particle records; a 64-byte layout measured 16% (D3D12) and 45% (Vulkan) slower
+  in the compute pass. Bursts start on the terrain, spawn into the upper hemisphere, collide with the
+  same heights the terrain is drawn from, and render as camera-facing billboards.
+- Effects blend back to front in an order the CPU sorts each frame, with one premultiplied blend for
+  smoke and light, so light from distant effects no longer shows through nearer smoke. Particles fade
+  softly where they meet the scene. Half-resolution smoke accumulates over transparent black, is hidden
+  by the terrain through the same depth fade, and is composited over the scene.
+- A frame is: the range (terrain and sky) into a scene target with depth, the particles over it, and a
+  copy to the backbuffer.
 
 **M12 - Dear ImGui tooling, GPU regions and second-vendor validation** (complete)
 
@@ -167,7 +187,7 @@ statically, so no SDL DLL needs to be copied beside the executable. Its GPU and
 The executable opens a resizable 1280 x 720 window and waits for events while
 idle. Close the window to exit. Startup, failures, and shutdown are logged to the
 console; startup and rendering failures return a nonzero exit code. The default
-D3D12 renderer draws the explosion effect over dark blue with VSync enabled. Minimized
+D3D12 renderer draws the test range and the explosion with VSync enabled. Minimized
 windows pause rendering and wait for events.
 
 Controls:
@@ -176,13 +196,16 @@ Controls:
 - **R:** clear the pool; retain the pause setting.
 - **P:** pause or resume simulation.
 - **N:** advance one 1/60-second step while paused.
+- **W/A/S/D:** fly forward, left, back, right; **Q/E:** down, up; hold **Shift** to fly four times
+  faster. Hold the **right mouse button** and move the mouse to look around; the **mouse wheel**
+  changes the flight speed.
 - **F1:** hide or show the overlay. Its buttons do the same as the keys above; while you type into or
   click on the overlay, the keys do not reach the application.
 
 Fireball particles last 0.35-0.8 seconds; sparks last 1-2.2 seconds; smoke lasts
-6-8 seconds, rounded to simulation ticks. The screen returns to the background after the burst dies.
+6-8 seconds, rounded to simulation ticks. Only the range remains after the burst dies.
 Minimizing freezes simulation. Long stalls discard excess catch-up time to keep
-GPU work bounded. Resizing preserves state and corrects particle aspect ratio.
+GPU work bounded. Resizing preserves state.
 
 Scaling scenarios are selected at startup with `--explosions=1`, `10`, `50`, or
 `100` (default 1). For example:
@@ -195,19 +218,19 @@ Scaling scenarios are selected at startup with `--explosions=1`, `10`, `50`, or
 In your existing Visual Studio launch configuration, add `"--explosions=100"`
 to `args` beside the renderer argument. **F5** starts that scenario; **Space**
 restarts the group. Counts are fixed for the process lifetime. All effects spawn
-simultaneously in a deterministic grid; smoke overlaps as it expands. A new
+simultaneously on a deterministic grid, 9 m apart, on the flat range; smoke overlaps as it expands. A new
 trigger replaces the previous group. Startup logs report the selected count,
 pool capacity, burst count, and particle-state bytes.
 
 | Explosions | Pool slots | Active slots at spawn | Particle-state bytes |
 |---:|---:|---:|---:|
-| 1 | 8,192 | 2,560 | 262,144 |
-| 10 | 25,600 | 25,600 | 819,200 |
-| 50 | 128,000 | 128,000 | 4,096,000 |
-| 100 | 256,000 | 256,000 | 8,192,000 |
+| 1 | 8,192 | 2,560 | 393,216 |
+| 10 | 25,600 | 25,600 | 1,228,800 |
+| 50 | 128,000 | 128,000 | 6,144,000 |
+| 100 | 256,000 | 256,000 | 12,288,000 |
 
-These are bounded baseline workloads. Dead slots still participate in dispatch
-and drawing; there is no compaction or adaptive budget yet. GPU timestamp results
+These are bounded baseline workloads. Dead slots still participate in the dispatch, and draws cover
+every record of the group; there is no compaction or adaptive budget yet. GPU timestamp results
 provide initial scaling evidence, with the limitations described below.
 
 Renderer selection happens at startup and defaults to D3D12:
@@ -238,7 +261,7 @@ In Visual Studio, open this repository with **File > Open > Folder**, select the
 right-click the executable in CMake Targets View and select **Add Debug
 Configuration**. Set `args` in the generated `launch.vs.json`, for example
 `"args": ["--renderer=vulkan"]`. Keep the generated target and executable fields.
-The local `.vs/` settings are ignored by Git. Run the `command_line`, `particle_controls`, `draw_validation`, `frame_statistics` and `image_compare` tests from
+The local `.vs/` settings are ignored by Git. Run the `command_line`, `particle_controls`, `draw_validation`, `frame_statistics`, `image_compare`, `math` and `terrain` tests from
 **Test > Test Explorer**, or run the CTest commands above in Developer PowerShell.
 
 For Vulkan Debug with a copy-only SDK, also add an `env` property to that launch
@@ -254,8 +277,8 @@ console and Visual Studio debugger, with a validation summary at shutdown.
 
 To check the explosion in Visual Studio, select your existing D3D12 or Vulkan
 launch entry and press **F5**. Press **Space** to trigger the burst and watch the
-fireball expand, sparks travel outward/fall, and smoke rise, drift right, expand,
-and fade away. Allow eight seconds of simulation for complete particle death.
+fireball expand, sparks fly outward, fall and bounce on the ground, and smoke rise, drift with the
+wind (towards +X), expand, and fade away. Allow eight seconds of simulation for complete particle death.
 Press **P**, then **R** to clear the paused pool. **Space** should show a frozen
 flash; **N** advances it one simulation tick. Repeat triggering and
 resize/minimize/restore checks, then close the window. A clean D3D12 Debug run
@@ -278,8 +301,9 @@ code includes. `shaders/explosion.hlsli` shares layer classification and determi
 - DXIL and bytecode headers: `out/build/windows-x64/generated/shaders/<configuration>/d3d12/`
 - SPIR-V and bytecode headers: `out/build/windows-x64/generated/shaders/<configuration>/vulkan/`
 
-The particle workload uses 128 groups of 64 threads and two ordered draws totaling
-six vertices per slot.
+The particle workload is one dispatch of 64-thread groups over the pool and one draw of six vertices
+per particle of the group (two in half-resolution mode); the range adds the terrain (393,216 vertices),
+the sky and the copy to the backbuffer.
 Each backend orders the previous frame's draws before the next update, and compute
 writes before the vertex shaders read them. No per-frame descriptor allocation,
 particle upload, or particle readback is needed.
@@ -351,6 +375,7 @@ frames. The tools in `tools/` build on these:
 ```powershell
 # Capture the fixed-state matrix, compare against an earlier set, compare D3D12 with Vulkan
 python tools/captures.py capture --config Debug --out out/baselines/mine
+python tools/captures.py capture --config Debug --out out/baselines/mine --views ground,hill,aerial --ticks 60,180
 python tools/captures.py compare out/baselines/mine out/baselines/theirs   # exact by default
 python tools/captures.py cross-api out/baselines/mine                      # max 2 levels, 99.9% within 1
 # Interleaved A/B timing of two builds (directories containing Pyroclast.exe)
