@@ -2,12 +2,11 @@
 
 namespace pyroclast
 {
+// Registered in PYROCLAST_SHADERS (cmake/Shaders.cmake), which generates shader_list.inl.
 enum class Shader
 {
-    particle_vertex,
-    particle_pixel,
-    particle_simulation,
-    upscale_vertex,
-    upscale_pixel
+#define PYROCLAST_SHADER(name, entry) name,
+#include "shader_list.inl"
+#undef PYROCLAST_SHADER
 };
 }

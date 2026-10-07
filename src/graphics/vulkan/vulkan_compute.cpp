@@ -82,7 +82,7 @@ std::unique_ptr<ComputePipeline> VulkanRenderer::create_compute_pipeline(
     info.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     info.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
     info.stage.module = module.handle;
-    info.stage.pName = "cs_main";
+    info.stage.pName = module.entry;
     info.layout = pipeline->layout;
     if (!check(vkCreateComputePipelines(vk_.device, VK_NULL_HANDLE, 1, &info, nullptr, &pipeline->pipeline), "Create compute pipeline"))
     {

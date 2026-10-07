@@ -81,10 +81,10 @@ bool VulkanRenderer::create_upscale_pipeline()
     stages[0].sType = stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
     stages[0].module = vertex.handle;
-    stages[0].pName = "vs_main";
+    stages[0].pName = vertex.entry;
     stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
     stages[1].module = pixel.handle;
-    stages[1].pName = "ps_main";
+    stages[1].pName = pixel.entry;
     VkPipelineVertexInputStateCreateInfo input{};
     input.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     VkPipelineInputAssemblyStateCreateInfo assembly{};

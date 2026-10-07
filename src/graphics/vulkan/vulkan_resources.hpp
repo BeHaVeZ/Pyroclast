@@ -12,6 +12,7 @@ struct VulkanShaderModule
     ~VulkanShaderModule();
     VkDevice device = VK_NULL_HANDLE;
     VkShaderModule handle = VK_NULL_HANDLE;
+    const char* entry = nullptr;
 };
 
 class VulkanVertexBuffer final : public VertexBuffer
