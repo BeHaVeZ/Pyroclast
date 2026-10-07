@@ -24,6 +24,7 @@ public static class LifecycleWindow {
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int capacity);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int w, int h, uint flags);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hwnd, int command);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hwnd, uint message, IntPtr wparam, IntPtr lparam);
     // Pyroclast is a console program, so the process also owns a console window; find the SDL one.
@@ -69,6 +70,23 @@ function Wait-Window($process) {
     return $window
 }
 
+# SDL attaches posted keys to the window only while it has keyboard focus. Windows refuses
+# SetForegroundWindow while another application is in active use (for example over remote desktop),
+# but restoring a minimized window activates it.
+function Focus-Window([IntPtr]$window) {
+    for ($attempt = 0; $attempt -lt 5; ++$attempt) {
+        [void][LifecycleWindow]::SetForegroundWindow($window)
+        Start-Sleep -Milliseconds 200
+        if ([LifecycleWindow]::GetForegroundWindow() -eq $window) { return }
+        [void][LifecycleWindow]::ShowWindow($window, 6)
+        Start-Sleep -Milliseconds 300
+        [void][LifecycleWindow]::ShowWindow($window, 9)
+        Start-Sleep -Milliseconds 500
+        if ([LifecycleWindow]::GetForegroundWindow() -eq $window) { return }
+    }
+    throw 'The application window could not be given keyboard focus.'
+}
+
 function Close-Window([IntPtr]$window, $process) {
     [void][LifecycleWindow]::PostMessage($window, 0x10, [IntPtr]::Zero, [IntPtr]::Zero)   # WM_CLOSE
     if (-not $process.WaitForExit(15000)) { throw 'Application did not exit.' }
@@ -93,7 +111,7 @@ function Run-Interactive {
     try {
         $window = Wait-Window $process
         [void][LifecycleWindow]::SetWindowPos($window, [IntPtr]::Zero, 100, 100, 1000, 650, 0x40)
-        [void][LifecycleWindow]::SetForegroundWindow($window)
+        Focus-Window $window
         Send-Key $window 80 0x19      # P: pause
         Send-Key $window 82 0x13      # R: clear
         Send-Key $window 32 0x39      # Space: trigger
@@ -111,6 +129,7 @@ function Run-Interactive {
             [void][LifecycleWindow]::ShowWindow($window, 9)
             Start-Sleep -Milliseconds 200
         }
+        Focus-Window $window
         Send-Key $window 80 0x19      # P: resume
         Send-Key $window 32 0x39      # Space: running trigger
         Start-Sleep -Milliseconds 1500
