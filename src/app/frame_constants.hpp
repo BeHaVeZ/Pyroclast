@@ -23,6 +23,8 @@ struct FrameConstants
     float4 ground_color;
     float4 fog;
     float4 viewport;
+    float4 exposure;
+    float4 projection;
     std::array<float4, particle_layout::maximum_explosions> effect_origins;
     std::array<std::array<std::uint32_t, 4>, particle_layout::maximum_explosions / 4> effect_order;
 };
@@ -33,7 +35,8 @@ static_assert(offsetof(FrameConstants, inverse_view_projection) == 64 && offseto
     offsetof(FrameConstants, sun_direction) == 176 && offsetof(FrameConstants, sun_color) == 192 &&
     offsetof(FrameConstants, sky_color) == 208 && offsetof(FrameConstants, horizon_color) == 224 &&
     offsetof(FrameConstants, ground_color) == 240 && offsetof(FrameConstants, fog) == 256 &&
-    offsetof(FrameConstants, viewport) == 272 && offsetof(FrameConstants, effect_origins) == 288 &&
-    offsetof(FrameConstants, effect_order) == 288 + 16 * particle_layout::maximum_explosions &&
-    sizeof(FrameConstants) == 288 + 20 * particle_layout::maximum_explosions);
+    offsetof(FrameConstants, viewport) == 272 && offsetof(FrameConstants, exposure) == 288 &&
+    offsetof(FrameConstants, projection) == 304 && offsetof(FrameConstants, effect_origins) == 320 &&
+    offsetof(FrameConstants, effect_order) == 320 + 16 * particle_layout::maximum_explosions &&
+    sizeof(FrameConstants) == 320 + 20 * particle_layout::maximum_explosions);
 }

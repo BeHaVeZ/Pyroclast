@@ -27,12 +27,13 @@ public:
         using pyroclast::BlendMode;
         using pyroclast::DepthMode;
         using pyroclast::Shader;
-        auto pipeline = std::make_unique<pyroclast::GraphicsPipeline>(description.blend, description.depth);
+        auto pipeline = std::make_unique<pyroclast::GraphicsPipeline>(description.blend, description.depth, description.target);
         const bool particle = description.vertex_shader == Shader::particle_vertex;
         const bool composite_shader = description.vertex_shader == Shader::composite_vertex;
+        if (description.vertex_shader == Shader::tonemap_vertex) present = pipeline.get();
         if (particle && description.blend == BlendMode::premultiplied_alpha)
             (description.depth == DepthMode::test ? particles : offscreen) = pipeline.get();
-        if (composite_shader) (description.blend == BlendMode::opaque ? present : composite) = pipeline.get();
+        if (composite_shader) composite = pipeline.get();
         if (description.vertex_shader == Shader::terrain_vertex) terrain = pipeline.get();
         if (description.vertex_shader == Shader::sky_vertex) sky = pipeline.get();
         return pipeline;
@@ -55,8 +56,9 @@ public:
     std::string_view adapter_name() const override { return "test device"; }
     pyroclast::RenderResult render(const pyroclast::Frame& frame) override
     {
-        valid_frame = pyroclast::validate_frame(frame) == nullptr && frame.dispatches.size() == 1 &&
-            frame.constants.size() == sizeof(pyroclast::FrameConstants);
+        const char* error = pyroclast::validate_frame(frame);
+        if (error) std::fprintf(stderr, "frame rejected: %s\n", error);
+        valid_frame = error == nullptr && frame.dispatches.size() == 1 && frame.constants.size() == sizeof(pyroclast::FrameConstants);
         if (valid_frame) std::memcpy(&constants, frame.constants.data(), sizeof(constants));
         const auto draws = [](const pyroclast::Pass& pass, std::initializer_list<const pyroclast::GraphicsPipeline*> pipelines) {
             if (pass.draws.size() != pipelines.size()) return false;
@@ -125,9 +127,12 @@ int main()
     const auto check = [&failures](bool value, const char* name) {
         if (!value) { std::fprintf(stderr, "FAIL: %s\n", name); ++failures; }
     };
-    check(range.initialize(device) && device.heights_uploaded && device.terrain && device.sky, "the range uploads its heights");
+    constexpr auto hdr = TargetFormat::r11g11b10_float;
+    static_assert(hdr != ExplosionRenderer::smoke_format);
+    constexpr ParticleTargets targets{hdr, ExplosionRenderer::smoke_format};
+    check(range.initialize(device, hdr) && device.heights_uploaded && device.terrain && device.sky, "the range uploads its heights");
     const auto initialize = [&range](ParticleSystem& particles, TestDevice& owner, std::uint32_t explosions = 1) {
-        return particles.initialize(owner, range.terrain(), range.heights(), explosions);
+        return particles.initialize(owner, range.terrain(), range.heights(), explosions, targets);
     };
     ParticleSystem system;
     const auto submit = [](ParticleSystem& particles, double elapsed) {
@@ -248,7 +253,7 @@ int main()
     initialize(rendered, device);
     const auto camera = range.view(RangeView::overview);
     ExplosionRenderer full_resolution;
-    check(full_resolution.initialize(device, false) && device.scene && device.depth && device.depth_cleared_far && !device.half_target &&
+    check(full_resolution.initialize(device, false, hdr) && device.scene && device.scene->description().format == hdr && device.depth && device.depth_cleared_far && !device.half_target &&
         device.present, "full resolution creates a scene and a depth target cleared to the far end");
     check(full_resolution.render(device, rendered, range, camera, 1280, 720, 1.0 / 60) == RenderResult::submitted &&
         device.valid_frame && device.full_resolution_passes,
@@ -266,9 +271,9 @@ int main()
     TestRange ordered_range;
     ParticleSystem group;
     ExplosionRenderer ordered;
-    ordered_range.initialize(ordered_device);
-    group.initialize(ordered_device, ordered_range.terrain(), ordered_range.heights(), 100);
-    ordered.initialize(ordered_device, false);
+    ordered_range.initialize(ordered_device, hdr);
+    group.initialize(ordered_device, ordered_range.terrain(), ordered_range.heights(), 100, targets);
+    ordered.initialize(ordered_device, false, hdr);
     auto oblique = camera;
     oblique.position = {-70, 30, 20};
     check(ordered.render(ordered_device, group, ordered_range, oblique, 1280, 720, 0) == RenderResult::submitted && ordered_device.valid_frame,
@@ -293,7 +298,8 @@ int main()
         "the frame constants carry the effect origins");
 
     ExplosionRenderer half_resolution;
-    check(half_resolution.initialize(device, true) && device.half_target && device.half_target->description().divisor == 2 &&
+    check(half_resolution.initialize(device, true, hdr) && device.half_target && device.half_target->description().divisor == 2 &&
+        device.half_target->description().format == ExplosionRenderer::smoke_format &&
         device.composite, "half resolution creates a half-size target and its composite pipeline");
     check(half_resolution.render(device, rendered, range, camera, 1280, 720, 1.0 / 60) == RenderResult::submitted &&
         device.valid_frame && device.half_resolution_passes,

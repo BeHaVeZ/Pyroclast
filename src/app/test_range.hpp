@@ -14,10 +14,11 @@ namespace pyroclast
 class TestRange final
 {
 public:
-    bool initialize(GraphicsDevice& device);
+    bool initialize(GraphicsDevice& device, TargetFormat scene);
     const Terrain& terrain() const { return terrain_; }
     const Buffer& heights() const { return *heights_; }
     std::array<Draw, 2> draws() const;
+    static constexpr float exposure = 1.25f;
     static void light(FrameConstants& constants);
     Camera view(RangeView name) const;
 

@@ -28,6 +28,8 @@ struct DiagnosticsSnapshot
     std::uint32_t capacity = 0;
     bool paused = false;
     bool half_resolution_smoke = false;
+    std::string_view scene_format;
+    float exposure = 1;
     float camera_position[3]{};
     float camera_yaw = 0;
     float camera_pitch = 0;

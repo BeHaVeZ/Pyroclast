@@ -36,6 +36,12 @@ struct ParticleWork
     std::uint32_t steps;
 };
 
+struct ParticleTargets
+{
+    TargetFormat scene;
+    TargetFormat offscreen;
+};
+
 class ParticleSystem final
 {
 public:
@@ -45,7 +51,8 @@ public:
     static constexpr std::uint32_t explosion_particles = particle_layout::explosion_particles;
     static constexpr float effect_spacing = 9;
     static_assert(explosion_particles <= minimum_capacity);
-    bool initialize(GraphicsDevice& device, const Terrain& terrain, const Buffer& heights, std::uint32_t explosions = 1);
+    bool initialize(GraphicsDevice& device, const Terrain& terrain, const Buffer& heights, std::uint32_t explosions,
+        ParticleTargets targets);
     std::uint32_t capacity() const { return capacity_; }
     std::uint32_t explosion_count() const { return explosion_count_; }
     const Buffer& particles() const { return *particles_; }

@@ -112,6 +112,8 @@ ImDrawData* DebugUi::build(const DiagnosticsSnapshot& snapshot, std::vector<UiCo
             row("Explosions", "%u", snapshot.explosions);
             row("Pool capacity", "%u particles", snapshot.capacity);
             row("Smoke resolution", "%s", snapshot.half_resolution_smoke ? "half" : "full");
+            row("Scene target", "%.*s, exposure %.2f", static_cast<int>(snapshot.scene_format.size()), snapshot.scene_format.data(),
+                snapshot.exposure);
             row("State", "%s", snapshot.paused ? "paused" : "running");
             ImGui::EndTable();
         }

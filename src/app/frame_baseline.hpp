@@ -22,6 +22,7 @@ struct SampleDescription
     std::optional<std::uint32_t> profile_tick;
     bool half_resolution_smoke = false;
     std::string view = "overview";
+    std::string scene_format = "rgba16f";
 };
 
 class FrameBaseline final

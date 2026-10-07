@@ -25,6 +25,7 @@ struct TestCase
     bool gpu_regions = false;
     std::string_view adapter;
     pyroclast::RangeView view = pyroclast::RangeView::overview;
+    pyroclast::SceneFormat scene_format = pyroclast::SceneFormat::rgba16f;
 };
 }
 
@@ -40,6 +41,12 @@ int main()
         {"ground view", {"--view=ground"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, pyroclast::RangeView::ground},
         {"aerial view", {"--view=aerial"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, pyroclast::RangeView::aerial},
         {"invalid view", {"--view=top"}, d3d12, false, "Expected --view"},
+        {"packed float scene", {"--scene-format=r11g11b10f"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {},
+            pyroclast::SceneFormat::r11g11b10f},
+        {"8-bit scene", {"--scene-format=rgba8"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {},
+            pyroclast::SceneFormat::rgba8},
+        {"invalid scene format", {"--scene-format=rgba32f"}, d3d12, false, "Expected --scene-format"},
+        {"duplicate scene format", {"--scene-format=rgba8", "--scene-format=rgba8"}, d3d12, false, "only once"},
         {"duplicate view", {"--view=hill", "--view=hill"}, d3d12, false, "only once"},
         {"GPU regions duplicate", {"--gpu-regions", "--gpu-regions"}, d3d12, false, "only once"},
         {"GPU timing duplicate", {"--gpu-timing", "--gpu-timing"}, d3d12, false, "only once"},
@@ -116,7 +123,7 @@ int main()
                 result.options.exit_after == test.exit_after && result.options.capture_path == test.capture_path &&
                 result.options.gpu_validation == test.gpu_validation && result.options.ui == test.ui &&
                 result.options.gpu_regions == test.gpu_regions && result.options.adapter == test.adapter &&
-                result.options.view == test.view
+                result.options.view == test.view && result.options.scene_format == test.scene_format
             : result.error.find(test.error_fragment) != std::string::npos;
         if (!passed)
         {

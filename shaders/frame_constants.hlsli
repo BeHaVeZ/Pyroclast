@@ -16,6 +16,8 @@ struct FrameConstants
     float4 ground_color;
     float4 fog;
     float4 viewport;
+    float4 exposure;
+    float4 projection;
     float4 effect_origins[maximum_explosions];
     uint4 effect_order[maximum_explosions / 4];
 };

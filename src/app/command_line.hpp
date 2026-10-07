@@ -10,6 +10,8 @@
 
 namespace pyroclast
 {
+enum class SceneFormat { rgba16f, r11g11b10f, rgba8 };
+
 struct ApplicationOptions
 {
     Renderer renderer = Renderer::d3d12;
@@ -25,6 +27,7 @@ struct ApplicationOptions
     std::optional<std::uint32_t> exit_after;
     std::string capture_path;
     RangeView view = RangeView::overview;
+    SceneFormat scene_format = SceneFormat::rgba16f;
 };
 
 struct CommandLineResult
@@ -37,4 +40,5 @@ struct CommandLineResult
 CommandLineResult parse_command_line(std::span<const char* const> arguments);
 const char* renderer_name(Renderer renderer);
 const char* view_name(RangeView view);
+const char* scene_format_name(SceneFormat format);
 }

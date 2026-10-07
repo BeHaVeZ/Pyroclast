@@ -7,7 +7,8 @@
 
 namespace pyroclast
 {
-bool ParticleSystem::initialize(GraphicsDevice& device, const Terrain& terrain, const Buffer& heights, std::uint32_t explosions)
+bool ParticleSystem::initialize(GraphicsDevice& device, const Terrain& terrain, const Buffer& heights, std::uint32_t explosions,
+    ParticleTargets targets)
 {
     if (!is_explosion_scenario(explosions))
     {
@@ -29,9 +30,9 @@ bool ParticleSystem::initialize(GraphicsDevice& device, const Terrain& terrain, 
     const auto bytes = capacity_ * static_cast<std::uint32_t>(sizeof(Particle));
     particles_ = device.create_buffer(bytes, {});
     graphics_ = device.create_graphics_pipeline(
-        {Shader::particle_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha, DepthMode::test});
+        {Shader::particle_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha, DepthMode::test, targets.scene});
     offscreen_graphics_ = device.create_graphics_pipeline(
-        {Shader::particle_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha, DepthMode::none});
+        {Shader::particle_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha, DepthMode::none, targets.offscreen});
     if (!particles_ || !graphics_ || !offscreen_graphics_)
     {
         return false;

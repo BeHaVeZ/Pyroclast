@@ -31,6 +31,7 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
     bool explosions_specified = false;
     bool profile_specified = false;
     bool smoke_specified = false;
+    bool scene_format_specified = false;
     bool capture_specified = false;
     bool view_specified = false;
     const auto set_once = [&result](bool& flag, const char* name) {
@@ -107,6 +108,24 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
             else
             {
                 result.error = "Expected --view=overview, ground, hill or aerial.";
+                return result;
+            }
+        }
+        else if (option.starts_with("--scene-format="))
+        {
+            if (scene_format_specified)
+            {
+                result.error = "Specify --scene-format only once.";
+                return result;
+            }
+            scene_format_specified = true;
+            const auto value = option.substr(std::string_view("--scene-format=").size());
+            if (value == "rgba16f") result.options.scene_format = SceneFormat::rgba16f;
+            else if (value == "r11g11b10f") result.options.scene_format = SceneFormat::r11g11b10f;
+            else if (value == "rgba8") result.options.scene_format = SceneFormat::rgba8;
+            else
+            {
+                result.error = "Expected --scene-format=rgba16f, r11g11b10f or rgba8.";
                 return result;
             }
         }
@@ -229,6 +248,17 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
 const char* renderer_name(Renderer renderer)
 {
     return renderer == Renderer::d3d12 ? "d3d12" : "vulkan";
+}
+
+const char* scene_format_name(SceneFormat format)
+{
+    switch (format)
+    {
+    case SceneFormat::rgba16f: return "rgba16f";
+    case SceneFormat::r11g11b10f: return "r11g11b10f";
+    case SceneFormat::rgba8: return "rgba8";
+    }
+    return "rgba16f";
 }
 
 const char* view_name(RangeView view)

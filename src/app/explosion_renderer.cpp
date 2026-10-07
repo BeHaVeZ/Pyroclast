@@ -6,11 +6,11 @@
 
 namespace pyroclast
 {
-bool ExplosionRenderer::initialize(GraphicsDevice& device, bool half_resolution_smoke)
+bool ExplosionRenderer::initialize(GraphicsDevice& device, bool half_resolution_smoke, TargetFormat scene_format)
 {
-    scene_ = device.create_render_target({});
+    scene_ = device.create_render_target({1, {}, scene_format});
     depth_ = device.create_render_target({1, {}, TargetFormat::depth, 0.0f});
-    present_ = device.create_graphics_pipeline({Shader::composite_vertex, Shader::composite_pixel, BlendMode::opaque});
+    present_ = device.create_graphics_pipeline({Shader::tonemap_vertex, Shader::tonemap_pixel, BlendMode::opaque});
     if (!scene_ || !depth_ || !present_)
     {
         return false;
@@ -19,9 +19,9 @@ bool ExplosionRenderer::initialize(GraphicsDevice& device, bool half_resolution_
     {
         return true;
     }
-    smoke_target_ = device.create_render_target({2, {0, 0, 0, 0}});
+    smoke_target_ = device.create_render_target({2, {0, 0, 0, 0}, smoke_format});
     composite_ = device.create_graphics_pipeline(
-        {Shader::composite_vertex, Shader::composite_pixel, BlendMode::premultiplied_alpha, DepthMode::ignore});
+        {Shader::composite_vertex, Shader::composite_pixel, BlendMode::premultiplied_alpha, DepthMode::ignore, scene_format});
     return smoke_target_ && composite_;
 }
 
@@ -42,6 +42,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     constants.camera_right = {right.x, right.y, right.z, 0};
     constants.camera_up = {up.x, up.y, up.z, 0};
     constants.viewport = {w, h, 1 / w, 1 / h};
+    constants.projection = {camera.projection(w / h).columns[1].y * h * 0.5f, 0, 0, 0};
     TestRange::light(constants);
     const auto origins = particles.effect_origins();
     std::copy(origins.begin(), origins.end(), constants.effect_origins.begin());
@@ -56,7 +57,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     for (std::size_t rank = 0; rank < order.size(); ++rank) constants.effect_order[rank / 4][rank % 4] = order[rank];
 
     const auto opaque = range.draws();
-    const Draw present{*present_, {}, {}, 3, 1, "Copy scene"};
+    const Draw present{*present_, {}, {}, 3, 1, "Tonemap"};
     const Pass scene{scene_.get(), {}, opaque, "Scene", false, depth_.get(), true};
     const Pass to_backbuffer{nullptr, {scene_.get(), nullptr}, {&present, 1}, "Present"};
     const auto submit = [&](std::span<const Pass> passes) {

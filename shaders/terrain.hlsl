@@ -39,7 +39,7 @@ float4 ps_main(PixelInput input) : SV_Target
 {
     float3 normal = normalize(input.normal);
     float range = smoothstep(80, 140, length(input.world.xz));
-    float3 albedo = lerp(float3(0.42, 0.37, 0.30), float3(0.27, 0.34, 0.19), range);
+    float3 albedo = lerp(float3(0.13, 0.115, 0.085), float3(0.05, 0.09, 0.028), range);
     albedo *= 1 - 0.25 * grid_line(input.world.xz, 10) - 0.35 * grid_line(input.world.xz, 50);
     float sun = saturate(dot(normal, frame.sun_direction.xyz));
     float3 ambient = lerp(frame.ground_color.rgb, frame.sky_color.rgb, normal.y * 0.5 + 0.5);

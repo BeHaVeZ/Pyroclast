@@ -49,8 +49,9 @@ void FrameBaseline::record(double milliseconds, std::optional<GpuTimings> gpu)
     const auto& sample = description_;
     const char* renderer = sample.renderer.c_str();
     if (sample.profile_tick)
-        SDL_Log("Fixed-state sample: tick=%u, zero integration steps, VSync off; warmup=120, samples=600, resolution=1280x720, explosions=%u, capacity=%u, view=%s, renderer=%s, build=%s.",
-            *sample.profile_tick, sample.explosions, sample.capacity, sample.view.c_str(), renderer, build_configuration);
+        SDL_Log("Fixed-state sample: tick=%u, zero integration steps, VSync off; warmup=120, samples=600, resolution=1280x720, explosions=%u, capacity=%u, view=%s, scene=%s, renderer=%s, build=%s.",
+            *sample.profile_tick, sample.explosions, sample.capacity, sample.view.c_str(), sample.scene_format.c_str(), renderer,
+            build_configuration);
     else SDL_Log("Explosion startup baseline: 600 samples after 120 warmup frames; 1280x720, VSync on, explosions=%u, capacity=%u, burst=%u, renderer=%s, build=%s.",
         sample.explosions, sample.capacity, sample.explosions * particle_layout::explosion_particles, renderer, build_configuration);
     SDL_Log("CPU resize/render call including fence/Present waits: average=%.4f ms, median=%.4f ms, p99=%.4f ms. Not GPU execution time.",
@@ -84,11 +85,11 @@ void FrameBaseline::record(double milliseconds, std::optional<GpuTimings> gpu)
         gpu_ms = summary + regions + "}";
     }
     std::printf("{\"build\":\"%s\",\"renderer\":%s,\"gpu\":%s,\"explosions\":%u,\"capacity\":%u,\"profile_tick\":%s,"
-        "\"vsync\":%s,\"smoke_resolution\":\"%s\",\"view\":%s,\"width\":1280,\"height\":720,\"warmup_frames\":%zu,\"samples\":%zu,"
+        "\"vsync\":%s,\"smoke_resolution\":\"%s\",\"view\":%s,\"scene_format\":%s,\"width\":1280,\"height\":720,\"warmup_frames\":%zu,\"samples\":%zu,"
         "\"cpu_ms\":{\"average\":%.4f,\"median\":%.4f,\"p99\":%.4f},\"gpu_ms\":%s}\n",
         build_configuration, json_string(sample.renderer).c_str(), json_string(sample.gpu).c_str(),
         sample.explosions, sample.capacity, tick.c_str(), sample.profile_tick ? "false" : "true",
-        sample.half_resolution_smoke ? "half" : "full", json_string(sample.view).c_str(), warmup_frames, samples_.size(),
+        sample.half_resolution_smoke ? "half" : "full", json_string(sample.view).c_str(), json_string(sample.scene_format).c_str(), warmup_frames, samples_.size(),
         cpu.average, cpu.median, cpu.p99, gpu_ms.c_str());
     std::fflush(stdout);
 }

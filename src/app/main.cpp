@@ -110,7 +110,8 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, pyro
     FlightControls flight;
     const auto profile_tick = options.profile_tick;
     pyroclast::FrameBaseline baseline({pyroclast::renderer_name(options.renderer), std::string(renderer.adapter_name()),
-        demo.explosion_count(), demo.capacity(), profile_tick, options.half_smoke, pyroclast::view_name(options.view)});
+        demo.explosion_count(), demo.capacity(), profile_tick, options.half_smoke, pyroclast::view_name(options.view),
+        pyroclast::scene_format_name(options.scene_format)});
     if (ui)
     {
         baseline.disable();
@@ -213,6 +214,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, pyro
                         std::span<const float>(history.milliseconds.data(), history.count),
                         history.count < history.milliseconds.size() ? 0 : static_cast<int>(history.next),
                         renderer.completed_gpu_timings(), demo.explosion_count(), demo.capacity(), demo.paused(), options.half_smoke,
+                        pyroclast::scene_format_name(options.scene_format), pyroclast::TestRange::exposure,
                         {camera.position.x, camera.position.y, camera.position.z},
                         camera.yaw * 180 / std::numbers::pi_v<float>, camera.pitch * 180 / std::numbers::pi_v<float>, flight.speed};
                     commands.clear();
@@ -301,12 +303,17 @@ int run_application(const pyroclast::ApplicationOptions& options)
         return 1;
     }
     auto& device = *creation.device;
-    SDL_Log("Smoke resolution: %s.", options.half_smoke ? "half" : "full");
+    SDL_Log("Smoke resolution: %s; scene target: %s.", options.half_smoke ? "half" : "full",
+        pyroclast::scene_format_name(options.scene_format));
+    const auto scene_format = options.scene_format == pyroclast::SceneFormat::rgba16f ? pyroclast::TargetFormat::rgba16_float :
+        options.scene_format == pyroclast::SceneFormat::r11g11b10f ? pyroclast::TargetFormat::r11g11b10_float : pyroclast::TargetFormat::color;
     pyroclast::TestRange range;
     pyroclast::ParticleSystem demo;
     pyroclast::ExplosionRenderer explosions;
-    if (!range.initialize(device) || !demo.initialize(device, range.terrain(), range.heights(), options.explosions) ||
-        !explosions.initialize(device, options.half_smoke))
+    if (!range.initialize(device, scene_format) ||
+        !demo.initialize(device, range.terrain(), range.heights(), options.explosions,
+            {scene_format, pyroclast::ExplosionRenderer::smoke_format}) ||
+        !explosions.initialize(device, options.half_smoke, scene_format))
     {
         return 1;
     }
@@ -338,7 +345,8 @@ int main(int argc, char** argv)
         std::puts(
             "Usage: Pyroclast.exe [--renderer=d3d12|vulkan] [--explosions=1|10|50|100] [--gpu-timing] [--gpu-regions] [--profile-tick=N]\n"
             "                     [--smoke-resolution=full|half] [--ui=on|off] [--gpu-validation]\n"
-            "                     [--capture=FILE.png] [--exit-after=N] [--view=overview|ground|hill|aerial] [--help]\n"
+            "                     [--capture=FILE.png] [--exit-after=N] [--view=overview|ground|hill|aerial]\n"
+            "                     [--scene-format=rgba16f|r11g11b10f|rgba8] [--help]\n"
             "  --renderer=d3d12   Request Direct3D 12 (default).\n"
             "  --renderer=vulkan  Request Vulkan.\n"
             "  --explosions=N     Simultaneous explosion group (1, 10, 50, 100; default 1).\n"
@@ -349,6 +357,7 @@ int main(int argc, char** argv)
             "  --capture=FILE.png Write the first frame drawn at the profile tick, then exit (requires --profile-tick).\n"
             "  --exit-after=N     Exit after N submitted frames.\n"
             "  --view=NAME        Start the camera at a named pose: overview (default), ground, hill or aerial.\n"
+            "  --scene-format=F   Scene target: rgba16f (default), r11g11b10f, or rgba8 (a cost reference; bands).\n"
             "  --gpu-validation   Debug only: D3D12 GPU-based or Vulkan GPU-assisted validation (slow).\n"
             "  --ui=on|off        Dear ImGui overlay (default on, off with --profile-tick). F1 hides it.\n"
             "  --adapter=NAME     Use the GPU whose name contains NAME (case-insensitive); 'warp' is the D3D12 software rasterizer.\n"

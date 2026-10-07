@@ -56,20 +56,30 @@ PixelInput vs_main(uint vertex : SV_VertexID, uint instance : SV_InstanceID)
     bool fireball = !smoke && emissive_local < fireball_particles;
     if (smoke) size *= 1 + 0.55 * age;
     else if (fireball) size *= 1 + 1.8 * progress;
+    float softness = max(size, 0.1);
+    float distance = max(mul(frame.view_projection, float4(position.xyz, 1)).w, frame.camera_position.w);
+    float pixels = size * frame.projection.x / distance;
+    float coverage = 1;
+    bool flat = pixels > 0 && pixels < 0.5;
+    if (flat)
+    {
+        coverage = 1.5707963 * pixels * pixels;
+        size *= 0.5 / pixels;
+    }
     float3 world = position.xyz + (corner.x * frame.camera_right.xyz + corner.y * frame.camera_up.xyz) * size;
     output.position = mul(frame.view_projection, float4(world, 1));
     output.distance = output.position.w;
-    output.softness = max(size, 0.1);
-    output.uv = corner;
-    float3 hot = float3(1.0, 0.8, 0.3);
-    float3 cool = float3(0.7, 0.08, 0.01);
+    output.softness = softness;
+    output.uv = flat ? 0 : corner;
+    float3 hot = float3(4.0, 2.4, 0.3);
+    float3 cool = float3(1.8, 0.03, 0.003);
     output.color = float4(lerp(hot, cool, progress),
-        (fireball ? 0.05 : 0.6) * (1 - progress) * (1 - progress));
+        (fireball ? 0.05 : 0.6) * (1 - progress) * (1 - progress) * coverage);
     if (smoke)
     {
         float temperature = smoke_temperature(age);
-        float opacity = 0.08 * saturate(age / 0.25) * (1 - progress) * (1 - progress);
-        output.color = float4(lerp(float3(0.30, 0.32, 0.34), float3(0.42, 0.30, 0.20), temperature), opacity);
+        float opacity = 0.08 * saturate(age / 0.25) * (1 - progress) * (1 - progress) * coverage;
+        output.color = float4(lerp(float3(0.11, 0.12, 0.13), float3(0.20, 0.10, 0.045), temperature), opacity);
     }
     output.occlusion = smoke ? 1 : 0;
     return output;
