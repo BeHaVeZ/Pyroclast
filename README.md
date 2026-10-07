@@ -10,8 +10,8 @@ The project runs a GPU explosion and smoke effect in a 3D test range (terrain, s
 free-fly camera) on D3D12 and Vulkan, with a Dear ImGui engineering overlay. Explosions are events placed
 by clicks or scripts, built from seven presets of layered effects (flash, fireball, sparks, blast smoke,
 plume, ground dust, debris, temporary lights) that respond to the surface they hit, and the GPU decides
-which particles are alive and how many to draw. The smoke model, environment interaction, showcase and
-benchmark modes follow.
+which particles are alive and how many to draw. Smoke rides gusty wind, rolls into mushroom caps and is lit
+as volume. Environment interaction, showcase and benchmark modes follow.
 
 ## Core question
 
@@ -57,6 +57,21 @@ This project is an independent technical exploration.
 It is not affiliated with Bohemia Interactive, Arma, Enfusion, or Blastcore, and does not use proprietary engine source code.
 
 ## Current milestone
+
+**M16 - Smoke model and lighting** (complete)
+
+- Smoke moves with the air instead of a fixed drift: gusty wind that weakens near the ground, a rising
+  vortex ring per explosion that rolls the smoke up through the core and out over the top into a mushroom
+  cap, and divergence-free turbulence (curl noise computed in the shader, no textures).
+- Smoke cools, rises while hot and spreads as it cools; hot smoke glows.
+- Smoke is lit as volume: each particle is shaded as a sphere (soft sunlit side, sky-lit shadow side,
+  light scattered inside the cloud), and each explosion's cloud shadows its own core. Fire and flashes still
+  light the smoke around them.
+- Every part can be switched off to see and measure it (`--disable=curl,vortex,gusts,shading,shadow,emission`
+  or the overlay); the wind is set with `--wind=SPEED,HEADING,GUSTINESS` or overlay sliders.
+- Measured (RTX 4090, 100 artillery explosions): shading costs 2-3.5% of the drawing time; the turbulence and
+  the vortex rings cost nothing measurable in a simulation pass of about 25-30 µs. Denser, lit smoke draws
+  4-9% slower than in M15.
 
 **M15 - Presets, layered composition and surface response** (complete)
 
@@ -299,11 +314,12 @@ Scripted scenarios replace the group and the interactive clock; each run ends wi
 .\out\build\windows-x64\Release\Pyroclast.exe --scenario=presets
 ```
 
-Presets and layers apply to groups, profiles and scenarios:
+Presets, layers, smoke features and the wind apply to groups, profiles and scenarios:
 
 ```powershell
 .\out\build\windows-x64\Release\Pyroclast.exe --preset=artillery-he --explosions=10
 .\out\build\windows-x64\Release\Pyroclast.exe --preset=stress-test --explosions=100 --profile-tick=45 --disable=debris,lights
+.\out\build\windows-x64\Release\Pyroclast.exe --preset=heavy --wind=8,45,0.6 --disable=shading
 ```
 
 Renderer selection happens at startup and defaults to D3D12:
