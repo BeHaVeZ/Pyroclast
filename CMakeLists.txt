@@ -22,7 +22,7 @@ FetchContent_Declare(SDL3
     URL_HASH SHA256=9c75cf16330322c217dedd2e0609f1124f1b54b8633e763467b4684d0f4334a3
 )
 FetchContent_MakeAvailable(SDL3)
-find_package(Vulkan 1.1 REQUIRED)
+find_package(Vulkan 1.3 REQUIRED)
 
 add_executable(Pyroclast
     src/app/main.cpp
