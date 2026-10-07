@@ -45,6 +45,7 @@ public:
     {
         auto created = std::make_unique<pyroclast::RenderTarget>(description);
         (description.format == pyroclast::TargetFormat::depth ? depth : description.divisor == 2 ? half_target : scene) = created.get();
+        if (description.format == pyroclast::TargetFormat::depth) depth_cleared_far = description.clear_depth == 0;
         return created;
     }
     bool resize(int, int) override { return true; }
@@ -80,18 +81,24 @@ public:
         const auto with_depth = [&](const pyroclast::Pass& pass, const pyroclast::RenderTarget* first) {
             return pass.inputs[0] == first && pass.inputs[1] == depth;
         };
+        const auto records = [](const pyroclast::Draw& draw, std::uint32_t first, std::uint32_t count) {
+            return draw.constants[2] == first && draw.constants[3] == count;
+        };
+        using pyroclast::ParticleSystem;
         full_resolution_passes = passes.size() == 3 && range_pass(passes[0]) && over_scene(passes[1]) && with_depth(passes[1], nullptr) &&
-            draws(passes[1], {particles}) && present_pass(passes[2]);
+            draws(passes[1], {particles}) && records(passes[1].draws[0], 0, ParticleSystem::explosion_particles) && present_pass(passes[2]);
         half_resolution_passes = passes.size() == 4 && range_pass(passes[0]) &&
             passes[1].target == half_target && !passes[1].depth && with_depth(passes[1], nullptr) && draws(passes[1], {offscreen}) &&
-            passes[1].draws[0].constants[4] == 2 &&
+            records(passes[1].draws[0], 0, ParticleSystem::smoke_particles) && passes[1].draws[0].constants[4] == 2 &&
             over_scene(passes[2]) && with_depth(passes[2], half_target) && draws(passes[2], {composite, particles}) &&
+            records(passes[2].draws[1], ParticleSystem::smoke_particles, ParticleSystem::emissive_particles) &&
             passes[2].draws[0].vertex_count == 3 && present_pass(passes[3]);
         return result;
     }
 
     bool valid_upload = false;
     bool heights_uploaded = false;
+    bool depth_cleared_far = false;
     bool valid_frame = false;
     bool full_resolution_passes = false;
     bool half_resolution_passes = false;
@@ -241,8 +248,8 @@ int main()
     initialize(rendered, device);
     const auto camera = range.view(RangeView::overview);
     ExplosionRenderer full_resolution;
-    check(full_resolution.initialize(device, false) && device.scene && device.depth && !device.half_target && device.present,
-        "full resolution creates a scene and a depth target");
+    check(full_resolution.initialize(device, false) && device.scene && device.depth && device.depth_cleared_far && !device.half_target &&
+        device.present, "full resolution creates a scene and a depth target cleared to the far end");
     check(full_resolution.render(device, rendered, range, camera, 1280, 720, 1.0 / 60) == RenderResult::submitted &&
         device.valid_frame && device.full_resolution_passes,
         "full resolution draws the range, then smoke and light over it, then presents the scene");

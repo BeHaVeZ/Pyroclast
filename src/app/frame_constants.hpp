@@ -29,7 +29,10 @@ struct FrameConstants
 static_assert(particle_layout::maximum_explosions % 4 == 0);
 static_assert(sizeof(float4x4) == 64 && sizeof(float4) == 16);
 static_assert(offsetof(FrameConstants, inverse_view_projection) == 64 && offsetof(FrameConstants, camera_position) == 128 &&
-    offsetof(FrameConstants, sun_direction) == 176 && offsetof(FrameConstants, fog) == 256 &&
+    offsetof(FrameConstants, camera_right) == 144 && offsetof(FrameConstants, camera_up) == 160 &&
+    offsetof(FrameConstants, sun_direction) == 176 && offsetof(FrameConstants, sun_color) == 192 &&
+    offsetof(FrameConstants, sky_color) == 208 && offsetof(FrameConstants, horizon_color) == 224 &&
+    offsetof(FrameConstants, ground_color) == 240 && offsetof(FrameConstants, fog) == 256 &&
     offsetof(FrameConstants, viewport) == 272 && offsetof(FrameConstants, effect_origins) == 288 &&
     offsetof(FrameConstants, effect_order) == 288 + 16 * particle_layout::maximum_explosions &&
     sizeof(FrameConstants) == 288 + 20 * particle_layout::maximum_explosions);

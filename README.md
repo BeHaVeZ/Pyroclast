@@ -109,20 +109,14 @@ exactly. What changed underneath:
 - Shaders are registered once, in `cmake/Shaders.cmake`.
 - In-app frame capture (`--capture`), `--exit-after`, and validation/measurement tools (below).
 
-Previous milestone, Phase 10 (profiling and measured smoke optimizations): both backends run the same shared HLSL explosion: a brief fireball, ballistic
-sparks, and longer-lived smoke. The default single burst activates 2,560 particles
-(256 fireball particles, 1,792 sparks, and 512 smoke particles) in an 8,192-slot
-GPU pool. Single-effect particle state remains 256 KiB. The GPU handles spawning, movement,
-cooling, expansion, fading, and death without CPU particle updates.
-
-Smoke rises with cooling-dependent buoyancy, slows through drag, and drifts with
-a fixed wind. Its opacity builds and dissipates over its lifetime. Two ordered
-draw ranges use premultiplied alpha for smoke, then additive blending for light.
-The demo remains a small 2D behavior prototype. Space replaces the current group;
-fixed 1/60-second simulation and bounded catch-up remain. Startup scenarios now
-support 1, 10, 50, or 100 simultaneous explosions in one
-bounded pool, with one compute dispatch and two layer-ordered draws. Culling,
-LOD, and indirect rendering require profiling evidence before implementation.
+Phase 10 (profiling and measured smoke optimizations; historical, the 2D prototype that M13a moved
+into 3D): both backends ran the same shared HLSL explosion: a brief fireball, ballistic sparks, and
+longer-lived smoke. A single burst activates 2,560 particles (256 fireball particles, 1,792 sparks, and
+512 smoke particles) in an 8,192-slot GPU pool; the GPU handles spawning, movement, cooling, expansion,
+fading, and death without CPU particle updates. Smoke rose with cooling-dependent buoyancy, slowed
+through drag, and drifted with a fixed wind; two ordered draw ranges used premultiplied alpha for
+smoke, then additive blending for light. Startup scenarios of 1, 10, 50, or 100 simultaneous
+explosions share one bounded pool and one compute dispatch.
 
 See `docs/ROADMAP.md`.
 
@@ -403,15 +397,19 @@ Other diagnostic options:
 ```
 
 Cross-vendor images are not expected to match the cross-API tolerance: the Intel UHD 770 and WARP
-differ from the RTX 4090 by up to 15 levels in dense 8-bit smoke, where blend rounding accumulates,
-while D3D12 and Vulkan agree within one level on each vendor.
+differ from the RTX 4090 by up to 32 levels inside the dense 8-bit smoke of the 100-effect group, where
+blend rounding accumulates over hundreds of layers, while D3D12 and Vulkan agree within one level on
+each vendor.
 
 For the optional half-resolution smoke experiment, add
 `"--smoke-resolution=half"` to your Visual Studio launch `args`. Full resolution
 remains the default; use `"--smoke-resolution=full"` for the comparison. Both APIs
-render smoke into a reusable target with half the width and height, composite it
-over the backbuffer with an ordinary linear-filtered draw (`shaders/composite.hlsl`, the target
-bound as a pass input), then draw fireball and sparks at full resolution. Particle simulation, counts, and draw ranges are unchanged.
+render the smoke, effect by effect from back to front, into a reusable target with half the width and
+height, cleared to transparent black; each smoke pixel fades against the full-resolution scene depth, so
+the terrain hides it. The target is then composited premultiplied over the scene with a linear-filtered
+draw (`shaders/composite.hlsl`, the target bound as a pass input), fireball and sparks are drawn at full
+resolution against the scene depth, and the scene is copied to the backbuffer. Particle simulation and
+counts are unchanged.
 
 ```powershell
 .\out\build\windows-x64\Release\Pyroclast.exe --renderer=d3d12 --explosions=100 --profile-tick=180 --smoke-resolution=half
@@ -421,10 +419,9 @@ Compare full and half at the same frozen tick and window size. Check plume
 coverage, opacity and edge softness; remove `--profile-tick` for normal playback
 and verify the flash, sparks, smoke drift and dissipation. Repeat resize and
 minimize/restore in Debug on both APIs. The half target rounds odd dimensions
-up and retains the full-window aspect ratio. This prototype composites smoke
-with its solid clear background; rendering over scene geometry will require
-a different compositing path. Reduced detail and an extra pass are explicit
-trade-offs, so half resolution is optional.
+up and retains the full-window aspect ratio. All smoke is composited before any light, unlike the
+full-resolution per-effect order, and smoke edges against nearer geometry are half-resolution. Reduced
+detail and an extra pass are explicit trade-offs, so half resolution is optional.
 
 See `docs/PHASE1.md` through `docs/PHASE10.md`, `docs/PHASE10_PROFILING.md`,
 `docs/PHASE10_SMOKE_RESOLUTION.md`, `docs/PHASE11.md` (M11) and `docs/PHASE12.md` (M12)

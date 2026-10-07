@@ -44,6 +44,12 @@ int main()
     check(approx(project(clip_from_world, {0, 1, -1}).y, 1) && project(clip_from_world, {0, 1, -2}).y > 0,
         "y points up in clip space");
 
+    const auto placed = look_to({1, 2, 3}, {0, 0, -1}, {0, 1, 0});
+    check(approx(placed.columns[3].x, -1) && approx(placed.columns[3].y, -2) && approx(placed.columns[3].z, -3) &&
+        approx(placed.columns[3].w, 1), "the translation is the fourth column");
+    check(approx(projection.columns[2].w, -1) && approx(projection.columns[3].z, 0.5f) && approx(projection.columns[3].w, 0),
+        "clip w is -view z and clip z is the near plane");
+
     const auto turned = look_to({10, 2, 0}, {-1, 0, 0}, {0, 1, 0});
     const auto origin_in_view = turned * float4{0, 2, 0, 1};
     check(approx(origin_in_view.x, 0) && approx(origin_in_view.y, 0) && approx(origin_in_view.z, -10), "look_to puts the target on -Z");
