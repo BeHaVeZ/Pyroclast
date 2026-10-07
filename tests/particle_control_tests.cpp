@@ -90,6 +90,7 @@ int main()
         const auto emissive_count = explosions * ParticleSystem::emissive_particles;
         const auto* pool = &particles.particles();
         return &work.smoke.pipeline == owner.smoke && &work.emissive.pipeline == owner.emissive &&
+            work.smoke.constants[2] == particles.capacity() && work.emissive.constants[2] == particles.capacity() &&
             work.smoke.constants[1] == particle_layout::particle_layer_smoke &&
             work.emissive.constants[1] == particle_layout::particle_layer_emissive &&
             work.smoke.constants[0] == emissive_count && work.smoke.instance_count == particles.capacity() - emissive_count &&

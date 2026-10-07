@@ -144,7 +144,7 @@ public:
     std::string_view adapter_name() const override { return adapter_name_; }
 
 private:
-    bool create_instance();
+    bool create_instance(bool gpu_validation);
     bool create_device();
     bool create_bindings();
     bool create_shader_module(Shader shader, struct VulkanShaderModule& module);

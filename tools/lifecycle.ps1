@@ -1,8 +1,9 @@
 # Drives one Pyroclast window through the interactive lifecycle and checks native validation:
 # pause/clear/trigger/single steps, 30 odd-size resizes, three minimize/restore cycles, a running
 # trigger, a normal close, and separately a start in a minimized window that is later restored.
-# Passes when every launch exits 0, logs no ERROR/WARN lines (Vulkan loader notices excepted) and, in
-# Debug, reports "validation summary: 0 warnings, 0 errors". Logs go to -OutDir; nothing else is written.
+# Passes when every launch exits 0, logs no ERROR/WARN lines (Vulkan loader notices excepted), in
+# Debug reports "validation summary: 0 warnings, 0 errors", and the interactive run's log shows that
+# the injected keys and resizes reached the application. Logs go to -OutDir; nothing else is written.
 param(
     [ValidateSet('Debug', 'Release')][string]$Configuration = 'Debug',
     [ValidateSet('d3d12', 'vulkan')][string]$Renderer = 'd3d12',
@@ -115,6 +116,13 @@ function Run-Interactive {
         Start-Sleep -Milliseconds 1500
         Close-Window $window $process
         Check-Log $log $process
+        # Keys posted to a window that never received them would otherwise pass silently.
+        $text = (Get-Content -LiteralPath $log) -join "`n"
+        $backend = if ($Renderer -eq 'd3d12') { 'D3D12' } else { 'Vulkan' }
+        foreach ($expected in 'Particle simulation: paused', 'Particle pool cleared.', 'Explosion group triggered',
+            'Particle simulation: running', "$backend swapchain resized") {
+            if (-not $text.Contains($expected)) { throw "The application never logged '$expected'; input or resizes did not arrive." }
+        }
     } finally {
         if (-not $process.HasExited) { $process.Kill(); $process.WaitForExit() }
         $process.Dispose()

@@ -58,8 +58,9 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds)
     Bindings drawing{};
     drawing.read[0] = particles_.get();
     const DrawConstants parameters{capacity_, steps, burst_count_, reset_epoch_};
-    const DrawConstants smoke_range{emissive_count, particle_layout::particle_layer_smoke};
-    const DrawConstants emissive_range{0, particle_layout::particle_layer_emissive};
+    assert(emissive_count <= capacity_ && particles_->size() == capacity_ * particle_layout::particle_stride);
+    const DrawConstants smoke_range{emissive_count, particle_layout::particle_layer_smoke, capacity_};
+    const DrawConstants emissive_range{0, particle_layout::particle_layer_emissive, capacity_};
     return {
         {*compute_, simulation, parameters, {(capacity_ + group_size - 1) / group_size, 1, 1}, "Particle simulation"},
         {*smoke_graphics_, drawing, smoke_range, 6, capacity_ - emissive_count, "Smoke"},

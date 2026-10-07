@@ -32,15 +32,25 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     assert(std::isfinite(aspect_ratio) && aspect_ratio > 0);
     const auto work = particles.plan(elapsed_seconds);
     const FrameConstants constants{aspect_ratio};
-    const Draw layered[] = {work.smoke, work.emissive};
-    const Pass full_resolution[] = {{nullptr, {}, layered, "Particles"}};
-    const Draw composite{*composite_, {}, {}, 3, 1, "Smoke composite"};
-    const Draw light_over_smoke[] = {composite, work.emissive};
-    const Pass half_resolution[] = {
-        {smoke_target_.get(), {}, {&work.smoke, 1}, "Half-resolution smoke"},
-        {nullptr, {smoke_target_.get(), nullptr}, light_over_smoke, "Composite and light"}};
-    const std::span<const Pass> passes = smoke_target_ ? std::span<const Pass>(half_resolution) : std::span<const Pass>(full_resolution);
-    const auto result = device.render({{&work.dispatch, 1}, passes, background_color, std::as_bytes(std::span(&constants, 1)), capture});
+    const auto submit = [&](std::span<const Pass> passes) {
+        return device.render({{&work.dispatch, 1}, passes, background_color, std::as_bytes(std::span(&constants, 1)), capture});
+    };
+    RenderResult result;
+    if (!smoke_target_)
+    {
+        const Draw layered[] = {work.smoke, work.emissive};
+        const Pass passes[] = {{nullptr, {}, layered, "Particles"}};
+        result = submit(passes);
+    }
+    else
+    {
+        const Draw composite{*composite_, {}, {}, 3, 1, "Smoke composite"};
+        const Draw light_over_smoke[] = {composite, work.emissive};
+        const Pass passes[] = {
+            {smoke_target_.get(), {}, {&work.smoke, 1}, "Half-resolution smoke"},
+            {nullptr, {smoke_target_.get(), nullptr}, light_over_smoke, "Composite and light"}};
+        result = submit(passes);
+    }
     if (result == RenderResult::submitted)
     {
         particles.commit(work);

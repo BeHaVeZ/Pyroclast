@@ -83,7 +83,7 @@ private:
     void draw(const Draw& draw);
     void set_target(D3D12_CPU_DESCRIPTOR_HANDLE rtv, int width, int height);
     bool record_capture(ID3D12Resource* backbuffer);
-    bool create_device();
+    bool create_device(bool gpu_validation);
     bool create_timestamps();
     bool read_timestamps(std::size_t frame);
     bool create_swapchain(SDL_Window* window);

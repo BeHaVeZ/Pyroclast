@@ -43,6 +43,10 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
         {
             result.options.gpu_timing = true;
         }
+        else if (option == "--gpu-validation")
+        {
+            result.options.gpu_validation = true;
+        }
         else if (option.starts_with("--smoke-resolution="))
         {
             if (smoke_specified)

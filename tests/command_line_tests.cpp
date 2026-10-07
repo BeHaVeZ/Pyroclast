@@ -19,6 +19,7 @@ struct TestCase
     bool half_smoke = false;
     std::optional<std::uint32_t> exit_after;
     std::string_view capture_path;
+    bool gpu_validation = false;
 };
 }
 
@@ -26,6 +27,8 @@ int main()
 {
     using enum pyroclast::Renderer;
     const TestCase cases[] = {
+        {"GPU validation", {"--gpu-validation"}, d3d12, false, {}, false, 1, {}, false, {}, {}, true},
+        {"GPU validation with a value", {"--gpu-validation=1"}, d3d12, false, "Unknown argument"},
         {"exit after", {"--exit-after=600"}, d3d12, false, {}, false, 1, {}, false, 600},
         {"exit after zero", {"--exit-after=0"}, d3d12, false, "Expected --exit-after"},
         {"exit after empty", {"--exit-after="}, d3d12, false, "Expected --exit-after"},
@@ -89,7 +92,8 @@ int main()
         const bool passed = test.error_fragment.empty()
             ? result.error.empty() && result.options.renderer == test.renderer &&
                 result.options.show_help == test.show_help && result.options.gpu_timing == test.gpu_timing && result.options.explosions == test.explosions && result.options.profile_tick == test.profile_tick && result.options.half_smoke == test.half_smoke &&
-                result.options.exit_after == test.exit_after && result.options.capture_path == test.capture_path
+                result.options.exit_after == test.exit_after && result.options.capture_path == test.capture_path &&
+                result.options.gpu_validation == test.gpu_validation
             : result.error.find(test.error_fragment) != std::string::npos;
         if (!passed)
         {

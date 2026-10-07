@@ -163,6 +163,7 @@ struct GraphicsDeviceOptions
     bool gpu_timing = false;
     bool vsync = true;
     bool capture = false;
+    bool gpu_validation = false;
 };
 
 // The SDL window must outlive the device; resources used by a frame must survive until wait_idle.

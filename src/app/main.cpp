@@ -51,6 +51,11 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, pyro
         demo.explosion_count(), demo.capacity(), profile_tick, options.half_smoke});
     auto previous_time = SDL_GetPerformanceCounter();
     std::uint32_t submitted_frames = 0;
+    const auto finish = [&options]() {
+        if (options.capture_path.empty()) return 0;
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Exited before the capture at tick %u was drawn.", *options.profile_tick);
+        return 1;
+    };
     while (true)
     {
         SDL_Event event{};
@@ -78,7 +83,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, pyro
                 (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED &&
                     event.window.windowID == window_id))
             {
-                return 0;
+                return finish();
             }
         }
 
@@ -118,7 +123,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, pyro
                     if (options.exit_after && ++submitted_frames >= *options.exit_after)
                     {
                         SDL_Log("Exiting after %u submitted frames.", submitted_frames);
-                        return 0;
+                        return finish();
                     }
                 }
                 else baseline.disable();
@@ -158,10 +163,18 @@ int run_application(const pyroclast::ApplicationOptions& options)
         return 1;
     }
 
+#ifdef NDEBUG
+    if (options.gpu_validation)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "--gpu-validation requires a Debug build.");
+        return 1;
+    }
+#endif
     const pyroclast::GraphicsDeviceOptions device_options{
         .gpu_timing = options.gpu_timing || options.profile_tick.has_value(),
         .vsync = !options.profile_tick.has_value(),
-        .capture = !options.capture_path.empty()};
+        .capture = !options.capture_path.empty(),
+        .gpu_validation = options.gpu_validation};
     auto creation = pyroclast::create_graphics_device(options.renderer, window.get(), device_options);
     if (!creation.device)
     {
@@ -211,6 +224,7 @@ int main(int argc, char** argv)
             "  --gpu-timing       Enable GPU timestamp measurements.\n"
             "  --capture=FILE.png Write the first frame drawn at the profile tick, then exit (requires --profile-tick).\n"
             "  --exit-after=N     Exit after N submitted frames.\n"
+            "  --gpu-validation   Debug only: D3D12 GPU-based or Vulkan GPU-assisted validation (slow).\n"
             "  --help             Print usage and exit.\n"
             "Both renderers run the same GPU explosion effect.");
         return 0;

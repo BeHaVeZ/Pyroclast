@@ -1,6 +1,6 @@
 #include "explosion.hlsli"
 
-struct DrawConstants { uint first_record; uint layer; };
+struct DrawConstants { uint first_record; uint layer; uint record_count; };
 #ifdef __spirv__
 [[vk::push_constant]]
 #endif
@@ -22,10 +22,16 @@ PixelInput vs_main(uint vertex : SV_VertexID, uint instance : SV_InstanceID)
         float2(-1, 1), float2(1, 1), float2(1, -1),
         float2(-1, 1), float2(1, -1), float2(-1, -1)
     };
-    uint address = (draw.first_record + instance) * particle_stride;
+    uint record = draw.first_record + instance;
+    PixelInput output = (PixelInput)0;
+    if (record >= draw.record_count)
+    {
+        output.position = float4(0, 0, 0, 1);
+        return output;
+    }
+    uint address = record * particle_stride;
     float2 position = asfloat(particles.Load2(address + particle_motion_offset));
     float3 life = asfloat(particles.Load3(address + particle_life_offset));
-    PixelInput output;
     float2 corner = corners[vertex];
     float size = life.y > 0 ? life.z : 0;
     float progress = life.y > 0 ? saturate(life.x / max(life.y, 0.001)) : 1;

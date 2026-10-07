@@ -6,7 +6,7 @@ namespace pyroclast
 {
 using Microsoft::WRL::ComPtr;
 
-bool D3D12Renderer::create_device()
+bool D3D12Renderer::create_device([[maybe_unused]] bool gpu_validation)
 {
     UINT factory_flags = 0;
 #ifndef NDEBUG
@@ -19,6 +19,16 @@ bool D3D12Renderer::create_device()
     debug->EnableDebugLayer();
     factory_flags = DXGI_CREATE_FACTORY_DEBUG;
     SDL_Log("D3D12 debug layer enabled.");
+    if (gpu_validation)
+    {
+        ComPtr<ID3D12Debug1> gpu_debug;
+        if (!check(debug.As(&gpu_debug), "Query D3D12 GPU-based validation"))
+        {
+            return false;
+        }
+        gpu_debug->SetEnableGPUBasedValidation(TRUE);
+        SDL_Log("D3D12 GPU-based validation enabled.");
+    }
 #endif
 
     if (!check(CreateDXGIFactory2(factory_flags, IID_PPV_ARGS(&factory_)), "Create DXGI factory"))
@@ -181,7 +191,7 @@ bool D3D12Renderer::initialize(SDL_Window* window, const GraphicsDeviceOptions& 
 {
     vsync_ = options.vsync;
     capture_enabled_ = options.capture;
-    if (!create_device() || !create_bindings() || !create_swapchain(window) || !check_validation())
+    if (!create_device(options.gpu_validation) || !create_bindings() || !create_swapchain(window) || !check_validation())
     {
         return false;
     }

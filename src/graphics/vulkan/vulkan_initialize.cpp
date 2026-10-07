@@ -47,7 +47,7 @@ bool VulkanRenderer::initialize(SDL_Window* window, const GraphicsDeviceOptions&
     vsync_ = options.vsync;
     capture_enabled_ = options.capture;
     window_ = window;
-    if (!create_instance())
+    if (!create_instance(options.gpu_validation))
     {
         return false;
     }
@@ -67,7 +67,7 @@ bool VulkanRenderer::initialize(SDL_Window* window, const GraphicsDeviceOptions&
     return validation_ok();
 }
 
-bool VulkanRenderer::create_instance()
+bool VulkanRenderer::create_instance([[maybe_unused]] bool gpu_validation)
 {
     std::uint32_t count = 0;
     const char* const* sdl_extensions = SDL_Vulkan_GetInstanceExtensions(&count);
@@ -127,7 +127,8 @@ bool VulkanRenderer::create_instance()
         return false;
     }
     extensions.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
-    const VkValidationFeatureEnableEXT enabled = VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT;
+    const VkValidationFeatureEnableEXT enabled = gpu_validation ? VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT :
+        VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT;
     VkValidationFeaturesEXT validation{};
     validation.sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT;
     validation.enabledValidationFeatureCount = 1;
@@ -161,7 +162,7 @@ bool VulkanRenderer::create_instance()
     {
         return false;
     }
-    SDL_Log("Vulkan validation and synchronization validation enabled.");
+    SDL_Log("Vulkan validation and %s validation enabled.", gpu_validation ? "GPU-assisted" : "synchronization");
 #endif
     return validation_ok();
 }
