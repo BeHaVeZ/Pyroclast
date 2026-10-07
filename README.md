@@ -55,6 +55,21 @@ It is not affiliated with Bohemia Interactive, Arma, Enfusion, or Blastcore, and
 
 ## Current milestone
 
+**M12 - Dear ImGui tooling, GPU regions and second-vendor validation** (complete)
+
+- A Dear ImGui overlay (F1 hides it) shows only values the application measures or owns: renderer,
+  GPU, resolution, CPU frame intervals with a plot, GPU timestamp intervals, explosions, pool size,
+  smoke resolution and pause state. Its buttons call the same functions as the keys. It is on for
+  interactive runs and off for `--profile-tick` measurement and capture runs unless `--ui=on`.
+- `--gpu-regions` times every dispatch, pass and the overlay; the overlay shows a table and the JSON
+  record gains a `regions` array. First result: in half-resolution mode Vulkan's composite-and-light
+  pass costs about 75 µs more than D3D12's, which is the whole half-resolution gap measured since
+  Phase 10; the smoke pass itself costs the same.
+- `--adapter=NAME` selects a GPU by name on either API and `--adapter=warp` the D3D12 software
+  rasterizer. Vulkan no longer requires `VK_EXT_swapchain_maintenance1`, so it runs on the Intel UHD
+  770, where D3D12 and Vulkan images agree within one level.
+- `--gpu-validation` (Debug) enables D3D12 GPU-based or Vulkan GPU-assisted validation.
+
 **M11 - Rendering interface for a 3D, GPU-driven frame** (complete)
 
 A pure refactor with pixel-identical output: every fixed-state capture (both APIs, full and half
@@ -124,8 +139,10 @@ cmake --preset windows-x64
 
 Runtime requires a Vulkan-capable graphics driver. The Vulkan backend currently
 requires Vulkan 1.3 with dynamic rendering and synchronization2, a combined
-graphics/compute/present queue, `VK_KHR_push_descriptor`, and
-`VK_EXT_swapchain_maintenance1` with its surface dependencies. Presentation
+graphics/compute/present queue, and `VK_KHR_push_descriptor`. When the driver offers
+`VK_EXT_swapchain_maintenance1` (with its surface dependencies) its presentation fences are used;
+otherwise resize and shutdown wait for the device to go idle. Rejected adapters are logged with the
+missing capability. Presentation
 fences from this extension allow explicit resource cleanup on resize and shutdown.
 Unsupported configurations fail with a diagnostic; there is no silent API fallback.
 
@@ -141,8 +158,8 @@ cmake --build --preset release
 .\out\build\windows-x64\Release\Pyroclast.exe
 ```
 
-Configuration downloads SDL 3.4.18 from its official release archive and verifies
-its SHA-256 checksum. Internet access is required for the first configuration;
+Configuration downloads SDL 3.4.18 and Dear ImGui 1.92.9b from their release archives and verifies
+their SHA-256 checksums. Internet access is required for the first configuration;
 subsequent builds reuse the dependency under the build directory. SDL is built
 statically, so no SDL DLL needs to be copied beside the executable. Its GPU and
 2D renderer subsystems are disabled; Pyroclast will own its graphics backends.
@@ -159,6 +176,8 @@ Controls:
 - **R:** clear the pool; retain the pause setting.
 - **P:** pause or resume simulation.
 - **N:** advance one 1/60-second step while paused.
+- **F1:** hide or show the overlay. Its buttons do the same as the keys above; while you type into or
+  click on the overlay, the keys do not reach the application.
 
 Fireball particles last 0.35-0.8 seconds; sparks last 1-2.2 seconds; smoke lasts
 6-8 seconds, rounded to simulation ticks. The screen returns to the background after the burst dies.
@@ -170,7 +189,7 @@ Scaling scenarios are selected at startup with `--explosions=1`, `10`, `50`, or
 
 ```powershell
 .\out\build\windows-x64\Debug\Pyroclast.exe --renderer=d3d12 --explosions=100
-.\out\build\windows-x64\Release\Pyroclast.exe --renderer=vulkan --explosions=50 --gpu-timing
+.\out\build\windows-x64\Release\Pyroclast.exe --renderer=vulkan --explosions=50 --gpu-timing --ui=off
 ```
 
 In your existing Visual Studio launch configuration, add `"--explosions=100"`
@@ -201,7 +220,7 @@ Renderer selection happens at startup and defaults to D3D12:
 
 Both renderer options initialize their selected backend, log the selected GPU,
 and draw the same explosion effect. `--help` prints usage and exits without opening a window.
-Unknown arguments, invalid renderer/count values, and repeated renderer/count selections
+Unknown arguments, invalid values, and any repeated flag other than `--help`
 return exit code 1 before SDL initializes. Use the exact `--renderer=value`
 form; arguments are case sensitive. All arguments are validated even when
 `--help` is present.
@@ -277,7 +296,8 @@ startup, so Visual Studio and other working directories require no shader file
 copying. Vulkan uses a negative-height viewport to match the D3D12 clip-space
 orientation without changing the shared HLSL.
 
-For a small startup measurement of the selected group, run **Release** and leave the default 1280 x 720
+For a small startup measurement of the selected group, run **Release** with `--ui=off` (the overlay is
+not part of the measurement, so the sample is skipped while it is on) and leave the default 1280 x 720
 window focused and untouched. After 120 warmup frames and 600 samples, the log
 reports average, median, and p99 CPU resize/render-call time, including GPU fence
 and VSync presentation waits. Controls, focus loss, minimize, resize, or skipped
@@ -287,7 +307,7 @@ This is a presentation-paced consistency baseline, not GPU simulation time or a
 throughput comparison; GPU profiling is required
 before optimization claims.
 
-For optional GPU timing, append `--gpu-timing` to a Release launch (or add it to
+For optional GPU timing, append `--gpu-timing --ui=off` to a Release launch (or add it to
 your existing local Visual Studio launch arguments). Leave the default window
 focused and untouched until the startup summary appears. It reports separate
 compute/draw timestamp-region averages after the same warmup/sample window.
@@ -343,6 +363,24 @@ powershell -File tools/lifecycle.ps1 -Configuration Debug -Renderer vulkan -Smok
 image (`--difference=out.png`). Desktop screenshots are not used for correctness: they proved
 unreliable for unpaced D3D12 presentation.
 
+Other diagnostic options:
+
+```powershell
+# Per-dispatch, per-pass and overlay GPU timings (Vulkan regions serialize GPU work; for attribution only)
+.\out\build\windows-x64\Release\Pyroclast.exe --explosions=100 --profile-tick=180 --gpu-regions
+# The same workload on another GPU, or on WARP (use Release: WARP fails on the unoptimized Debug shaders)
+.\out\build\windows-x64\Debug\Pyroclast.exe --renderer=vulkan --adapter=uhd
+.\out\build\windows-x64\Release\Pyroclast.exe --adapter=warp --profile-tick=180 --capture=warp.png
+# GPU-based (D3D12) or GPU-assisted (Vulkan) validation of shader resource accesses; slow, Debug only
+.\out\build\windows-x64\Debug\Pyroclast.exe --explosions=100 --profile-tick=180 --gpu-validation --capture=gpuav.png
+# The overlay in a capture, or no overlay in an interactive run
+.\out\build\windows-x64\Debug\Pyroclast.exe --profile-tick=60 --ui=on --capture=overlay.png
+```
+
+Cross-vendor images are not expected to match the cross-API tolerance: the Intel UHD 770 and WARP
+differ from the RTX 4090 by up to 15 levels in dense 8-bit smoke, where blend rounding accumulates,
+while D3D12 and Vulkan agree within one level on each vendor.
+
 For the optional half-resolution smoke experiment, add
 `"--smoke-resolution=half"` to your Visual Studio launch `args`. Full resolution
 remains the default; use `"--smoke-resolution=full"` for the comparison. Both APIs
@@ -364,7 +402,7 @@ a different compositing path. Reduced detail and an extra pass are explicit
 trade-offs, so half resolution is optional.
 
 See `docs/PHASE1.md` through `docs/PHASE10.md`, `docs/PHASE10_PROFILING.md`,
-`docs/PHASE10_SMOKE_RESOLUTION.md` and `docs/PHASE11.md` (M11)
+`docs/PHASE10_SMOKE_RESOLUTION.md`, `docs/PHASE11.md` (M11) and `docs/PHASE12.md` (M12)
 for ownership, synchronization, measurements, validation, and current limitations.
 
 Build output stays under `out/`. Machine-specific overrides can go in the ignored
