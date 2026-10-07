@@ -30,6 +30,7 @@ class FrameBaseline final
 public:
     explicit FrameBaseline(SampleDescription description) : description_(std::move(description)) {}
     void disable() { enabled_ = false; }
+    bool enabled() const { return enabled_; }
     void record(double milliseconds, std::optional<GpuTimings> gpu);
 
 private:

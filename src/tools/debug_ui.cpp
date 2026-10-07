@@ -109,8 +109,10 @@ ImDrawData* DebugUi::build(const DiagnosticsSnapshot& snapshot, std::vector<UiCo
         ImGui::SeparatorText("Simulation");
         if (ImGui::BeginTable("simulation", 2, ImGuiTableFlags_SizingStretchProp))
         {
-            row("Explosions", "%u", snapshot.explosions);
-            row("Pool capacity", "%u particles", snapshot.capacity);
+            row("Startup group", "%u (Space)", snapshot.explosions);
+            row("Effects", "%u of %u slots, %llu started, %llu dropped", snapshot.active_effects, snapshot.effect_slots,
+                static_cast<unsigned long long>(snapshot.effects_started), static_cast<unsigned long long>(snapshot.effects_dropped));
+            row("Simulation tick", "%u", snapshot.tick);
             row("Smoke resolution", "%s", snapshot.half_resolution_smoke ? "half" : "full");
             row("Scene target", "%.*s, exposure %.2f", static_cast<int>(snapshot.scene_format.size()), snapshot.scene_format.data(),
                 snapshot.exposure);
@@ -134,6 +136,10 @@ ImDrawData* DebugUi::build(const DiagnosticsSnapshot& snapshot, std::vector<UiCo
         ImGui::BeginDisabled(!snapshot.paused);
         if (ImGui::Button("Step (N)")) commands.push_back(UiCommand::step);
         ImGui::EndDisabled();
+        bool lines = snapshot.debug_lines;
+        if (ImGui::Checkbox("Effect lines (L)", &lines)) commands.push_back(UiCommand::toggle_debug_lines);
+        ImGui::SameLine();
+        ImGui::TextDisabled("Left click: explosion on the terrain");
         ImGui::End();
     }
     ImGui::Render();

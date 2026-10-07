@@ -28,6 +28,12 @@ void Camera::look_at(float3 target)
     pitch = std::clamp(std::asin(std::clamp(direction.y, -1.0f, 1.0f)), -pitch_limit, pitch_limit);
 }
 
+Ray Camera::ray_through(float ndc_x, float ndc_y, float aspect_ratio) const
+{
+    const float tangent = std::tan(vertical_fov * 0.5f);
+    return {position, normalize(forward() + right() * (ndc_x * tangent * aspect_ratio) + up() * (ndc_y * tangent))};
+}
+
 void fly(Camera& camera, const CameraInput& input, float seconds, float speed)
 {
     camera.yaw += input.look.x * look_sensitivity;

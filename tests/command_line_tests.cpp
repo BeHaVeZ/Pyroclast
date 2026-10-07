@@ -26,6 +26,8 @@ struct TestCase
     std::string_view adapter;
     pyroclast::RangeView view = pyroclast::RangeView::overview;
     pyroclast::SceneFormat scene_format = pyroclast::SceneFormat::rgba16f;
+    std::string_view scenario;
+    bool effect_lines = false;
 };
 }
 
@@ -46,6 +48,15 @@ int main()
         {"8-bit scene", {"--scene-format=rgba8"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {},
             pyroclast::SceneFormat::rgba8},
         {"invalid scene format", {"--scene-format=rgba32f"}, d3d12, false, "Expected --scene-format"},
+        {"barrage scenario", {"--scenario=barrage"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {},
+            pyroclast::SceneFormat::rgba16f, "barrage"},
+        {"invalid scenario", {"--scenario=storm"}, d3d12, false, "Expected --scenario=single, grid-10, grid-50, grid-100 or barrage"},
+        {"duplicate scenario", {"--scenario=single", "--scenario=single"}, d3d12, false, "only once"},
+        {"duplicate effect lines", {"--effect-lines", "--effect-lines"}, d3d12, false, "only once"},
+        {"effect lines", {"--effect-lines"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {},
+            pyroclast::SceneFormat::rgba16f, {}, true},
+        {"scenario with a group", {"--scenario=single", "--explosions=10"}, d3d12, false, "cannot be combined"},
+        {"scenario with a profile tick", {"--profile-tick=10", "--scenario=single"}, d3d12, false, "cannot be combined"},
         {"duplicate scene format", {"--scene-format=rgba8", "--scene-format=rgba8"}, d3d12, false, "only once"},
         {"duplicate view", {"--view=hill", "--view=hill"}, d3d12, false, "only once"},
         {"GPU regions duplicate", {"--gpu-regions", "--gpu-regions"}, d3d12, false, "only once"},
@@ -123,7 +134,8 @@ int main()
                 result.options.exit_after == test.exit_after && result.options.capture_path == test.capture_path &&
                 result.options.gpu_validation == test.gpu_validation && result.options.ui == test.ui &&
                 result.options.gpu_regions == test.gpu_regions && result.options.adapter == test.adapter &&
-                result.options.view == test.view && result.options.scene_format == test.scene_format
+                result.options.view == test.view && result.options.scene_format == test.scene_format &&
+                result.options.scenario == test.scenario && result.options.effect_lines == test.effect_lines
             : result.error.find(test.error_fragment) != std::string::npos;
         if (!passed)
         {

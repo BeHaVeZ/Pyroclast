@@ -18,7 +18,9 @@ struct FrameConstants
     float4 viewport;
     float4 exposure;
     float4 projection;
-    float4 effect_origins[maximum_explosions];
-    uint4 effect_order[maximum_explosions / 4];
+    float4 effect_origins[maximum_effects];
+    float4 effect_normals[maximum_effects];
+    uint4 effect_states[maximum_effects];
+    uint4 effect_order[maximum_effects / 4];
 };
 ConstantBuffer<FrameConstants> frame : register(b1);

@@ -79,6 +79,16 @@ int main()
     check(approx(forward.x, std::sqrt(0.5f)) && approx(forward.y, std::sqrt(0.5f)), "look_at aims at the target");
     check(approx(dot(camera.right(), forward), 0) && approx(dot(camera.up(), forward), 0) && approx(camera.right().y, 0),
         "right and up are perpendicular to forward, right stays level");
+    const auto top_left = window_to_ndc(0, 0, 1280, 720);
+    const auto bottom_right = window_to_ndc(1280, 720, 1280, 720);
+    const auto centre = window_to_ndc(640, 360, 1280, 720);
+    check(approx(top_left.x, -1) && approx(top_left.y, 1) && approx(bottom_right.x, 1) && approx(bottom_right.y, -1) &&
+        approx(centre.x, 0) && approx(centre.y, 0), "window coordinates map to NDC with y up");
+    const auto ray = camera.ray_through(0.5f, -0.25f, 16.0f / 9.0f);
+    const auto clip = camera.projection(16.0f / 9.0f) * camera.view() * float4{ray.origin.x + ray.direction.x * 50,
+        ray.origin.y + ray.direction.y * 50, ray.origin.z + ray.direction.z * 50, 1};
+    check(approx(clip.x / clip.w, 0.5f) && approx(clip.y / clip.w, -0.25f) && approx(length(ray.direction), 1),
+        "a view ray projects back onto its point");
     CameraInput input;
     input.move = {0, 0, 1};
     const auto before = camera.position;

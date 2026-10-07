@@ -45,6 +45,8 @@ set(PYROCLAST_SHADERS
     sky_pixel:sky:ps:ps_main
     tonemap_vertex:tonemap:vs:vs_main
     tonemap_pixel:tonemap:ps:ps_main
+    debug_lines_vertex:debug_lines:vs:vs_main
+    debug_lines_pixel:debug_lines:ps:ps_main
 )
 
 # Vulkan bindings come from the shared binding layout, so C++ (binding_layout.hpp) and SPIR-V agree.

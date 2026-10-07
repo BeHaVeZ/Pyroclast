@@ -5,12 +5,13 @@ static const uint particle_stride = 48;
 static const uint particle_position_offset = 0;
 static const uint particle_velocity_offset = 16;
 static const uint particle_size_offset = 32;
-static const uint particle_epoch_offset = 36;
+static const uint particle_generation_offset = 36;
 
 static const uint fireball_particles = 256;
 static const uint emissive_particles = 2048;
 static const uint smoke_particles = 512;
 static const uint explosion_particles = emissive_particles + smoke_particles;
+static const uint maximum_effects = 128;
 static const uint maximum_explosions = 100;
 
 static const uint simulation_group_size = 64;

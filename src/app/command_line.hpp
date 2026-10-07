@@ -28,6 +28,8 @@ struct ApplicationOptions
     std::string capture_path;
     RangeView view = RangeView::overview;
     SceneFormat scene_format = SceneFormat::rgba16f;
+    std::string scenario;
+    bool effect_lines = false;
 };
 
 struct CommandLineResult

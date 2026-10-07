@@ -34,14 +34,13 @@ PixelInput vs_main(uint vertex : SV_VertexID, uint instance : SV_InstanceID)
     };
     uint rank = instance / draw.local_count;
     uint local = draw.local_first + instance % draw.local_count;
-    uint order = min(rank, maximum_explosions - 1);
-    uint effect = frame.effect_order[order / 4][order % 4];
+    uint order = min(rank, maximum_effects - 1);
+    uint slot = frame.effect_order[order / 4][order % 4];
     bool smoke = local < smoke_particles;
     uint emissive_local = local - smoke_particles;
-    uint record = smoke ? draw.effect_count * emissive_particles + effect * smoke_particles + local :
-        effect * emissive_particles + emissive_local;
+    uint record = slot * explosion_particles + local;
     PixelInput output = (PixelInput)0;
-    if (rank >= draw.effect_count || effect >= draw.effect_count || record >= draw.record_count)
+    if (rank >= draw.effect_count || slot >= maximum_effects || record >= draw.record_count)
     {
         output.position = float4(0, 0, 0, 1);
         return output;

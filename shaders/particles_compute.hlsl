@@ -4,10 +4,10 @@
 
 struct Parameters
 {
-    uint capacity;
     uint steps;
-    uint burst_count;
-    uint reset_epoch;
+    uint effect_count;
+    uint record_count;
+    uint reserved;
 };
 #ifdef __spirv__
 [[vk::push_constant]]
@@ -18,49 +18,55 @@ RWByteAddressBuffer particles : register(u0);
 
 static const float gravity = 9.81;
 static const float3 wind = float3(2.0, 0, 0);
+static const uint groups_per_slab = explosion_particles / simulation_group_size;
+
+float3 around_normal(float3 direction, float3 normal)
+{
+    float3 tangent = normalize(cross(abs(normal.y) < 0.999 ? float3(0, 1, 0) : float3(1, 0, 0), normal));
+    float3 bitangent = cross(normal, tangent);
+    return tangent * direction.x + normal * direction.y + bitangent * direction.z;
+}
 
 [numthreads(simulation_group_size, 1, 1)]
-void cs_main(uint3 thread : SV_DispatchThreadID)
+void cs_main(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID)
 {
-    uint id = thread.x;
-    if (id >= parameters.capacity) return;
-    uint count = parameters.burst_count / explosion_particles;
-    uint emissive_count = count * emissive_particles;
-    bool smoke = id >= emissive_count;
-    uint effect = smoke ? (id - emissive_count) / smoke_particles : id / emissive_particles;
-    uint local = smoke ? emissive_particles + (id - emissive_count) % smoke_particles : id % emissive_particles;
-    bool fireball = !smoke && local < fireball_particles;
-    uint address = id * particle_stride;
+    uint rank = group.x / groups_per_slab;
+    if (rank >= min(parameters.effect_count, maximum_effects)) return;
+    uint slot = frame.effect_order[rank / 4][rank % 4];
+    uint local = (group.x % groups_per_slab) * simulation_group_size + thread.x;
+    uint record = slot * explosion_particles + local;
+    if (slot >= maximum_effects || record >= parameters.record_count) return;
+    bool smoke = local < smoke_particles;
+    bool fireball = !smoke && local - smoke_particles < fireball_particles;
+    uint address = record * particle_stride;
     float4 position = asfloat(particles.Load4(address + particle_position_offset));
     float4 velocity = asfloat(particles.Load4(address + particle_velocity_offset));
     float size = asfloat(particles.Load(address + particle_size_offset));
-    uint epoch = particles.Load(address + particle_epoch_offset);
-    if (epoch != parameters.reset_epoch)
+    uint generation = particles.Load(address + particle_generation_offset);
+    uint4 state = frame.effect_states[slot];
+    if (generation != state.y)
     {
-        position = 0;
-        velocity = 0;
-        size = 0;
-        epoch = parameters.reset_epoch;
-        if (id < min(parameters.burst_count, parameters.capacity))
+        generation = state.y;
+        float3 origin = frame.effect_origins[slot].xyz;
+        float3 normal = frame.effect_normals[slot].xyz;
+        uint id = state.x * explosion_particles + local;
+        float3 direction = around_normal(particle_direction(id), normal);
+        if (smoke)
         {
-            float3 origin = frame.effect_origins[min(effect, maximum_explosions - 1)].xyz;
-            float3 direction = particle_direction(id);
-            if (smoke)
-            {
-                position.xyz = origin + direction * particle_random(id, 3) * 1.75;
-                velocity.xyz = direction * (2.5 + particle_random(id, 2) * 3.75) + float3(0, 3.0, 0);
-                velocity.w = 6.0 + particle_random(id, 4) * 2.0;
-                size = 1.0 + particle_random(id, 5) * 1.0;
-            }
-            else
-            {
-                float speed = fireball ? 2.0 + particle_random(id, 2) * 6.25 : 6.0 + particle_random(id, 2) * 10.0;
-                position.xyz = origin + direction * particle_random(id, 3) * 0.625;
-                velocity.xyz = direction * speed + float3(0, fireball ? 1.25 : 4.0, 0);
-                velocity.w = fireball ? 0.35 + particle_random(id, 4) * 0.45 : 1.0 + particle_random(id, 4) * 1.2;
-                size = fireball ? 1.0 + particle_random(id, 5) * 0.625 : 0.06 + particle_random(id, 5) * 0.08;
-            }
+            position.xyz = origin + direction * particle_random(id, 3) * 1.75;
+            velocity.xyz = direction * (2.5 + particle_random(id, 2) * 3.75) + float3(0, 3.0, 0);
+            velocity.w = 6.0 + particle_random(id, 4) * 2.0;
+            size = 1.0 + particle_random(id, 5) * 1.0;
         }
+        else
+        {
+            float speed = fireball ? 2.0 + particle_random(id, 2) * 6.25 : 6.0 + particle_random(id, 2) * 10.0;
+            position.xyz = origin + direction * particle_random(id, 3) * 0.625;
+            velocity.xyz = direction * speed + float3(0, fireball ? 1.25 : 4.0, 0);
+            velocity.w = fireball ? 0.35 + particle_random(id, 4) * 0.45 : 1.0 + particle_random(id, 4) * 1.2;
+            size = fireball ? 1.0 + particle_random(id, 5) * 0.625 : 0.06 + particle_random(id, 5) * 0.08;
+        }
+        position.w = 0;
     }
     const float dt = 1.0 / 60.0;
     for (uint step = 0; step < min(parameters.steps, maximum_simulation_steps); ++step)
@@ -89,5 +95,5 @@ void cs_main(uint3 thread : SV_DispatchThreadID)
     }
     particles.Store4(address + particle_position_offset, asuint(position));
     particles.Store4(address + particle_velocity_offset, asuint(velocity));
-    particles.Store2(address + particle_size_offset, uint2(asuint(size), epoch));
+    particles.Store2(address + particle_size_offset, uint2(asuint(size), generation));
 }

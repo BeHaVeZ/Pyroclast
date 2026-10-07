@@ -40,5 +40,15 @@ int main()
     spike[1] = 9.0;
     check("a seventh slow frame moves p99", summarize(spike), 2.0 + 7 * 7.0 / 600, 2.0, 9.0);
 
+    auto twenty = sequence(20);
+    const auto tail = summarize(twenty);
+    auto thousand = sequence(1000);
+    const auto large = summarize(thousand);
+    if (tail.p95 != 19 || tail.max != 20 || large.p95 != 950 || large.p99 != 990 || large.max != 1000)
+    {
+        std::fprintf(stderr, "FAIL: p95 and max (20: %.1f %.1f; 1000: %.1f %.1f %.1f)\n", tail.p95, tail.max, large.p95, large.p99, large.max);
+        ++failures;
+    }
+
     return failures == 0 ? 0 : 1;
 }

@@ -18,6 +18,7 @@ struct Camera
     float4x4 view() const { return look_to(position, forward(), {0, 1, 0}); }
     float4x4 projection(float aspect_ratio) const { return perspective_reverse_z(vertical_fov, aspect_ratio, near_plane); }
     void look_at(float3 target);
+    Ray ray_through(float ndc_x, float ndc_y, float aspect_ratio) const;
 };
 
 struct CameraInput
@@ -26,6 +27,11 @@ struct CameraInput
     bool fast = false;
     float2 look;
 };
+
+inline float2 window_to_ndc(float x, float y, float width, float height)
+{
+    return {2 * x / width - 1, 1 - 2 * y / height};
+}
 
 void fly(Camera& camera, const CameraInput& input, float seconds, float speed);
 }

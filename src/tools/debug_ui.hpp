@@ -25,7 +25,12 @@ struct DiagnosticsSnapshot
     int frame_ms_offset = 0;
     std::optional<GpuTimings> gpu;
     std::uint32_t explosions = 0;
-    std::uint32_t capacity = 0;
+    std::uint32_t active_effects = 0;
+    std::uint32_t effect_slots = 0;
+    std::uint64_t effects_started = 0;
+    std::uint64_t effects_dropped = 0;
+    std::uint32_t tick = 0;
+    bool debug_lines = false;
     bool paused = false;
     bool half_resolution_smoke = false;
     std::string_view scene_format;
@@ -36,7 +41,7 @@ struct DiagnosticsSnapshot
     float camera_speed = 0;
 };
 
-enum class UiCommand { trigger, clear, toggle_pause, step };
+enum class UiCommand { trigger, clear, toggle_pause, step, toggle_debug_lines };
 
 class DebugUi final
 {

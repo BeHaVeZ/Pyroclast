@@ -1,8 +1,10 @@
 #include "app/explosion_renderer.hpp"
 #include "graphics/draw_validation.hpp"
+#include "simulation/explosion_scenarios.hpp"
 
 #include <cstdio>
 #include <cstring>
+#include <vector>
 
 namespace
 {
@@ -16,9 +18,7 @@ public:
             heights_uploaded = initial.size() == pyroclast::Terrain::resolution * pyroclast::Terrain::resolution * sizeof(float);
             return std::make_unique<pyroclast::Buffer>(size);
         }
-        constexpr std::size_t stride = pyroclast::particle_layout::particle_stride;
-        constexpr std::size_t largest_pool = pyroclast::maximum_explosions * pyroclast::ParticleSystem::explosion_particles;
-        valid_upload = size % stride == 0 && size >= pyroclast::ParticleSystem::minimum_capacity * stride && size <= largest_pool * stride;
+        valid_pool = size == pyroclast::ParticleSystem::capacity * pyroclast::particle_layout::particle_stride;
         return std::make_unique<pyroclast::Buffer>(size);
     }
     std::unique_ptr<pyroclast::GraphicsPipeline> create_graphics_pipeline(
@@ -29,13 +29,13 @@ public:
         using pyroclast::Shader;
         auto pipeline = std::make_unique<pyroclast::GraphicsPipeline>(description.blend, description.depth, description.target);
         const bool particle = description.vertex_shader == Shader::particle_vertex;
-        const bool composite_shader = description.vertex_shader == Shader::composite_vertex;
         if (description.vertex_shader == Shader::tonemap_vertex) present = pipeline.get();
         if (particle && description.blend == BlendMode::premultiplied_alpha)
             (description.depth == DepthMode::test ? particles : offscreen) = pipeline.get();
-        if (composite_shader) composite = pipeline.get();
+        if (description.vertex_shader == Shader::composite_vertex) composite = pipeline.get();
         if (description.vertex_shader == Shader::terrain_vertex) terrain = pipeline.get();
         if (description.vertex_shader == Shader::sky_vertex) sky = pipeline.get();
+        if (description.vertex_shader == Shader::debug_lines_vertex && description.topology == pyroclast::Topology::lines) lines = pipeline.get();
         return pipeline;
     }
     std::unique_ptr<pyroclast::ComputePipeline> create_compute_pipeline(pyroclast::Shader) override
@@ -58,8 +58,10 @@ public:
     {
         const char* error = pyroclast::validate_frame(frame);
         if (error) std::fprintf(stderr, "frame rejected: %s\n", error);
-        valid_frame = error == nullptr && frame.dispatches.size() == 1 && frame.constants.size() == sizeof(pyroclast::FrameConstants);
+        valid_frame = error == nullptr && frame.constants.size() == sizeof(pyroclast::FrameConstants);
         if (valid_frame) std::memcpy(&constants, frame.constants.data(), sizeof(constants));
+        dispatch_groups = frame.dispatches.empty() ? 0 : frame.dispatches[0].groups[0];
+        dispatches = frame.dispatches.size();
         const auto draws = [](const pyroclast::Pass& pass, std::initializer_list<const pyroclast::GraphicsPipeline*> pipelines) {
             if (pass.draws.size() != pipelines.size()) return false;
             std::size_t index = 0;
@@ -87,23 +89,35 @@ public:
             return draw.constants[2] == first && draw.constants[3] == count;
         };
         using pyroclast::ParticleSystem;
+        range_only = passes.size() == 2 && range_pass(passes[0]) && present_pass(passes[1]);
         full_resolution_passes = passes.size() == 3 && range_pass(passes[0]) && over_scene(passes[1]) && with_depth(passes[1], nullptr) &&
-            draws(passes[1], {particles}) && records(passes[1].draws[0], 0, ParticleSystem::explosion_particles) && present_pass(passes[2]);
+            draws(passes[1], {particles}) && records(passes[1].draws[0], 0, ParticleSystem::slab_records) && present_pass(passes[2]);
+        lined_passes = passes.size() == 3 && range_pass(passes[0]) && over_scene(passes[1]) && draws(passes[1], {lines, particles}) &&
+            passes[1].draws[0].vertex_count == 32 && present_pass(passes[2]);
         half_resolution_passes = passes.size() == 4 && range_pass(passes[0]) &&
             passes[1].target == half_target && !passes[1].depth && with_depth(passes[1], nullptr) && draws(passes[1], {offscreen}) &&
             records(passes[1].draws[0], 0, ParticleSystem::smoke_particles) && passes[1].draws[0].constants[4] == 2 &&
             over_scene(passes[2]) && with_depth(passes[2], half_target) && draws(passes[2], {composite, particles}) &&
             records(passes[2].draws[1], ParticleSystem::smoke_particles, ParticleSystem::emissive_particles) &&
             passes[2].draws[0].vertex_count == 3 && present_pass(passes[3]);
+        particle_instances = 0;
+        for (const auto& pass : passes)
+            for (const auto& draw : pass.draws)
+                if (&draw.pipeline == particles || &draw.pipeline == offscreen) particle_instances += draw.instance_count;
         return result;
     }
 
-    bool valid_upload = false;
+    bool valid_pool = false;
     bool heights_uploaded = false;
     bool depth_cleared_far = false;
     bool valid_frame = false;
+    bool range_only = false;
     bool full_resolution_passes = false;
+    bool lined_passes = false;
     bool half_resolution_passes = false;
+    std::size_t dispatches = 0;
+    std::uint32_t dispatch_groups = 0;
+    std::uint32_t particle_instances = 0;
     pyroclast::RenderTarget* scene = nullptr;
     pyroclast::RenderTarget* depth = nullptr;
     pyroclast::RenderTarget* half_target = nullptr;
@@ -114,6 +128,7 @@ public:
     const pyroclast::GraphicsPipeline* composite = nullptr;
     const pyroclast::GraphicsPipeline* terrain = nullptr;
     const pyroclast::GraphicsPipeline* sky = nullptr;
+    const pyroclast::GraphicsPipeline* lines = nullptr;
     pyroclast::RenderResult result = pyroclast::RenderResult::submitted;
 };
 }
@@ -131,177 +146,139 @@ int main()
     static_assert(hdr != ExplosionRenderer::smoke_format);
     constexpr ParticleTargets targets{hdr, ExplosionRenderer::smoke_format};
     check(range.initialize(device, hdr) && device.heights_uploaded && device.terrain && device.sky, "the range uploads its heights");
-    const auto initialize = [&range](ParticleSystem& particles, TestDevice& owner, std::uint32_t explosions = 1) {
-        return particles.initialize(owner, range.terrain(), range.heights(), explosions, targets);
-    };
-    ParticleSystem system;
-    const auto submit = [](ParticleSystem& particles, double elapsed) {
-        const auto work = particles.plan(elapsed);
+    const auto submit = [](ParticleSystem& particles, double elapsed, std::uint32_t effects = 1) {
+        const auto work = particles.plan(elapsed, effects);
         particles.commit(work);
         return work;
     };
-    const auto layered = [&range](const TestDevice& owner, const ParticleSystem& particles, const ParticleWork& work, std::uint32_t explosions) {
-        const auto* pool = &particles.particles();
-        const auto draws = [&](const Draw& draw, const GraphicsPipeline* pipeline, std::uint32_t first, std::uint32_t count) {
-            return &draw.pipeline == pipeline && draw.constants[0] == particles.capacity() && draw.constants[1] == explosions &&
-                draw.constants[2] == first && draw.constants[3] == count && draw.constants[4] == 1 && draw.vertex_count == 6 &&
-                draw.instance_count == explosions * count && draw.bindings.read[0] == pool;
-        };
-        return draws(work.particles, owner.particles, 0, ParticleSystem::explosion_particles) &&
-            draws(work.offscreen_smoke, owner.offscreen, 0, ParticleSystem::smoke_particles) &&
-            draws(work.light, owner.particles, ParticleSystem::smoke_particles, ParticleSystem::emissive_particles) &&
-            work.dispatch.bindings.write[0] == pool && work.dispatch.bindings.read[0] == &range.heights();
-    };
-    constexpr auto group_size = particle_layout::simulation_group_size;
+    constexpr auto groups = ParticleSystem::groups_per_slab;
 
-    check(initialize(system, device) && device.valid_upload, "bounded zero-initialized pool");
-    const auto origins = system.effect_origins();
-    check(origins.size() == 1 && origins[0].x == 0 && origins[0].z == 0 && origins[0].y == range.terrain().height(0, 0) + 0.5f,
-        "a single effect stands in the middle of the range");
-    const auto first = submit(system, 1.0 / 60);
-    check(first.dispatch.constants[0] == ParticleSystem::minimum_capacity &&
-        first.dispatch.groups[0] == ParticleSystem::minimum_capacity / group_size &&
-        first.dispatch.constants[2] == ParticleSystem::explosion_particles, "default dispatch");
-    check(first.steps == 1 && first.dispatch.constants[1] == 1, "fixed simulation step");
-    check(layered(device, system, first, 1), "particles are drawn effect by effect, smoke before light");
-    system.toggle_pause();
-    check(submit(system, 1.0 / 60).steps == 0, "pause does not advance simulation");
-    system.step();
-    system.plan(1.0 / 60);
-    check(submit(system, 1.0 / 60).steps != 0, "skipped submission preserves queued step");
-    check(submit(system, 1.0 / 60).steps == 0, "step advances exactly once");
-    system.step();
-    system.reset();
-    const auto epoch = system.plan(1.0 / 60).dispatch.constants[3];
-    const auto cleared = submit(system, 1.0 / 60);
-    check(epoch == 2 && cleared.dispatch.constants[3] == epoch && cleared.steps == 0,
-        "reset persists across skipped frames and clears queued steps");
-    check(cleared.dispatch.constants[2] == 0, "clear requests no new particles");
-    system.step();
-    system.trigger_explosion();
-    const auto trigger_epoch = system.plan(1.0 / 60).dispatch.constants[3];
-    const auto triggered = submit(system, 1.0 / 60);
-    check(triggered.dispatch.constants[2] == ParticleSystem::explosion_particles && triggered.dispatch.constants[3] == trigger_epoch &&
-        triggered.steps == 0, "trigger survives skipped submission, retains pause, clears pending steps");
-    check(submit(system, 1.0 / 60).dispatch.constants[3] == trigger_epoch, "trigger epoch does not advance each frame");
-    for (int trigger = 0; trigger < 10; ++trigger) system.trigger_explosion();
-    const auto retriggered = submit(system, 1.0 / 60);
-    check(retriggered.dispatch.constants[2] == ParticleSystem::explosion_particles && retriggered.dispatch.constants[3] == trigger_epoch + 10,
-        "repeated triggers replace the burst without growing particle count");
-    system.toggle_pause();
-    check(submit(system, 1.0 / 60).steps == 1, "triggered burst advances after resuming");
+    ParticleSystem system;
+    check(system.initialize(device, range.heights(), targets) && device.valid_pool, "a zero-filled pool with one slab per effect slot");
+    const auto idle = system.plan(1.0 / 60, 0);
+    check(idle.effects == 0 && idle.particles.instance_count == 0 && idle.steps == 1, "no active effect: nothing to simulate or draw");
+    const auto three = submit(system, 1.0 / 60, 3);
+    const auto* pool = &system.particles();
+    check(three.dispatch.groups[0] == 3 * groups && three.steps == 2 && three.dispatch.constants[0] == three.steps && three.dispatch.constants[1] == 3 &&
+        three.dispatch.constants[2] == ParticleSystem::capacity && three.dispatch.bindings.write[0] == pool &&
+        three.dispatch.bindings.read[0] == &range.heights(), "the dispatch covers the active slabs, 40 groups each");
+    const auto draws = [&](const Draw& draw, const GraphicsPipeline* pipeline, std::uint32_t first, std::uint32_t count, std::uint32_t effects) {
+        return &draw.pipeline == pipeline && draw.constants[0] == ParticleSystem::capacity && draw.constants[1] == effects &&
+            draw.constants[2] == first && draw.constants[3] == count && draw.constants[4] == 1 && draw.vertex_count == 6 &&
+            draw.instance_count == effects * count && draw.bindings.read[0] == pool;
+    };
+    check(draws(three.particles, device.particles, 0, ParticleSystem::slab_records, 3) &&
+        draws(three.offscreen_smoke, device.offscreen, 0, ParticleSystem::smoke_particles, 3) &&
+        draws(three.light, device.particles, ParticleSystem::smoke_particles, ParticleSystem::emissive_particles, 3),
+        "the draws walk the active slabs, smoke before light");
 
     ParticleSystem timed;
-    initialize(timed, device);
+    timed.initialize(device, range.heights(), targets);
     std::uint32_t ticks = 0;
     for (int frame = 0; frame < 240; ++frame) ticks += submit(timed, 1.0 / 240).steps;
-    check(ticks == 60, "240 Hz presentation still advances 60 simulation ticks per second");
+    check(ticks == 60 && timed.tick() == 60, "240 Hz presentation still advances 60 simulation ticks per second");
     check(submit(timed, 1.0).steps == particle_layout::maximum_simulation_steps, "catch-up work is bounded after a stall");
     check(submit(timed, 0).steps == 0, "excess catch-up time is discarded");
-    timed.plan(1.0 / 60);
-    check(submit(timed, 0).steps == 1, "skipped submission preserves accumulated simulation time");
-
-    for (const auto count : {1u, 10u, 50u, 100u})
-    {
-        TestDevice stress_device;
-        ParticleSystem stress;
-        check(initialize(stress, stress_device, count), "stress initialization");
-        const auto started = submit(stress, 0);
-        const auto burst = count * ParticleSystem::explosion_particles;
-        const auto expected_capacity = count == 1 ? ParticleSystem::minimum_capacity : burst;
-        check(stress_device.valid_upload && stress.capacity() == expected_capacity &&
-            stress.particles().size() == expected_capacity * particle_layout::particle_stride &&
-            started.dispatch.constants[0] == expected_capacity && started.dispatch.constants[2] == burst &&
-            started.dispatch.groups[0] == (expected_capacity + group_size - 1) / group_size &&
-            layered(stress_device, stress, started, count),
-            "bounded stress dispatch and per-effect draws");
-        const auto group = stress.effect_origins();
-        float sum_x = 0;
-        float sum_z = 0;
-        bool grounded = group.size() == count;
-        for (const auto& origin : group)
-        {
-            sum_x += origin.x;
-            sum_z += origin.z;
-            grounded = grounded && origin.y == range.terrain().height(origin.x, origin.z) + 0.5f;
-        }
-        check(grounded && std::abs(sum_x) < 1e-3f && std::abs(sum_z) < 1e-3f &&
-            (count == 1 || group[1].x - group[0].x == ParticleSystem::effect_spacing), "effect origins form a centred grid on the ground");
-        stress.reset();
-        const auto emptied = submit(stress, 0);
-        check(emptied.dispatch.constants[2] == 0 && layered(stress_device, stress, emptied, count), "clear retains scenario layout");
-        stress.trigger_explosion();
-        check(submit(stress, 0).dispatch.constants[2] == burst, "restart restores selected group");
-    }
+    timed.plan(1.0 / 60, 1);
+    check(submit(timed, 0).steps == 1, "a skipped submission keeps its simulation time");
+    timed.toggle_pause();
+    const auto before_pause = timed.tick();
+    check(submit(timed, 1.0 / 60).steps == 0 && timed.tick() == before_pause, "pause does not advance simulation");
+    timed.step();
+    timed.plan(1.0 / 60, 1);
+    check(timed.has_pending_steps() && submit(timed, 1.0 / 60).steps == 1 && submit(timed, 1.0 / 60).steps == 0,
+        "a single step survives a skipped frame and advances exactly once");
+    timed.step();
+    timed.discard_pending();
+    check(!timed.has_pending_steps(), "discarding forgets queued steps");
+    timed.toggle_pause();
+    timed.set_fixed_ticks(true);
+    check(submit(timed, 0).steps == 1 && submit(timed, 5.0).steps == 1, "scripted runs advance one tick per frame whatever the elapsed time");
 
     ParticleSystem profile;
-    initialize(profile, device);
+    profile.initialize(device, range.heights(), targets);
     profile.prepare_profile(180);
-    profile.plan(1);
+    profile.plan(1, 1);
     check(profile.has_pending_steps(), "skipped profile preparation retains ticks");
-    for (int tick = 0; tick < 180; ++tick)
-    {
-        check(submit(profile, 1).steps == 1, "profile preparation advances one fixed tick");
-    }
-    check(!profile.has_pending_steps(), "profile reaches target tick exactly");
+    for (int tick = 0; tick < 180; ++tick) check(submit(profile, 1).steps == 1, "profile preparation advances one fixed tick");
+    check(!profile.has_pending_steps() && profile.tick() == 180, "profile reaches its target tick exactly");
     check(submit(profile, 1).steps == 0, "profile state stays frozen regardless of elapsed time");
 
-    ParticleSystem invalid;
-    check(!initialize(invalid, device, 0) && !initialize(invalid, device, 101), "invalid scenarios fail before allocation");
-
     ParticleSystem rendered;
-    initialize(rendered, device);
+    rendered.initialize(device, range.heights(), targets);
+    ExplosionSystem effects(ParticleSystem::effect_slots);
     const auto camera = range.view(RangeView::overview);
     ExplosionRenderer full_resolution;
-    check(full_resolution.initialize(device, false, hdr) && device.scene && device.scene->description().format == hdr && device.depth && device.depth_cleared_far && !device.half_target &&
-        device.present, "full resolution creates a scene and a depth target cleared to the far end");
-    check(full_resolution.render(device, rendered, range, camera, 1280, 720, 1.0 / 60) == RenderResult::submitted &&
-        device.valid_frame && device.full_resolution_passes,
-        "full resolution draws the range, then smoke and light over it, then presents the scene");
-    rendered.toggle_pause();
-    rendered.step();
+    check(full_resolution.initialize(device, false, hdr) && device.scene && device.scene->description().format == hdr && device.depth &&
+        device.depth_cleared_far && !device.half_target && device.present && device.lines,
+        "full resolution creates a scene and a depth target cleared to the far end");
+    check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::submitted &&
+        device.valid_frame && device.range_only && device.dispatches == 0, "without effects only the range is drawn");
+    const auto group = group_events(range.terrain(), 10);
+    for (const auto& event : group) effects.submit(event);
+    const auto start_tick = rendered.tick();
+    check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::submitted &&
+        device.valid_frame && device.full_resolution_passes && device.dispatches == 1 && device.dispatch_groups == 10 * groups &&
+        device.particle_instances == 10 * ParticleSystem::slab_records, "ten effects: one dispatch and one particle draw over ten slabs");
+    bool table = effects.active().size() == 10;
+    for (std::uint32_t slot = 0; slot < 10 && table; ++slot)
+    {
+        table = device.constants.effect_origins[slot].x == group[slot].position.x && device.constants.effect_origins[slot].z == group[slot].position.z &&
+            device.constants.effect_normals[slot].y == group[slot].normal.y && device.constants.effect_states[slot][0] == group[slot].seed &&
+            device.constants.effect_states[slot][1] == effects.slots()[slot].generation && device.constants.effect_states[slot][2] == start_tick;
+    }
+    check(table, "the frame constants carry every started effect's slot");
+    check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, {false, nullptr, true}) == RenderResult::submitted &&
+        device.valid_frame && device.lined_passes, "effect lines are drawn before the particles");
     device.result = RenderResult::skipped;
-    check(full_resolution.render(device, rendered, range, camera, 1, 1, 1.0 / 60) == RenderResult::skipped && rendered.has_pending_steps(),
-        "skipped frame is reported and keeps its queued step");
+    const auto before_skip = rendered.tick();
+    check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::skipped &&
+        rendered.tick() == before_skip, "a skipped frame keeps its simulation time");
     device.result = RenderResult::submitted;
-    full_resolution.render(device, rendered, range, camera, 1280, 720, 1.0 / 60);
-    check(!rendered.has_pending_steps(), "submitted frame consumes its queued step");
+    rendered.set_fixed_ticks(true);
+    for (std::uint32_t tick = rendered.tick(); tick < start_tick + ExplosionSystem::effect_ticks; ++tick)
+        full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 0, {});
+    check(effects.active().size() == 10, "effects live until their last particle has died");
+    full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 0, {});
+    check(effects.active().empty() && device.range_only && device.dispatches == 0, "then they retire and nothing is simulated");
 
     TestDevice ordered_device;
     TestRange ordered_range;
-    ParticleSystem group;
-    ExplosionRenderer ordered;
     ordered_range.initialize(ordered_device, hdr);
-    group.initialize(ordered_device, ordered_range.terrain(), ordered_range.heights(), 100, targets);
+    ParticleSystem ordered_particles;
+    ordered_particles.initialize(ordered_device, ordered_range.heights(), targets);
+    ExplosionSystem ordered_effects(ParticleSystem::effect_slots);
+    for (const auto& event : group_events(ordered_range.terrain(), 100)) ordered_effects.submit(event);
+    ExplosionRenderer ordered;
     ordered.initialize(ordered_device, false, hdr);
     auto oblique = camera;
     oblique.position = {-70, 30, 20};
-    check(ordered.render(ordered_device, group, ordered_range, oblique, 1280, 720, 0) == RenderResult::submitted && ordered_device.valid_frame,
-        "a 100-effect frame is valid");
-    const auto group_origins = group.effect_origins();
-    const auto distance = [&](std::uint32_t effect) {
-        const auto offset = float3{group_origins[effect].x, group_origins[effect].y, group_origins[effect].z} - oblique.position;
+    check(ordered.render(ordered_device, ordered_particles, ordered_effects, ordered_range, oblique, 1280, 720, 0, {}) == RenderResult::submitted &&
+        ordered_device.valid_frame && ordered_device.dispatch_groups == 100 * groups, "a 100-effect frame is valid");
+    const auto slots = ordered_effects.slots();
+    const auto distance = [&](std::uint32_t slot) {
+        const auto offset = slots[slot].origin - oblique.position;
         return dot(offset, offset);
     };
-    std::array<bool, maximum_explosions> seen{};
+    std::vector<bool> seen(ParticleSystem::effect_slots);
     bool back_to_front = true;
-    for (std::uint32_t rank = 0; rank < maximum_explosions; ++rank)
+    for (std::uint32_t rank = 0; rank < 100 && back_to_front; ++rank)
     {
-        const auto effect = ordered_device.constants.effect_order[rank / 4][rank % 4];
-        back_to_front = back_to_front && effect < maximum_explosions && !seen[effect];
+        const auto slot = ordered_device.constants.effect_order[rank / 4][rank % 4];
+        back_to_front = slot < 100 && !seen[slot] && slots[slot].active;
         if (!back_to_front) break;
-        seen[effect] = true;
-        if (rank > 0) back_to_front = distance(ordered_device.constants.effect_order[(rank - 1) / 4][(rank - 1) % 4]) >= distance(effect);
+        seen[slot] = true;
+        if (rank > 0) back_to_front = distance(ordered_device.constants.effect_order[(rank - 1) / 4][(rank - 1) % 4]) >= distance(slot);
     }
-    check(back_to_front, "the effect order is a permutation from the farthest to the nearest effect");
-    check(ordered_device.constants.effect_origins[99].x == group_origins[99].x && ordered_device.constants.effect_origins[99].z == group_origins[99].z,
-        "the frame constants carry the effect origins");
+    check(back_to_front, "the effect order is a permutation of the active slots from the farthest to the nearest");
 
     ExplosionRenderer half_resolution;
+    ExplosionSystem half_effects(ParticleSystem::effect_slots);
+    half_effects.submit(group[0]);
     check(half_resolution.initialize(device, true, hdr) && device.half_target && device.half_target->description().divisor == 2 &&
-        device.half_target->description().format == ExplosionRenderer::smoke_format &&
-        device.composite, "half resolution creates a half-size target and its composite pipeline");
-    check(half_resolution.render(device, rendered, range, camera, 1280, 720, 1.0 / 60) == RenderResult::submitted &&
+        device.half_target->description().format == ExplosionRenderer::smoke_format && device.composite,
+        "half resolution creates a half-size target and its composite pipeline");
+    check(half_resolution.render(device, rendered, half_effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::submitted &&
         device.valid_frame && device.half_resolution_passes,
         "half resolution draws smoke into the target, then composites it under full-resolution light");
 

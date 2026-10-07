@@ -2,7 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
-#include <numeric>
+#include <vector>
 
 namespace pyroclast
 {
@@ -11,7 +11,9 @@ bool ExplosionRenderer::initialize(GraphicsDevice& device, bool half_resolution_
     scene_ = device.create_render_target({1, {}, scene_format});
     depth_ = device.create_render_target({1, {}, TargetFormat::depth, 0.0f});
     present_ = device.create_graphics_pipeline({Shader::tonemap_vertex, Shader::tonemap_pixel, BlendMode::opaque});
-    if (!scene_ || !depth_ || !present_)
+    lines_ = device.create_graphics_pipeline(
+        {Shader::debug_lines_vertex, Shader::debug_lines_pixel, BlendMode::opaque, DepthMode::test, scene_format, Topology::lines});
+    if (!scene_ || !depth_ || !present_ || !lines_)
     {
         return false;
     }
@@ -25,11 +27,14 @@ bool ExplosionRenderer::initialize(GraphicsDevice& device, bool half_resolution_
     return smoke_target_ && composite_;
 }
 
-RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& particles, const TestRange& range,
-    const Camera& camera, int width, int height, double elapsed_seconds, bool capture, ImDrawData* overlay)
+RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& particles, ExplosionSystem& effects,
+    const TestRange& range, const Camera& camera, int width, int height, double elapsed_seconds, const FrameOptions& options)
 {
     assert(width > 0 && height > 0);
-    const auto work = particles.plan(elapsed_seconds, smoke_target_ ? smoke_target_->description().divisor : 1);
+    effects.start(particles.tick());
+    const auto active = effects.active();
+    const auto work = particles.plan(elapsed_seconds, static_cast<std::uint32_t>(active.size()),
+        smoke_target_ ? smoke_target_->description().divisor : 1);
 
     FrameConstants constants{};
     const float w = static_cast<float>(width);
@@ -44,42 +49,46 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     constants.viewport = {w, h, 1 / w, 1 / h};
     constants.projection = {camera.projection(w / h).columns[1].y * h * 0.5f, 0, 0, 0};
     TestRange::light(constants);
-    const auto origins = particles.effect_origins();
-    std::copy(origins.begin(), origins.end(), constants.effect_origins.begin());
-    std::array<std::uint32_t, maximum_explosions> order{};
-    const auto effects = order.begin() + static_cast<std::ptrdiff_t>(origins.size());
-    std::iota(order.begin(), effects, 0u);
-    const auto distance = [&origins, &camera](std::uint32_t effect) {
-        const auto offset = float3{origins[effect].x, origins[effect].y, origins[effect].z} - camera.position;
+    const auto slots = effects.slots();
+    assert(slots.size() == constants.effect_origins.size());
+    for (std::size_t index = 0; index < slots.size(); ++index)
+    {
+        const auto& slot = slots[index];
+        constants.effect_origins[index] = {slot.origin.x, slot.origin.y, slot.origin.z, 0};
+        constants.effect_normals[index] = {slot.normal.x, slot.normal.y, slot.normal.z, 0};
+        constants.effect_states[index] = {slot.seed, slot.generation, slot.start_tick, 0};
+    }
+    std::vector<std::uint32_t> order(active.begin(), active.end());
+    const auto distance = [&slots, &camera](std::uint32_t slot) {
+        const auto offset = slots[slot].origin - camera.position;
         return dot(offset, offset);
     };
-    std::stable_sort(order.begin(), effects, [&distance](std::uint32_t a, std::uint32_t b) { return distance(a) > distance(b); });
+    std::stable_sort(order.begin(), order.end(), [&distance](std::uint32_t a, std::uint32_t b) { return distance(a) > distance(b); });
     for (std::size_t rank = 0; rank < order.size(); ++rank) constants.effect_order[rank / 4][rank % 4] = order[rank];
 
     const auto opaque = range.draws();
     const Draw present{*present_, {}, {}, 3, 1, "Tonemap"};
-    const Pass scene{scene_.get(), {}, opaque, "Scene", false, depth_.get(), true};
-    const Pass to_backbuffer{nullptr, {scene_.get(), nullptr}, {&present, 1}, "Present"};
-    const auto submit = [&](std::span<const Pass> passes) {
-        return device.render({{&work.dispatch, 1}, passes, {}, std::as_bytes(std::span(&constants, 1)), capture, overlay});
-    };
-    RenderResult result;
-    if (!smoke_target_)
+    const Draw lines{*lines_, {}, {work.effects}, 32, std::max(work.effects, 1u), "Effect lines"};
+    const bool simulate = work.effects != 0;
+    const bool show_lines = options.debug_lines && simulate;
+    std::vector<Pass> passes{{scene_.get(), {}, opaque, "Scene", false, depth_.get(), true}};
+    std::vector<Draw> over_scene;
+    if (show_lines) over_scene.push_back(lines);
+    if (simulate && !smoke_target_)
     {
-        const Pass passes[] = {scene, {scene_.get(), {nullptr, depth_.get()}, {&work.particles, 1}, "Particles", true, depth_.get(), false},
-            to_backbuffer};
-        result = submit(passes);
+        over_scene.push_back(work.particles);
+        passes.push_back({scene_.get(), {nullptr, depth_.get()}, over_scene, "Particles", true, depth_.get(), false});
     }
-    else
+    else if (simulate)
     {
-        const Draw composite{*composite_, {}, {}, 3, 1, "Smoke composite"};
-        const Draw light_over_smoke[] = {composite, work.light};
-        const Pass passes[] = {scene,
-            {smoke_target_.get(), {nullptr, depth_.get()}, {&work.offscreen_smoke, 1}, "Half-resolution smoke"},
-            {scene_.get(), {smoke_target_.get(), depth_.get()}, light_over_smoke, "Composite and light", true, depth_.get(), false},
-            to_backbuffer};
-        result = submit(passes);
+        over_scene.push_back({*composite_, {}, {}, 3, 1, "Smoke composite"});
+        over_scene.push_back(work.light);
+        passes.push_back({smoke_target_.get(), {nullptr, depth_.get()}, {&work.offscreen_smoke, 1}, "Half-resolution smoke"});
+        passes.push_back({scene_.get(), {smoke_target_.get(), depth_.get()}, over_scene, "Composite and light", true, depth_.get(), false});
     }
+    passes.push_back({nullptr, {scene_.get(), nullptr}, {&present, 1}, "Present"});
+    const std::span<const Dispatch> dispatches = simulate ? std::span<const Dispatch>(&work.dispatch, 1) : std::span<const Dispatch>();
+    const auto result = device.render({dispatches, passes, {}, std::as_bytes(std::span(&constants, 1)), options.capture, options.overlay});
     if (result == RenderResult::submitted)
     {
         particles.commit(work);

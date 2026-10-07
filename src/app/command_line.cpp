@@ -32,6 +32,7 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
     bool profile_specified = false;
     bool smoke_specified = false;
     bool scene_format_specified = false;
+    bool scenario_specified = false;
     bool capture_specified = false;
     bool view_specified = false;
     const auto set_once = [&result](bool& flag, const char* name) {
@@ -58,6 +59,10 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
         else if (option == "--gpu-regions")
         {
             if (!set_once(result.options.gpu_regions, "--gpu-regions")) return result;
+        }
+        else if (option == "--effect-lines")
+        {
+            if (!set_once(result.options.effect_lines, "--effect-lines")) return result;
         }
         else if (option == "--gpu-validation")
         {
@@ -108,6 +113,22 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
             else
             {
                 result.error = "Expected --view=overview, ground, hill or aerial.";
+                return result;
+            }
+        }
+        else if (option.starts_with("--scenario="))
+        {
+            if (scenario_specified)
+            {
+                result.error = "Specify --scenario only once.";
+                return result;
+            }
+            scenario_specified = true;
+            result.options.scenario = option.substr(std::string_view("--scenario=").size());
+            if (!is_scenario_name(result.options.scenario))
+            {
+                result.error = "Expected --scenario=" + std::string(scenario_names) + ".";
+                result.error.replace(result.error.find(", barrage"), 9, " or barrage");
                 return result;
             }
         }
@@ -241,6 +262,10 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
     if (capture_specified && !result.options.profile_tick)
     {
         result.error = "--capture requires --profile-tick so the captured state is reproducible.";
+    }
+    if (scenario_specified && (explosions_specified || profile_specified))
+    {
+        result.error = "--scenario cannot be combined with --explosions or --profile-tick.";
     }
     return result;
 }

@@ -3,6 +3,7 @@
 #include "frame_statistics.hpp"
 
 #include <SDL3/SDL.h>
+#include <algorithm>
 #include <cstdio>
 
 namespace pyroclast
@@ -31,6 +32,15 @@ void FrameBaseline::record(double milliseconds, std::optional<GpuTimings> gpu)
     }
     if (gpu && gpu->sample_id != last_gpu_sample_)
     {
+        const bool same_regions = gpu_count_ == 0 || (gpu->region_count == region_count_ &&
+            std::equal(region_labels_.begin(), region_labels_.begin() + region_count_, gpu->regions.begin(),
+                [](const char* label, const GpuRegion& region) { return label == region.label; }));
+        if (!same_regions)
+        {
+            enabled_ = false;
+            SDL_Log("Sample stopped: the frame's GPU work changed while sampling.");
+            return;
+        }
         last_gpu_sample_ = gpu->sample_id;
         ++gpu_count_;
         compute_ms_ += gpu->compute_ms;
