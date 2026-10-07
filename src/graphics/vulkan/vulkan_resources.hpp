@@ -15,13 +15,13 @@ struct VulkanShaderModule
     const char* entry = nullptr;
 };
 
-class VulkanVertexBuffer final : public VertexBuffer
+class VulkanBuffer final : public Buffer
 {
 public:
-    using VertexBuffer::VertexBuffer;
-    VulkanVertexBuffer(const VulkanVertexBuffer&) = delete;
-    VulkanVertexBuffer& operator=(const VulkanVertexBuffer&) = delete;
-    ~VulkanVertexBuffer() override;
+    using Buffer::Buffer;
+    VulkanBuffer(const VulkanBuffer&) = delete;
+    VulkanBuffer& operator=(const VulkanBuffer&) = delete;
+    ~VulkanBuffer() override;
     const VulkanRenderer* owner = nullptr;
     VkDevice device = VK_NULL_HANDLE;
     VkBuffer buffer = VK_NULL_HANDLE;

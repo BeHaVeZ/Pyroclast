@@ -23,7 +23,7 @@ std::optional<std::uint32_t> find_memory_type(VkPhysicalDevice physical, std::ui
     return found;
 }
 
-VulkanVertexBuffer::~VulkanVertexBuffer()
+VulkanBuffer::~VulkanBuffer()
 {
     vkDestroyBuffer(device, buffer, nullptr);
     vkFreeMemory(device, memory, nullptr);
@@ -35,72 +35,121 @@ VulkanGraphicsPipeline::~VulkanGraphicsPipeline()
     vkDestroyPipelineLayout(device, layout, nullptr);
 }
 
-std::unique_ptr<VertexBuffer> VulkanRenderer::create_vertex_buffer(std::span<const std::byte> vertices, std::uint32_t stride)
+template <typename Record>
+bool VulkanRenderer::submit_immediately(const char* operation, Record&& record)
 {
-    if (vertices.empty() || stride == 0 || vertices.size() % stride != 0 || vertices.size() > std::numeric_limits<std::uint32_t>::max())
+    auto& slot = frames_[0];
+    if (!wait_idle() || !check(vkResetCommandPool(vk_.device, slot.pool, 0), operation))
     {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Vertex buffer requires a nonempty, bounded span of whole records.");
-        return nullptr;
+        return false;
     }
-    auto buffer = std::make_unique<VulkanVertexBuffer>(static_cast<std::uint32_t>(vertices.size() / stride), stride);
-    buffer->owner = this;
-    buffer->device = vk_.device;
+    VkCommandBufferBeginInfo begin{};
+    begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    if (!check(vkBeginCommandBuffer(slot.command, &begin), operation))
+    {
+        return false;
+    }
+    record(slot.command);
+    VkMemoryBarrier2 barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
+    barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
+    barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+    barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+    barrier.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
+    VkDependencyInfo dependency{};
+    dependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    dependency.memoryBarrierCount = 1;
+    dependency.pMemoryBarriers = &barrier;
+    vkCmdPipelineBarrier2(slot.command, &dependency);
+    VkCommandBufferSubmitInfo buffer{};
+    buffer.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+    buffer.commandBuffer = slot.command;
+    VkSubmitInfo2 submit{};
+    submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+    submit.commandBufferInfoCount = 1;
+    submit.pCommandBufferInfos = &buffer;
+    return check(vkEndCommandBuffer(slot.command), operation) &&
+        check(vkQueueSubmit2(vk_.queue, 1, &submit, VK_NULL_HANDLE), operation) &&
+        check(vkQueueWaitIdle(vk_.queue), operation) && validation_ok();
+}
+
+bool VulkanRenderer::allocate_buffer(VulkanBuffer& buffer, VkBufferUsageFlags usage,
+    VkMemoryPropertyFlags required, VkMemoryPropertyFlags preferred, const char* purpose)
+{
+    buffer.owner = this;
+    buffer.device = vk_.device;
     VkBufferCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    info.size = vertices.size_bytes();
-    info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    info.size = buffer.size();
+    info.usage = usage;
     info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    if (!check(vkCreateBuffer(vk_.device, &info, nullptr, &buffer->buffer), "Create Vulkan vertex buffer"))
+    if (!check(vkCreateBuffer(vk_.device, &info, nullptr, &buffer.buffer), purpose))
     {
-        return nullptr;
+        return false;
     }
     VkMemoryRequirements requirements{};
-    vkGetBufferMemoryRequirements(vk_.device, buffer->buffer, &requirements);
+    vkGetBufferMemoryRequirements(vk_.device, buffer.buffer, &requirements);
+    const auto type = find_memory_type(vk_.physical, requirements.memoryTypeBits, required, preferred);
+    if (!type)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "%s: no compatible Vulkan memory type.", purpose);
+        return false;
+    }
     VkPhysicalDeviceMemoryProperties properties{};
     vkGetPhysicalDeviceMemoryProperties(vk_.physical, &properties);
-    std::uint32_t memory_type = properties.memoryTypeCount;
-    constexpr VkMemoryPropertyFlags required = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    for (std::uint32_t index = 0; index < properties.memoryTypeCount; ++index)
-    {
-        if ((requirements.memoryTypeBits & (1u << index)) &&
-            (properties.memoryTypes[index].propertyFlags & required) == required)
-        {
-            if (memory_type == properties.memoryTypeCount) memory_type = index;
-            if (properties.memoryTypes[index].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
-            {
-                memory_type = index;
-                break;
-            }
-        }
-    }
-    if (memory_type == properties.memoryTypeCount)
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Vulkan adapter lacks host-visible coherent vertex memory.");
-        return nullptr;
-    }
-    const auto& memory = properties.memoryTypes[memory_type];
-    SDL_Log("Vulkan vertex memory: type=%u, heap=%u, flags=0x%X, device-local=%s, bytes=%llu.",
-        memory_type, memory.heapIndex, memory.propertyFlags,
-        (memory.propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) ? "yes" : "no",
-        static_cast<unsigned long long>(requirements.size));
+    SDL_Log("%s: memory type=%u, heap=%u, flags=0x%X, bytes=%llu.", purpose, *type, properties.memoryTypes[*type].heapIndex,
+        properties.memoryTypes[*type].propertyFlags, static_cast<unsigned long long>(requirements.size));
     VkMemoryAllocateInfo allocation{};
     allocation.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocation.allocationSize = requirements.size;
-    allocation.memoryTypeIndex = memory_type;
-    if (!check(vkAllocateMemory(vk_.device, &allocation, nullptr, &buffer->memory), "Allocate Vulkan vertex memory") ||
-        !check(vkBindBufferMemory(vk_.device, buffer->buffer, buffer->memory, 0), "Bind Vulkan vertex memory"))
+    allocation.memoryTypeIndex = *type;
+    return check(vkAllocateMemory(vk_.device, &allocation, nullptr, &buffer.memory), purpose) &&
+        check(vkBindBufferMemory(vk_.device, buffer.buffer, buffer.memory, 0), purpose);
+}
+
+std::unique_ptr<Buffer> VulkanRenderer::create_buffer(std::uint32_t size, std::span<const std::byte> initial)
+{
+    if (size == 0 || size % 4 != 0 || (!initial.empty() && initial.size() != size))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Buffer size must be a nonzero multiple of four bytes and match its initial data.");
+        return nullptr;
+    }
+    auto buffer = std::make_unique<VulkanBuffer>(size);
+    if (!allocate_buffer(*buffer, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, "Create Vulkan buffer"))
     {
         return nullptr;
     }
+    if (initial.empty())
+    {
+        if (!submit_immediately("Zero-fill Vulkan buffer", [&buffer](VkCommandBuffer command) {
+            vkCmdFillBuffer(command, buffer->buffer, 0, VK_WHOLE_SIZE, 0);
+        }))
+        {
+            return nullptr;
+        }
+        return std::move(buffer);
+    }
+    VulkanBuffer staging(size);
     void* mapped = nullptr;
-    if (!check(vkMapMemory(vk_.device, buffer->memory, 0, info.size, 0, &mapped), "Map Vulkan vertex memory"))
+    if (!allocate_buffer(staging, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 0, "Create Vulkan staging buffer") ||
+        !check(vkMapMemory(vk_.device, staging.memory, 0, size, 0, &mapped), "Map Vulkan staging buffer"))
     {
         return nullptr;
     }
-    std::memcpy(mapped, vertices.data(), vertices.size_bytes());
-    vkUnmapMemory(vk_.device, buffer->memory);
-    SDL_Log("Vertex buffer uploaded: %u vertices.", buffer->record_count());
-    return validation_ok() ? std::move(buffer) : nullptr;
+    std::memcpy(mapped, initial.data(), initial.size_bytes());
+    vkUnmapMemory(vk_.device, staging.memory);
+    const VkBufferCopy region{0, 0, size};
+    if (!submit_immediately("Upload Vulkan buffer", [&](VkCommandBuffer command) {
+        vkCmdCopyBuffer(command, staging.buffer, buffer->buffer, 1, &region);
+    }))
+    {
+        return nullptr;
+    }
+    SDL_Log("Buffer uploaded: %u bytes.", size);
+    return std::move(buffer);
 }
 
 std::unique_ptr<GraphicsPipeline> VulkanRenderer::create_graphics_pipeline(

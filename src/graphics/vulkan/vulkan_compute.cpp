@@ -13,9 +13,9 @@ VulkanComputePipeline::~VulkanComputePipeline()
 }
 
 std::unique_ptr<ComputePipeline> VulkanRenderer::create_compute_pipeline(
-    Shader shader, const VertexBuffer& resource)
+    Shader shader, const Buffer& resource)
 {
-    const auto* vertices = dynamic_cast<const VulkanVertexBuffer*>(&resource);
+    const auto* vertices = dynamic_cast<const VulkanBuffer*>(&resource);
     if (!vertices || vertices->owner != this)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Compute requires a buffer belonging to this Vulkan device.");
@@ -52,7 +52,7 @@ std::unique_ptr<ComputePipeline> VulkanRenderer::create_compute_pipeline(
     {
         return nullptr;
     }
-    const VkDescriptorBufferInfo buffer{vertices->buffer, 0, static_cast<VkDeviceSize>(vertices->record_count()) * vertices->stride()};
+    const VkDescriptorBufferInfo buffer{vertices->buffer, 0, vertices->size()};
     VkWriteDescriptorSet write{};
     write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     write.dstSet = pipeline->descriptor;

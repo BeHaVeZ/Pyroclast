@@ -7,9 +7,9 @@
 namespace pyroclast
 {
 std::unique_ptr<ComputePipeline> D3D12Renderer::create_compute_pipeline(
-    Shader program, const VertexBuffer& resource)
+    Shader program, const Buffer& resource)
 {
-    const auto* vertices = dynamic_cast<const D3D12VertexBuffer*>(&resource);
+    const auto* vertices = dynamic_cast<const D3D12Buffer*>(&resource);
     if (!vertices || vertices->owner != this)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Compute requires a buffer belonging to this D3D12 device.");

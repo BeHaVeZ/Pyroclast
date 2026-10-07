@@ -121,12 +121,12 @@ public:
     VulkanRenderer& operator=(const VulkanRenderer&) = delete;
 
     bool initialize(SDL_Window* window, const GraphicsDeviceOptions& options);
-    std::unique_ptr<VertexBuffer> create_vertex_buffer(std::span<const std::byte> vertices, std::uint32_t stride) override;
+    std::unique_ptr<Buffer> create_buffer(std::uint32_t size, std::span<const std::byte> initial) override;
     std::unique_ptr<GraphicsPipeline> create_graphics_pipeline(
         const GraphicsPipelineDescription& description) override;
     bool resize(int width, int height) override;
     std::unique_ptr<ComputePipeline> create_compute_pipeline(
-        Shader shader, const VertexBuffer& vertices) override;
+        Shader shader, const Buffer& vertices) override;
     std::unique_ptr<RenderTarget> create_render_target(const RenderTargetDescription& description) override;
     RenderResult render(const Frame& frame) override;
     bool wait_idle() override;
@@ -148,7 +148,11 @@ private:
     bool size_target(class VulkanRenderTarget& target);
     void upscale(VkCommandBuffer command, const class VulkanRenderTarget& source);
     void set_viewport(VkCommandBuffer command, VkExtent2D extent);
-    void draw_range(VkCommandBuffer command, const DrawRange& range, const VertexBuffer& vertices, float aspect);
+    void draw_range(VkCommandBuffer command, const DrawRange& range, const Buffer& vertices, float aspect);
+    // Records commands into a one-off command buffer and waits for them; startup and resize only.
+    template <typename Record> bool submit_immediately(const char* operation, Record&& record);
+    bool allocate_buffer(class VulkanBuffer& buffer, VkBufferUsageFlags usage,
+        VkMemoryPropertyFlags required, VkMemoryPropertyFlags preferred, const char* purpose);
     bool check(VkResult result, const char* operation);
     bool validation_ok() const;
     static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(

@@ -20,17 +20,15 @@ namespace pyroclast
 {
 enum class BlendMode { opaque, additive, premultiplied_alpha };
 
-class VertexBuffer
+class Buffer
 {
 public:
-    VertexBuffer(std::uint32_t record_count, std::uint32_t stride) : record_count_(record_count), stride_(stride) {}
-    virtual ~VertexBuffer() = default;
-    std::uint32_t record_count() const { return record_count_; }
-    std::uint32_t stride() const { return stride_; }
+    explicit Buffer(std::uint32_t size) : size_(size) {}
+    virtual ~Buffer() = default;
+    std::uint32_t size() const { return size_; }
 
 private:
-    std::uint32_t record_count_;
-    std::uint32_t stride_;
+    std::uint32_t size_;
 };
 
 class GraphicsPipeline
@@ -47,12 +45,12 @@ private:
 class ComputePipeline
 {
 public:
-    explicit ComputePipeline(const VertexBuffer& buffer) : buffer_(&buffer) {}
+    explicit ComputePipeline(const Buffer& buffer) : buffer_(&buffer) {}
     virtual ~ComputePipeline() = default;
-    const VertexBuffer& buffer() const { return *buffer_; }
+    const Buffer& buffer() const { return *buffer_; }
 
 private:
-    const VertexBuffer* buffer_;
+    const Buffer* buffer_;
 };
 
 struct ComputeDispatch
@@ -103,7 +101,7 @@ struct Pass
 
 struct Frame
 {
-    const VertexBuffer& vertices;
+    const Buffer& vertices;
     std::span<const Pass> passes;
     std::array<float, 4> clear_color;
     const ComputeDispatch* compute = nullptr;
@@ -131,12 +129,11 @@ class GraphicsDevice
 {
 public:
     virtual ~GraphicsDevice() = default;
-    virtual std::unique_ptr<VertexBuffer> create_vertex_buffer(
-        std::span<const std::byte> records, std::uint32_t stride) = 0;
+    virtual std::unique_ptr<Buffer> create_buffer(std::uint32_t size, std::span<const std::byte> initial) = 0;
     virtual std::unique_ptr<GraphicsPipeline> create_graphics_pipeline(
         const GraphicsPipelineDescription& description) = 0;
     virtual std::unique_ptr<ComputePipeline> create_compute_pipeline(
-        Shader shader, const VertexBuffer& vertices) = 0;
+        Shader shader, const Buffer& vertices) = 0;
     virtual std::unique_ptr<RenderTarget> create_render_target(const RenderTargetDescription& description) = 0;
     virtual bool resize(int width, int height) = 0;
     virtual RenderResult render(const Frame& frame) = 0;

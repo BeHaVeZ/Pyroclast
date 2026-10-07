@@ -116,12 +116,12 @@ void VulkanRenderer::set_viewport(VkCommandBuffer command, VkExtent2D extent)
     vkCmdSetScissor(command, 0, 1, &scissor);
 }
 
-void VulkanRenderer::draw_range(VkCommandBuffer command, const DrawRange& range, const VertexBuffer& buffer, float aspect)
+void VulkanRenderer::draw_range(VkCommandBuffer command, const DrawRange& range, const Buffer& buffer, float aspect)
 {
-    const auto& vertices = static_cast<const VulkanVertexBuffer&>(buffer);
+    const auto& vertices = static_cast<const VulkanBuffer&>(buffer);
     const auto& pipeline = static_cast<const VulkanGraphicsPipeline&>(range.pipeline);
     vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
-    const VkDeviceSize offset = static_cast<VkDeviceSize>(range.first_record) * vertices.stride();
+    const VkDeviceSize offset = static_cast<VkDeviceSize>(range.first_record) * particle_layout::particle_stride;
     vkCmdBindVertexBuffers(command, 0, 1, &vertices.buffer, &offset);
     vkCmdPushConstants(command, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float), &aspect);
     vkCmdPushConstants(command, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, sizeof(float), sizeof(std::uint32_t), &range.layer);
@@ -188,7 +188,7 @@ void execution_barrier(VkCommandBuffer command)
 
 RenderResult VulkanRenderer::render(const Frame& frame)
 {
-    const auto* vertices = dynamic_cast<const VulkanVertexBuffer*>(&frame.vertices);
+    const auto* vertices = dynamic_cast<const VulkanBuffer*>(&frame.vertices);
     const auto* compute = frame.compute ? dynamic_cast<const VulkanComputePipeline*>(&frame.compute->pipeline) : nullptr;
     bool owned = vertices && vertices->owner == this && (!frame.compute || (compute && compute->owner == this));
     const auto owns_target = [this](const RenderTarget* target) {

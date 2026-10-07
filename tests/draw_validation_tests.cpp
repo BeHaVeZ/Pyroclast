@@ -8,9 +8,9 @@ int main()
 {
     using namespace pyroclast;
     constexpr std::uint32_t records = 1000;
-    const VertexBuffer buffer(records, particle_layout::particle_stride);
-    const VertexBuffer other_buffer(records, particle_layout::particle_stride);
-    const VertexBuffer wrong_stride(records, 24);
+    const Buffer buffer(records * particle_layout::particle_stride);
+    const Buffer other_buffer(records * particle_layout::particle_stride);
+    const Buffer wrong_stride(records * particle_layout::particle_stride + 8);
     const GraphicsPipeline smoke(BlendMode::premultiplied_alpha);
     const GraphicsPipeline light(BlendMode::additive);
     const ComputePipeline compute(buffer);
@@ -30,7 +30,7 @@ int main()
             ++failures;
         }
     };
-    const auto validate = [&](const VertexBuffer& vertices, const std::vector<Pass>& passes, const ComputeDispatch* dispatch) {
+    const auto validate = [&](const Buffer& vertices, const std::vector<Pass>& passes, const ComputeDispatch* dispatch) {
         return validate_frame({vertices, passes, clear, dispatch});
     };
 
@@ -48,7 +48,7 @@ int main()
         {{&quarter, nullptr, {&smoke_range, 1}}, {&half, &quarter, {}}, {nullptr, &half, {&light_range, 1}}}, nullptr), nullptr);
 
     check("no passes", validate(buffer, {}, nullptr), "at least one pass");
-    check("buffer with another stride", validate(wrong_stride, one_pass, nullptr), "particle buffer");
+    check("buffer that is not whole records", validate(wrong_stride, one_pass, nullptr), "particle buffer");
     check("frame ending on a target", validate(buffer, {{&half, nullptr, layered}}, nullptr), "last pass");
     check("backbuffer pass before the last", validate(buffer, {{nullptr, nullptr, layered}, {nullptr, nullptr, layered}}, nullptr), "last pass");
     check("target drawn twice", validate(buffer,

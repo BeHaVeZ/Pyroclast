@@ -24,12 +24,12 @@ public:
     D3D12Renderer& operator=(const D3D12Renderer&) = delete;
 
     bool initialize(SDL_Window* window, const GraphicsDeviceOptions& options);
-    std::unique_ptr<VertexBuffer> create_vertex_buffer(std::span<const std::byte> vertices, std::uint32_t stride) override;
+    std::unique_ptr<Buffer> create_buffer(std::uint32_t size, std::span<const std::byte> initial) override;
     std::unique_ptr<GraphicsPipeline> create_graphics_pipeline(
         const GraphicsPipelineDescription& description) override;
     bool resize(int width, int height) override;
     std::unique_ptr<ComputePipeline> create_compute_pipeline(
-        Shader shader, const VertexBuffer& vertices) override;
+        Shader shader, const Buffer& vertices) override;
     std::unique_ptr<RenderTarget> create_render_target(const RenderTargetDescription& description) override;
     RenderResult render(const Frame& frame) override;
     bool wait_idle() override;
@@ -53,7 +53,7 @@ private:
     bool create_upscale_pipeline();
     bool size_target(class D3D12RenderTarget& target);
     void upscale(const class D3D12RenderTarget& source);
-    void draw_range(const DrawRange& range, const class D3D12VertexBuffer& vertices, float aspect);
+    void draw_range(const DrawRange& range, const class D3D12Buffer& vertices, float aspect);
     void set_target(D3D12_CPU_DESCRIPTOR_HANDLE rtv, int width, int height);
     bool create_device();
     bool create_timestamps();

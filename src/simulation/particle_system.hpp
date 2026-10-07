@@ -41,7 +41,7 @@ public:
     bool initialize(GraphicsDevice& device, std::uint32_t explosions = 1);
     std::uint32_t capacity() const { return capacity_; }
     std::uint32_t explosion_count() const { return explosion_count_; }
-    const VertexBuffer& particles() const { return *particles_; }
+    const Buffer& particles() const { return *particles_; }
     ParticleWork plan(double elapsed_seconds);
     void commit(const ParticleWork& work);
     void prepare_profile(std::uint32_t tick);
@@ -53,7 +53,7 @@ public:
 
 private:
     void reset_pool(std::uint32_t burst_count);
-    std::unique_ptr<VertexBuffer> particles_;
+    std::unique_ptr<Buffer> particles_;
     std::unique_ptr<GraphicsPipeline> graphics_;
     std::unique_ptr<GraphicsPipeline> smoke_graphics_;
     std::unique_ptr<ComputePipeline> compute_;

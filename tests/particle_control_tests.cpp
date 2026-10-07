@@ -8,15 +8,13 @@ namespace
 class TestDevice final : public pyroclast::GraphicsDevice
 {
 public:
-    std::unique_ptr<pyroclast::VertexBuffer> create_vertex_buffer(
-        std::span<const std::byte> bytes, std::uint32_t record_stride) override
+    std::unique_ptr<pyroclast::Buffer> create_buffer(std::uint32_t size, std::span<const std::byte> initial) override
     {
         constexpr std::size_t stride = pyroclast::particle_layout::particle_stride;
         constexpr std::size_t largest_pool = pyroclast::maximum_explosions * pyroclast::ParticleSystem::explosion_particles;
-        valid_upload = record_stride == stride &&
-            bytes.size() >= pyroclast::ParticleSystem::minimum_capacity * stride && bytes.size() <= largest_pool * stride;
-        for (const auto byte : bytes) valid_upload &= byte == std::byte{0};
-        return std::make_unique<pyroclast::VertexBuffer>(static_cast<std::uint32_t>(bytes.size() / stride), record_stride);
+        valid_upload = initial.empty() && size % stride == 0 &&
+            size >= pyroclast::ParticleSystem::minimum_capacity * stride && size <= largest_pool * stride;
+        return std::make_unique<pyroclast::Buffer>(size);
     }
     std::unique_ptr<pyroclast::GraphicsPipeline> create_graphics_pipeline(
         const pyroclast::GraphicsPipelineDescription& description) override
@@ -27,7 +25,7 @@ public:
         return pipeline;
     }
     std::unique_ptr<pyroclast::ComputePipeline> create_compute_pipeline(
-        pyroclast::Shader, const pyroclast::VertexBuffer& buffer) override
+        pyroclast::Shader, const pyroclast::Buffer& buffer) override
     {
         return std::make_unique<pyroclast::ComputePipeline>(buffer);
     }
@@ -147,7 +145,7 @@ int main()
         const auto burst = count * ParticleSystem::explosion_particles;
         const auto expected_capacity = count == 1 ? ParticleSystem::minimum_capacity : burst;
         check(stress_device.valid_upload && stress.capacity() == expected_capacity &&
-            stress.particles().record_count() == expected_capacity &&
+            stress.particles().size() == expected_capacity * particle_layout::particle_stride &&
             started.dispatch.constants[0] == expected_capacity && started.dispatch.constants[2] == burst &&
             started.dispatch.group_count == (expected_capacity + group_size - 1) / group_size &&
             layered(stress_device, stress, started, count),

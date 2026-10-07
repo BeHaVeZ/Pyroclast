@@ -4,8 +4,8 @@ namespace pyroclast
 {
 const char* validate_frame(const Frame& frame)
 {
-    const auto records = frame.vertices.record_count();
-    if (frame.passes.empty() || frame.vertices.stride() != particle_layout::particle_stride)
+    const auto records = frame.vertices.size() / particle_layout::particle_stride;
+    if (frame.passes.empty() || frame.vertices.size() % particle_layout::particle_stride != 0)
     {
         return "Frame requires a particle buffer and at least one pass.";
     }

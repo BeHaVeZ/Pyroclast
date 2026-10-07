@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
-#include <vector>
 
 namespace pyroclast
 {
@@ -18,8 +17,8 @@ bool ParticleSystem::initialize(GraphicsDevice& device, std::uint32_t explosions
     explosion_count_ = explosions;
     burst_count_ = explosion_count_ * explosion_particles;
     capacity_ = std::max(minimum_capacity, burst_count_);
-    const std::vector<Particle> initial(capacity_);
-    particles_ = device.create_vertex_buffer(std::as_bytes(std::span(initial)), sizeof(Particle));
+    const auto bytes = capacity_ * static_cast<std::uint32_t>(sizeof(Particle));
+    particles_ = device.create_buffer(bytes, {});
     graphics_ = device.create_graphics_pipeline({Shader::particle_vertex, Shader::particle_pixel, BlendMode::additive});
     smoke_graphics_ = device.create_graphics_pipeline(
         {Shader::particle_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha});
@@ -32,8 +31,8 @@ bool ParticleSystem::initialize(GraphicsDevice& device, std::uint32_t explosions
     {
         return false;
     }
-    SDL_Log("Explosion ready: explosions=%u, capacity=%u, burst=%u, state=%zu bytes, fixed step=1/60 s, seed=0x12345678.",
-        explosion_count_, capacity_, burst_count_, initial.size() * sizeof(Particle));
+    SDL_Log("Explosion ready: explosions=%u, capacity=%u, burst=%u, state=%u bytes, fixed step=1/60 s, seed=0x12345678.",
+        explosion_count_, capacity_, burst_count_, bytes);
     return true;
 }
 

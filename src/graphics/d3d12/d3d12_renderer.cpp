@@ -113,13 +113,14 @@ void D3D12Renderer::set_target(D3D12_CPU_DESCRIPTOR_HANDLE rtv, int width, int h
     command_list_->RSSetScissorRects(1, &scissor);
 }
 
-void D3D12Renderer::draw_range(const DrawRange& range, const D3D12VertexBuffer& vertices, float aspect)
+void D3D12Renderer::draw_range(const DrawRange& range, const D3D12Buffer& vertices, float aspect)
 {
     const auto& pipeline = static_cast<const D3D12GraphicsPipeline&>(range.pipeline);
     command_list_->SetPipelineState(pipeline.state.Get());
     command_list_->SetGraphicsRootSignature(pipeline.root_signature.Get());
-    auto view = vertices.view;
-    view.BufferLocation += static_cast<UINT64>(range.first_record) * view.StrideInBytes;
+    D3D12_VERTEX_BUFFER_VIEW view{};
+    view.StrideInBytes = particle_layout::particle_stride;
+    view.BufferLocation = vertices.resource->GetGPUVirtualAddress() + static_cast<UINT64>(range.first_record) * view.StrideInBytes;
     view.SizeInBytes = range.record_count * view.StrideInBytes;
     command_list_->IASetVertexBuffers(0, 1, &view);
     command_list_->SetGraphicsRoot32BitConstants(0, 1, &aspect, 0);
@@ -130,7 +131,7 @@ void D3D12Renderer::draw_range(const DrawRange& range, const D3D12VertexBuffer& 
 RenderResult D3D12Renderer::render(const Frame& frame)
 {
     assert(swapchain_ && command_list_);
-    const auto* vertices = dynamic_cast<const D3D12VertexBuffer*>(&frame.vertices);
+    const auto* vertices = dynamic_cast<const D3D12Buffer*>(&frame.vertices);
     const auto* compute = frame.compute ? dynamic_cast<const D3D12ComputePipeline*>(&frame.compute->pipeline) : nullptr;
     bool owned = vertices && vertices->owner == this && (!frame.compute || (compute && compute->owner == this));
     const auto owns_target = [this](const RenderTarget* target) {
@@ -194,7 +195,7 @@ RenderResult D3D12Renderer::render(const Frame& frame)
         storage.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
         storage.Transition.pResource = vertices->resource.Get();
         storage.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-        storage.Transition.StateBefore = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
+        storage.Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
         storage.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         command_list_->ResourceBarrier(1, &storage);
         command_list_->SetPipelineState(compute->state.Get());
@@ -202,7 +203,8 @@ RenderResult D3D12Renderer::render(const Frame& frame)
         command_list_->SetComputeRootUnorderedAccessView(0, vertices->resource->GetGPUVirtualAddress());
         command_list_->SetComputeRoot32BitConstants(1, 4, frame.compute->constants.data(), 0);
         command_list_->Dispatch(frame.compute->group_count, 1, 1);
-        std::swap(storage.Transition.StateBefore, storage.Transition.StateAfter);
+        storage.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        storage.Transition.StateAfter = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
         command_list_->ResourceBarrier(1, &storage);
     }
 

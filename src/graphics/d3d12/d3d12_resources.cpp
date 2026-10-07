@@ -96,18 +96,18 @@ std::unique_ptr<GraphicsPipeline> D3D12Renderer::create_graphics_pipeline(
     return pipeline;
 }
 
-std::unique_ptr<VertexBuffer> D3D12Renderer::create_vertex_buffer(std::span<const std::byte> vertices, std::uint32_t stride)
+std::unique_ptr<Buffer> D3D12Renderer::create_buffer(std::uint32_t size, std::span<const std::byte> initial)
 {
-    if (vertices.empty() || stride == 0 || vertices.size() % stride != 0 || vertices.size_bytes() > std::numeric_limits<UINT>::max())
+    if (size == 0 || size % 4 != 0 || (!initial.empty() && initial.size() != size))
     {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Vertex buffer must hold whole records and fit a 32-bit buffer view.");
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Buffer size must be a nonzero multiple of four bytes and match its initial data.");
         return nullptr;
     }
-    auto buffer = std::make_unique<D3D12VertexBuffer>(static_cast<std::uint32_t>(vertices.size() / stride), stride);
+    auto buffer = std::make_unique<D3D12Buffer>(size);
     buffer->owner = this;
     D3D12_RESOURCE_DESC description{};
     description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-    description.Width = vertices.size_bytes();
+    description.Width = size;
     description.Height = 1;
     description.DepthOrArraySize = 1;
     description.MipLevels = 1;
@@ -120,10 +120,14 @@ std::unique_ptr<VertexBuffer> D3D12Renderer::create_vertex_buffer(std::span<cons
     heap.CreationNodeMask = 1;
     heap.VisibleNodeMask = 1;
     if (!check(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE,
-        &description, D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
-        IID_PPV_ARGS(&buffer->resource)), "Create vertex buffer"))
+        &description, D3D12_RESOURCE_STATE_COMMON, nullptr,
+        IID_PPV_ARGS(&buffer->resource)), "Create buffer"))
     {
         return nullptr;
+    }
+    if (initial.empty())
+    {
+        return check_validation() ? std::move(buffer) : nullptr;
     }
     heap.Type = D3D12_HEAP_TYPE_UPLOAD;
     description.Flags = D3D12_RESOURCE_FLAG_NONE;
@@ -140,8 +144,8 @@ std::unique_ptr<VertexBuffer> D3D12Renderer::create_vertex_buffer(std::span<cons
     {
         return nullptr;
     }
-    std::memcpy(mapped, vertices.data(), vertices.size_bytes());
-    const D3D12_RANGE written_range{0, vertices.size_bytes()};
+    std::memcpy(mapped, initial.data(), initial.size_bytes());
+    const D3D12_RANGE written_range{0, initial.size_bytes()};
     upload_staging_->Unmap(0, &written_range);
 
     if (!wait_idle() || !check(frames_[0].allocator->Reset(), "Reset upload allocator") ||
@@ -149,14 +153,7 @@ std::unique_ptr<VertexBuffer> D3D12Renderer::create_vertex_buffer(std::span<cons
     {
         return nullptr;
     }
-    command_list_->CopyBufferRegion(buffer->resource.Get(), 0, upload_staging_.Get(), 0, vertices.size_bytes());
-    D3D12_RESOURCE_BARRIER barrier{};
-    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    barrier.Transition.pResource = buffer->resource.Get();
-    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
-    command_list_->ResourceBarrier(1, &barrier);
+    command_list_->CopyBufferRegion(buffer->resource.Get(), 0, upload_staging_.Get(), 0, initial.size_bytes());
     if (!check(command_list_->Close(), "Close upload command list"))
     {
         return nullptr;
@@ -171,10 +168,7 @@ std::unique_ptr<VertexBuffer> D3D12Renderer::create_vertex_buffer(std::span<cons
     }
     upload_staging_.Reset();
     pending_upload_buffer_.Reset();
-    buffer->view.BufferLocation = buffer->resource->GetGPUVirtualAddress();
-    buffer->view.SizeInBytes = static_cast<UINT>(vertices.size_bytes());
-    buffer->view.StrideInBytes = stride;
-    SDL_Log("Vertex buffer uploaded: %u vertices.", buffer->record_count());
+    SDL_Log("Buffer uploaded: %u bytes.", size);
     return buffer;
 }
 }

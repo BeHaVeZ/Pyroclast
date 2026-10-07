@@ -9,14 +9,13 @@ namespace pyroclast
 {
 class D3D12Renderer;
 
-class D3D12VertexBuffer final : public VertexBuffer
+class D3D12Buffer final : public Buffer
 {
 public:
-    using VertexBuffer::VertexBuffer;
+    using Buffer::Buffer;
 
     const D3D12Renderer* owner = nullptr;
     Microsoft::WRL::ComPtr<ID3D12Resource> resource;
-    D3D12_VERTEX_BUFFER_VIEW view{};
 };
 
 class D3D12GraphicsPipeline final : public GraphicsPipeline
