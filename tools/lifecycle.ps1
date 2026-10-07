@@ -1,6 +1,7 @@
 # Drives one Pyroclast window through the interactive lifecycle and checks native validation:
-# pause/clear/trigger/single steps, 30 odd-size resizes, three minimize/restore cycles, a running
-# trigger, a normal close, and separately a start in a minimized window that is later restored.
+# pause/clear/trigger/single steps, a click on the terrain, effect lines, 30 odd-size resizes, three
+# minimize/restore cycles, a running trigger, a normal close, and separately a start in a minimized
+# window that is later restored.
 # Passes when every launch exits 0, logs no ERROR/WARN lines (Vulkan loader notices excepted), in
 # Debug reports "validation summary: 0 warnings, 0 errors", and the interactive run's log shows that
 # the injected keys and resizes reached the application. Logs go to -OutDir; nothing else is written.
@@ -115,6 +116,18 @@ function Run-Interactive {
         Send-Key $window 80 0x19      # P: pause
         Send-Key $window 82 0x13      # R: clear
         Send-Key $window 32 0x39      # Space: trigger
+        Send-Key $window 76 0x26      # L: effect lines
+        # A left click in the window. SDL places the button at the real cursor, which a posted message cannot
+        # move (and moving it would disturb the user), so the check below only requires the click to arrive:
+        # it either places an explosion or reports that no terrain is under the cursor. Unit tests cover
+        # where the ray lands.
+        $centre = [IntPtr]((325 -shl 16) -bor 490)
+        [void][LifecycleWindow]::PostMessage($window, 0x200, [IntPtr]::Zero, $centre)   # WM_MOUSEMOVE
+        Start-Sleep -Milliseconds 20
+        [void][LifecycleWindow]::PostMessage($window, 0x201, [IntPtr]1, $centre)   # WM_LBUTTONDOWN
+        Start-Sleep -Milliseconds 20
+        [void][LifecycleWindow]::PostMessage($window, 0x202, [IntPtr]::Zero, $centre)   # WM_LBUTTONUP
+        Start-Sleep -Milliseconds 20
         for ($tick = 0; $tick -lt 60; ++$tick) { Send-Key $window 78 0x31 }   # N: single steps
         Start-Sleep -Milliseconds 300
         for ($iteration = 0; $iteration -lt 30; ++$iteration) {
@@ -141,6 +154,9 @@ function Run-Interactive {
         foreach ($expected in 'Particle simulation: paused', 'Particle pool cleared.', 'Explosion group triggered',
             'Particle simulation: running', "$backend swapchain resized") {
             if (-not $text.Contains($expected)) { throw "The application never logged '$expected'; input or resizes did not arrive." }
+        }
+        if (-not ($text.Contains('Explosion at (') -or $text.Contains('No terrain under the cursor.'))) {
+            throw 'The left click never reached the application.'
         }
     } finally {
         if (-not $process.HasExited) { $process.Kill(); $process.WaitForExit() }

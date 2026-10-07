@@ -37,7 +37,7 @@ from pathlib import Path
 MATRICES = {
     "default": [(renderer, smoke, explosions, tick)
                 for renderer in ("d3d12", "vulkan") for smoke in ("full", "half")
-                for explosions, tick in ((100, 180), (100, 480), (1, 180))],
+                for explosions, tick in ((100, 180), (100, 470), (1, 180))],
     "quick": [(renderer, "full", 100, 180) for renderer in ("d3d12", "vulkan")],
 }
 METRICS = ("gpu_draw", "gpu_compute", "cpu_median")
