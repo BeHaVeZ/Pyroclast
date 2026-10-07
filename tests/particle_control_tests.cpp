@@ -4,6 +4,8 @@
 
 #include <cstdio>
 #include <cstring>
+#include <optional>
+#include <utility>
 #include <vector>
 
 namespace
@@ -38,9 +40,16 @@ public:
         if (description.vertex_shader == Shader::debug_lines_vertex && description.topology == pyroclast::Topology::lines) lines = pipeline.get();
         return pipeline;
     }
-    std::unique_ptr<pyroclast::ComputePipeline> create_compute_pipeline(pyroclast::Shader) override
+    std::unique_ptr<pyroclast::ComputePipeline> create_compute_pipeline(pyroclast::Shader shader) override
     {
-        return std::make_unique<pyroclast::ComputePipeline>();
+        auto pipeline = std::make_unique<pyroclast::ComputePipeline>();
+        compute_shaders.emplace_back(pipeline.get(), shader);
+        return pipeline;
+    }
+    std::optional<pyroclast::Shader> shader_of(const pyroclast::ComputePipeline& pipeline) const
+    {
+        for (const auto& [created, shader] : compute_shaders) if (created == &pipeline) return shader;
+        return std::nullopt;
     }
     std::unique_ptr<pyroclast::RenderTarget> create_render_target(const pyroclast::RenderTargetDescription& description) override
     {
@@ -108,6 +117,7 @@ public:
     }
 
     std::vector<std::uint32_t> zeroed_sizes;
+    std::vector<std::pair<const pyroclast::ComputePipeline*, pyroclast::Shader>> compute_shaders;
     bool heights_uploaded = false;
     bool depth_cleared_far = false;
     bool valid_frame = false;
@@ -168,6 +178,8 @@ int main()
     const auto* offsets = scan.bindings.write[0];
     const auto* arguments = scan.bindings.write[1];
     const auto* alive = scatter.bindings.write[0];
+    check(device.shader_of(simulation.pipeline) == Shader::particle_simulation && device.shader_of(scan.pipeline) == Shader::particle_scan &&
+        device.shader_of(scatter.pipeline) == Shader::particle_scatter, "simulation, scan and scatter, in that order");
     check(simulation.groups[0] == 3 * groups && three.steps == 2 && simulation.constants[0] == three.steps && simulation.constants[1] == 3 &&
         simulation.constants[2] == ParticleSystem::capacity && simulation.bindings.write[0] == pool && masks &&
         simulation.bindings.read[0] == &range.heights(), "the simulation covers the active slabs, 40 groups each, and writes their alive masks");

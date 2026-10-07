@@ -290,11 +290,13 @@ RenderResult D3D12Renderer::render(const Frame& frame)
     if (frame.readback.source) buffer_states_.require(native(frame.readback.source), D3D12_RESOURCE_STATE_COPY_SOURCE);
     buffer_states_.flush(command_list_.Get());
 
-    if (timestamps_)
+    if (timestamps_) command_list_->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query + 1);
+    if (frame.readback.source)
     {
-        command_list_->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query + 1);
-        command_list_->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query + 2);
+        command_list_->CopyBufferRegion(slot.readback.Get(), 0, native(frame.readback.source), frame.readback.offset, frame.readback.size);
+        slot.readback_size = frame.readback.size;
     }
+    if (timestamps_) command_list_->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query + 2);
     auto backbuffer_view = rtv_heap_->GetCPUDescriptorHandleForHeapStart();
     backbuffer_view.ptr += static_cast<SIZE_T>(backbuffer_index) * rtv_stride_;
     command_list_->SetGraphicsRootSignature(root_signature_.Get());
@@ -363,11 +365,6 @@ RenderResult D3D12Renderer::render(const Frame& frame)
         if (!frame.overlay) command_list_->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query + 3);
         command_list_->ResolveQueryData(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query, 4 + 2 * slot.region_count,
             timestamp_readback_.Get(), query * sizeof(std::uint64_t));
-    }
-    if (frame.readback.source)
-    {
-        command_list_->CopyBufferRegion(slot.readback.Get(), 0, native(frame.readback.source), frame.readback.offset, frame.readback.size);
-        slot.readback_size = frame.readback.size;
     }
     if (frame.capture && !record_capture(backbuffer))
     {

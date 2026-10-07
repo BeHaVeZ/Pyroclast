@@ -300,9 +300,6 @@ RenderResult VulkanRenderer::render(const Frame& frame)
     }
     constexpr VkPipelineStageFlags2 shader_stages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT |
         VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-    const bool indirect = std::any_of(frame.passes.begin(), frame.passes.end(), [](const Pass& pass) {
-        return std::any_of(pass.draws.begin(), pass.draws.end(), [](const Draw& draw) { return draw.indirect != nullptr; });
-    });
     for (std::size_t index = 0; index < frame.dispatches.size(); ++index)
     {
         const auto& dispatch = frame.dispatches[index];
@@ -329,13 +326,21 @@ RenderResult VulkanRenderer::render(const Frame& frame)
     if (!frame.dispatches.empty())
     {
         memory_barrier(command, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-            VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT |
-                (indirect ? VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT : VK_PIPELINE_STAGE_2_NONE),
-            VK_ACCESS_2_SHADER_STORAGE_READ_BIT | (indirect ? VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT : VK_ACCESS_2_NONE));
+            VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT |
+                VK_PIPELINE_STAGE_2_COPY_BIT,
+            VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_TRANSFER_READ_BIT);
+    }
+    if (timing_.pool) vkCmdWriteTimestamp2(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, timing_.pool, query + 1);
+    if (frame.readback.source)
+    {
+        const VkBufferCopy region{frame.readback.offset, 0, frame.readback.size};
+        vkCmdCopyBuffer(command, static_cast<const VulkanBuffer*>(frame.readback.source)->buffer, slot.readback, 1, &region);
+        transition_buffer(command, slot.readback, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+            VK_PIPELINE_STAGE_2_HOST_BIT, VK_ACCESS_2_HOST_READ_BIT);
+        slot.readback_size = frame.readback.size;
     }
     if (timing_.pool)
     {
-        vkCmdWriteTimestamp2(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, timing_.pool, query + 1);
         vkCmdWriteTimestamp2(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, timing_.pool, query + 2);
         memory_barrier(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_NONE);
     }
@@ -452,16 +457,6 @@ RenderResult VulkanRenderer::render(const Frame& frame)
             VK_PIPELINE_STAGE_2_NONE, VK_ACCESS_2_NONE);
     }
     if (timing_.pool && !frame.overlay) vkCmdWriteTimestamp2(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, timing_.pool, query + 3);
-    if (frame.readback.source)
-    {
-        memory_barrier(command, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-            VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
-        const VkBufferCopy region{frame.readback.offset, 0, frame.readback.size};
-        vkCmdCopyBuffer(command, static_cast<const VulkanBuffer*>(frame.readback.source)->buffer, slot.readback, 1, &region);
-        transition_buffer(command, slot.readback, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            VK_PIPELINE_STAGE_2_HOST_BIT, VK_ACCESS_2_HOST_READ_BIT);
-        slot.readback_size = frame.readback.size;
-    }
     if (frame.capture && !record_capture(command, image.image))
     {
         return RenderResult::failed;

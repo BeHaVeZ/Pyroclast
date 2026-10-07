@@ -27,7 +27,7 @@ const char* validate_frame(const Frame& frame)
     if (const auto& readback = frame.readback; readback.size != 0 || readback.source)
     {
         if (!readback.source || readback.size == 0 || readback.size > max_readback_bytes || readback.size % 4 != 0 ||
-            readback.offset % 4 != 0 || readback.offset + readback.size > readback.source->size())
+            readback.offset % 4 != 0 || std::uint64_t{readback.offset} + readback.size > readback.source->size())
         {
             return "A readback needs a source and 4-byte aligned bytes within it, at most max_readback_bytes.";
         }
@@ -106,7 +106,7 @@ const char* validate_frame(const Frame& frame)
         {
             if (draw.indirect)
             {
-                if (draw.indirect_offset % 4 != 0 || draw.indirect_offset + 16 > draw.indirect->size())
+                if (draw.indirect_offset % 4 != 0 || std::uint64_t{draw.indirect_offset} + 16 > draw.indirect->size())
                 {
                     return "Indirect draw arguments must be four aligned words within their buffer.";
                 }

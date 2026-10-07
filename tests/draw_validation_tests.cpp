@@ -138,6 +138,8 @@ int main()
     check("indirect arguments past the buffer", validate(with_draw(indirect)), "Indirect draw arguments");
     indirect.indirect_offset = 2;
     check("unaligned indirect arguments", validate(with_draw(indirect)), "Indirect draw arguments");
+    indirect.indirect_offset = 0xFFFFFFF0u;
+    check("indirect arguments whose end wraps around", validate(with_draw(indirect)), "Indirect draw arguments");
     const auto with_readback = [&](Frame::Readback readback) {
         const std::vector<std::byte> constants(16);
         Frame frame{{}, one_pass, {}, constants};
@@ -148,6 +150,10 @@ int main()
     check("a readback past its source", with_readback({&arguments, 56, 16}), "readback");
     check("a readback without a source", with_readback({nullptr, 0, 16}), "readback");
     check("a readback larger than allowed", with_readback({&writable, 0, max_readback_bytes + 4}), "readback");
+    check("a readback whose end wraps around", with_readback({&arguments, 0xFFFFFFF0u, 16}), "readback");
+    check("an empty readback from a source", with_readback({&arguments, 0, 0}), "readback");
+    check("a readback of a partial word", with_readback({&arguments, 0, 6}), "readback");
+    check("an unaligned readback", with_readback({&arguments, 2, 16}), "readback");
     check("depth writes against read-only depth", validate({opaque, {&scene, {}, {&terrain, 1}, nullptr, true, &depth, false}, present}), "depth-writing");
     return failures == 0 ? 0 : 1;
 }
