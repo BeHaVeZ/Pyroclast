@@ -75,6 +75,18 @@ struct Sandbox
     std::vector<pyroclast::ExplosionEvent> group;
     bool debug_lines = false;
     std::uint32_t next_seed = 100000;
+    std::optional<pyroclast::ParticleCounters> counters;
+    std::uint64_t counter_sample = 0;
+
+    std::optional<pyroclast::ParticleCounters> poll_counters(const pyroclast::GraphicsDevice& device)
+    {
+        const auto readback = device.completed_readback();
+        if (!readback || readback->sample_id == counter_sample) return std::nullopt;
+        counter_sample = readback->sample_id;
+        const auto fresh = pyroclast::ParticleSystem::counters(*readback);
+        if (fresh) counters = fresh;
+        return fresh;
+    }
 
     void start_group()
     {
@@ -148,6 +160,20 @@ public:
         }
         peak_effects_ = std::max(peak_effects_, static_cast<std::uint32_t>(sandbox.effects.active().size()));
     }
+    void count(const pyroclast::ParticleCounters& counters)
+    {
+        ++counter_samples_;
+        peak_alive_ = std::max(peak_alive_, counters.alive);
+        alive_sum_ += counters.alive;
+        const std::uint32_t words[] = {counters.tick, counters.alive, counters.smoke, counters.light};
+        for (const auto word : words)
+        {
+            for (int byte = 0; byte < 4; ++byte)
+            {
+                checksum_ = (checksum_ ^ ((word >> (8 * byte)) & 0xff)) * 0x100000001b3ull;
+            }
+        }
+    }
     int report(const Sandbox& sandbox, const pyroclast::ApplicationOptions& options, std::string_view gpu_name, int width, int height,
         bool overlay)
     {
@@ -164,6 +190,9 @@ public:
             static_cast<int>(scenario_.name.size()), scenario_.name.data(), frames,
             static_cast<unsigned long long>(sandbox.effects.started()), static_cast<unsigned long long>(sandbox.effects.dropped()),
             peak_effects_);
+        const double mean_alive = counter_samples_ != 0 ? static_cast<double>(alive_sum_) / static_cast<double>(counter_samples_) : 0.0;
+        SDL_Log("Live particles: %zu counter samples, peak %u alive, mean %.1f, checksum %016llx.", counter_samples_, peak_alive_,
+            mean_alive, static_cast<unsigned long long>(checksum_));
         std::string gpu = "\"";
         for (const char character : gpu_name) if (character != '"' && character != '\\' && static_cast<unsigned char>(character) >= 0x20) gpu += character;
         gpu += '"';
@@ -172,14 +201,16 @@ public:
         const auto compute = statistics(compute_ms_);
         std::printf("{\"scenario\":\"%.*s\",\"valid\":%s,\"build\":\"%s\",\"renderer\":\"%s\",\"gpu\":%s,\"width\":%d,\"height\":%d,"
             "\"smoke_resolution\":\"%s\",\"scene_format\":\"%s\",\"view\":\"%s\",\"overlay\":%s,\"effect_lines\":%s,\"gpu_regions\":%s,"
-            "\"ticks\":%u,\"frames\":%zu,\"effects_started\":%llu,\"effects_dropped\":%llu,\"peak_effects\":%u,\"cpu_ms\":%s,"
+            "\"ticks\":%u,\"frames\":%zu,\"effects_started\":%llu,\"effects_dropped\":%llu,\"peak_effects\":%u,"
+            "\"particles\":{\"samples\":%zu,\"peak_alive\":%u,\"mean_alive\":%.3f,\"checksum\":\"%016llx\"},\"cpu_ms\":%s,"
             "\"gpu_ms\":{\"samples\":%zu,\"draw\":%s,\"compute\":%s}}\n",
             static_cast<int>(scenario_.name.size()), scenario_.name.data(), valid_ ? "true" : "false", pyroclast::build_configuration,
             pyroclast::renderer_name(options.renderer), gpu.c_str(), width, height, options.half_smoke ? "half" : "full",
             pyroclast::scene_format_name(options.scene_format), pyroclast::view_name(options.view), overlay ? "true" : "false",
             sandbox.debug_lines ? "true" : "false", options.gpu_regions ? "true" : "false", scenario_.duration_ticks, frames,
             static_cast<unsigned long long>(sandbox.effects.started()), static_cast<unsigned long long>(sandbox.effects.dropped()),
-            peak_effects_, cpu.c_str(), draw_ms_.size(), draw.c_str(), compute.c_str());
+            peak_effects_, counter_samples_, peak_alive_, mean_alive, static_cast<unsigned long long>(checksum_), cpu.c_str(),
+            draw_ms_.size(), draw.c_str(), compute.c_str());
         std::fflush(stdout);
         return valid_ ? 0 : 1;
     }
@@ -192,6 +223,10 @@ private:
     std::vector<double> compute_ms_;
     std::uint64_t last_gpu_sample_ = 0;
     std::uint32_t peak_effects_ = 0;
+    std::size_t counter_samples_ = 0;
+    std::uint32_t peak_alive_ = 0;
+    std::uint64_t alive_sum_ = 0;
+    std::uint64_t checksum_ = 0xcbf29ce484222325ull;
     bool valid_ = true;
 };
 
@@ -360,7 +395,8 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                         history.count < history.milliseconds.size() ? 0 : static_cast<int>(history.next),
                         renderer.completed_gpu_timings(), static_cast<std::uint32_t>(sandbox.group.size()),
                         static_cast<std::uint32_t>(sandbox.effects.active().size()), sandbox.effects.capacity(),
-                        sandbox.effects.started(), sandbox.effects.dropped(), demo.tick(), sandbox.debug_lines, demo.paused(),
+                        sandbox.effects.started(), sandbox.effects.dropped(), demo.tick(),
+                        sandbox.effects.active().empty() ? std::nullopt : sandbox.counters, sandbox.debug_lines, demo.paused(),
                         options.half_smoke,
                         pyroclast::scene_format_name(options.scene_format), pyroclast::TestRange::exposure,
                         {camera.position.x, camera.position.y, camera.position.z},
@@ -374,6 +410,8 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                 const auto result = sandbox.renderer.render(renderer, demo, sandbox.effects, sandbox.range, camera, width, height, elapsed,
                     {capture, overlay, sandbox.debug_lines});
                 if (result == pyroclast::RenderResult::failed) return 1;
+                const auto counters = sandbox.poll_counters(renderer);
+                if (scenario && counters) scenario->count(*counters);
                 if (result == pyroclast::RenderResult::submitted)
                 {
                     history.add(1000.0 * elapsed);
@@ -385,7 +423,8 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                         SDL_Log("Startup sample stopped: the group retired before the sample completed; use --profile-tick or --scenario.");
                     }
                     if (!profile_tick || !demo.has_pending_steps())
-                        baseline.record(milliseconds, renderer.completed_gpu_timings());
+                        baseline.record(milliseconds, renderer.completed_gpu_timings(), sandbox.effects.active().empty() ?
+                            std::optional<std::uint32_t>(0) : sandbox.counters ? std::optional(sandbox.counters->alive) : std::nullopt);
                     if (capture) return save_capture(renderer, options.capture_path);
                     if (scenario)
                     {

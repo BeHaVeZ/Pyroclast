@@ -18,7 +18,7 @@ public:
             heights_uploaded = initial.size() == pyroclast::Terrain::resolution * pyroclast::Terrain::resolution * sizeof(float);
             return std::make_unique<pyroclast::Buffer>(size);
         }
-        valid_pool = size == pyroclast::ParticleSystem::capacity * pyroclast::particle_layout::particle_stride;
+        zeroed_sizes.push_back(size);
         return std::make_unique<pyroclast::Buffer>(size);
     }
     std::unique_ptr<pyroclast::GraphicsPipeline> create_graphics_pipeline(
@@ -63,6 +63,7 @@ public:
         if (valid_frame) std::memcpy(&constants, frame.constants.data(), sizeof(constants));
         dispatch_groups = frame.dispatches.empty() ? 0 : frame.dispatches[0].groups[0];
         dispatches = frame.dispatches.size();
+        readback = frame.readback;
         const auto draws = [](const pyroclast::Pass& pass, std::initializer_list<const pyroclast::GraphicsPipeline*> pipelines) {
             if (pass.draws.size() != pipelines.size()) return false;
             std::size_t index = 0;
@@ -86,29 +87,27 @@ public:
         const auto with_depth = [&](const pyroclast::Pass& pass, const pyroclast::RenderTarget* first) {
             return pass.inputs[0] == first && pass.inputs[1] == depth;
         };
-        const auto records = [](const pyroclast::Draw& draw, std::uint32_t first, std::uint32_t count) {
-            return draw.constants[2] == first && draw.constants[3] == count;
+        const auto records = [](const pyroclast::Draw& draw, std::uint32_t first, std::uint32_t count, std::uint32_t arguments) {
+            return draw.constants[1] == first && draw.constants[2] == count && draw.indirect && draw.indirect_offset == arguments;
         };
+        namespace layout = pyroclast::particle_layout;
         using pyroclast::ParticleSystem;
         range_only = passes.size() == 2 && range_pass(passes[0]) && present_pass(passes[1]);
         full_resolution_passes = passes.size() == 3 && range_pass(passes[0]) && over_scene(passes[1]) && with_depth(passes[1], nullptr) &&
-            draws(passes[1], {particles}) && records(passes[1].draws[0], 0, ParticleSystem::slab_records) && present_pass(passes[2]);
+            draws(passes[1], {particles}) && records(passes[1].draws[0], 0, ParticleSystem::capacity, layout::particle_arguments_offset) &&
+            present_pass(passes[2]);
         lined_passes = passes.size() == 3 && range_pass(passes[0]) && over_scene(passes[1]) && draws(passes[1], {lines, particles}) &&
             passes[1].draws[0].vertex_count == 32 && present_pass(passes[2]);
         half_resolution_passes = passes.size() == 4 && range_pass(passes[0]) &&
             passes[1].target == half_target && !passes[1].depth && with_depth(passes[1], nullptr) && draws(passes[1], {offscreen}) &&
-            records(passes[1].draws[0], 0, ParticleSystem::smoke_particles) && passes[1].draws[0].constants[4] == 2 &&
+            records(passes[1].draws[0], 0, layout::light_list_first, layout::smoke_arguments_offset) && passes[1].draws[0].constants[3] == 2 &&
             over_scene(passes[2]) && with_depth(passes[2], half_target) && draws(passes[2], {composite, particles}) &&
-            records(passes[2].draws[1], ParticleSystem::smoke_particles, ParticleSystem::emissive_particles) &&
+            records(passes[2].draws[1], layout::light_list_first, ParticleSystem::capacity - layout::light_list_first, layout::light_arguments_offset) &&
             passes[2].draws[0].vertex_count == 3 && present_pass(passes[3]);
-        particle_instances = 0;
-        for (const auto& pass : passes)
-            for (const auto& draw : pass.draws)
-                if (&draw.pipeline == particles || &draw.pipeline == offscreen) particle_instances += draw.instance_count;
         return result;
     }
 
-    bool valid_pool = false;
+    std::vector<std::uint32_t> zeroed_sizes;
     bool heights_uploaded = false;
     bool depth_cleared_far = false;
     bool valid_frame = false;
@@ -118,7 +117,7 @@ public:
     bool half_resolution_passes = false;
     std::size_t dispatches = 0;
     std::uint32_t dispatch_groups = 0;
-    std::uint32_t particle_instances = 0;
+    pyroclast::Frame::Readback readback;
     pyroclast::RenderTarget* scene = nullptr;
     pyroclast::RenderTarget* depth = nullptr;
     pyroclast::RenderTarget* half_target = nullptr;
@@ -155,23 +154,52 @@ int main()
     constexpr auto groups = ParticleSystem::groups_per_slab;
 
     ParticleSystem system;
-    check(system.initialize(device, range.heights(), targets) && device.valid_pool, "a zero-filled pool with one slab per effect slot");
+    namespace layout = particle_layout;
+    constexpr std::uint32_t group_bytes = ParticleSystem::effect_slots * groups * 8;
+    check(system.initialize(device, range.heights(), targets) && device.zeroed_sizes == std::vector<std::uint32_t>{
+        ParticleSystem::capacity * layout::particle_stride, group_bytes, group_bytes, ParticleSystem::capacity * 4, layout::arguments_bytes},
+        "a zero-filled pool with one slab per effect slot, alive masks and offsets per group, an alive list and arguments");
     const auto idle = system.plan(1.0 / 60, 0);
-    check(idle.effects == 0 && idle.particles.instance_count == 0 && idle.steps == 1, "no active effect: nothing to simulate or draw");
+    check(idle.effects == 0 && idle.steps == 1, "no active effect: nothing to simulate or draw");
     const auto three = submit(system, 1.0 / 60, 3);
     const auto* pool = &system.particles();
-    check(three.dispatch.groups[0] == 3 * groups && three.steps == 2 && three.dispatch.constants[0] == three.steps && three.dispatch.constants[1] == 3 &&
-        three.dispatch.constants[2] == ParticleSystem::capacity && three.dispatch.bindings.write[0] == pool &&
-        three.dispatch.bindings.read[0] == &range.heights(), "the dispatch covers the active slabs, 40 groups each");
-    const auto draws = [&](const Draw& draw, const GraphicsPipeline* pipeline, std::uint32_t first, std::uint32_t count, std::uint32_t effects) {
-        return &draw.pipeline == pipeline && draw.constants[0] == ParticleSystem::capacity && draw.constants[1] == effects &&
-            draw.constants[2] == first && draw.constants[3] == count && draw.constants[4] == 1 && draw.vertex_count == 6 &&
-            draw.instance_count == effects * count && draw.bindings.read[0] == pool;
+    const auto& [simulation, scan, scatter] = three.dispatches;
+    const auto* masks = simulation.bindings.write[1];
+    const auto* offsets = scan.bindings.write[0];
+    const auto* arguments = scan.bindings.write[1];
+    const auto* alive = scatter.bindings.write[0];
+    check(simulation.groups[0] == 3 * groups && three.steps == 2 && simulation.constants[0] == three.steps && simulation.constants[1] == 3 &&
+        simulation.constants[2] == ParticleSystem::capacity && simulation.bindings.write[0] == pool && masks &&
+        simulation.bindings.read[0] == &range.heights(), "the simulation covers the active slabs, 40 groups each, and writes their alive masks");
+    check(scan.groups[0] == 1 && scan.constants[0] == 3 * groups && scan.constants[1] == system.tick() && scan.bindings.read[0] == masks &&
+        offsets && arguments && arguments->size() == layout::arguments_bytes,
+        "one scan group turns the masks into offsets and arguments stamped with the tick after the steps");
+    check(scatter.groups[0] == 3 * groups && scatter.constants[0] == 3 && scatter.constants[1] == 0 && scatter.bindings.read[0] == masks &&
+        scatter.bindings.read[1] == offsets && alive && alive->size() == ParticleSystem::capacity * 4,
+        "the scatter writes one list of every alive particle without offscreen smoke");
+    check(three.counters.source == arguments && three.counters.offset == layout::counters_offset &&
+        three.counters.size == sizeof(ParticleCounters), "the counter record is read back from the arguments");
+    const auto draws = [&](const Draw& draw, const GraphicsPipeline* pipeline, std::uint32_t first, std::uint32_t count,
+        std::uint32_t depth_scale, std::uint32_t offset) {
+        return &draw.pipeline == pipeline && draw.constants[0] == ParticleSystem::capacity && draw.constants[1] == first &&
+            draw.constants[2] == count && draw.constants[3] == depth_scale && draw.indirect == arguments && draw.indirect_offset == offset &&
+            draw.bindings.read[0] == pool && draw.bindings.read[1] == alive;
     };
-    check(draws(three.particles, device.particles, 0, ParticleSystem::slab_records, 3) &&
-        draws(three.offscreen_smoke, device.offscreen, 0, ParticleSystem::smoke_particles, 3) &&
-        draws(three.light, device.particles, ParticleSystem::smoke_particles, ParticleSystem::emissive_particles, 3),
-        "the draws walk the active slabs, smoke before light");
+    check(draws(three.particles, device.particles, 0, ParticleSystem::capacity, 1, layout::particle_arguments_offset),
+        "every layer is drawn from the whole list");
+    const auto layered = system.plan(0, 3, 2);
+    check(layered.dispatches[2].constants[1] == 1 &&
+        draws(layered.offscreen_smoke, device.offscreen, 0, layout::light_list_first, 2, layout::smoke_arguments_offset) &&
+        draws(layered.light, device.particles, layout::light_list_first, ParticleSystem::capacity - layout::light_list_first, 1,
+            layout::light_arguments_offset), "offscreen smoke and light are drawn from a list per layer");
+    ReadbackData record;
+    const std::uint32_t words[] = {7, 30, 10, 20};
+    std::memcpy(record.bytes.data(), words, sizeof(words));
+    record.size = sizeof(words);
+    const auto counted = ParticleSystem::counters(record);
+    check(counted && counted->tick == 7 && counted->alive == 30 && counted->smoke == 10 && counted->light == 20, "a counter record reads back");
+    record.size = 12;
+    check(!ParticleSystem::counters(record), "a readback of another size is no counter record");
 
     ParticleSystem timed;
     timed.initialize(device, range.heights(), targets);
@@ -214,13 +242,14 @@ int main()
         device.depth_cleared_far && !device.half_target && device.present && device.lines,
         "full resolution creates a scene and a depth target cleared to the far end");
     check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::submitted &&
-        device.valid_frame && device.range_only && device.dispatches == 0, "without effects only the range is drawn");
+        device.valid_frame && device.range_only && device.dispatches == 0 && !device.readback.source, "without effects only the range is drawn");
     const auto group = group_events(range.terrain(), 10);
     for (const auto& event : group) effects.submit(event);
     const auto start_tick = rendered.tick();
     check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::submitted &&
-        device.valid_frame && device.full_resolution_passes && device.dispatches == 1 && device.dispatch_groups == 10 * groups &&
-        device.particle_instances == 10 * ParticleSystem::slab_records, "ten effects: one dispatch and one particle draw over ten slabs");
+        device.valid_frame && device.full_resolution_passes && device.dispatches == 3 && device.dispatch_groups == 10 * groups &&
+        device.readback.source && device.readback.offset == layout::counters_offset,
+        "ten effects: simulation, scan and scatter over ten slabs, one indirect particle draw and the counters read back");
     bool table = effects.active().size() == 10;
     for (std::uint32_t slot = 0; slot < 10 && table; ++slot)
     {

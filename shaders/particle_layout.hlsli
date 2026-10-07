@@ -16,3 +16,14 @@ static const uint maximum_explosions = 100;
 
 static const uint simulation_group_size = 64;
 static const uint maximum_simulation_steps = 4;
+
+static const uint slab_groups = explosion_particles / simulation_group_size;
+static const uint smoke_groups = smoke_particles / simulation_group_size;
+static const uint scan_threads = 256;
+static const uint particle_vertices = 6;
+static const uint particle_arguments_offset = 0;
+static const uint smoke_arguments_offset = 16;
+static const uint light_arguments_offset = 32;
+static const uint counters_offset = 48;
+static const uint arguments_bytes = 64;
+static const uint light_list_first = maximum_effects * smoke_particles;

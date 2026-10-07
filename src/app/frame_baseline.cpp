@@ -22,7 +22,7 @@ std::string json_string(const std::string& text)
 }
 }
 
-void FrameBaseline::record(double milliseconds, std::optional<GpuTimings> gpu)
+void FrameBaseline::record(double milliseconds, std::optional<GpuTimings> gpu, std::optional<std::uint32_t> alive)
 {
     if (!enabled_) return;
     if (warmup_ != 0)
@@ -87,6 +87,8 @@ void FrameBaseline::record(double milliseconds, std::optional<GpuTimings> gpu)
     regions += "]";
 
     const std::string tick = sample.profile_tick ? std::to_string(*sample.profile_tick) : "null";
+    const std::string alive_particles = alive ? std::to_string(*alive) : "null";
+    if (alive) SDL_Log("Alive particles at the end of the sample: %u.", *alive);
     std::string gpu_ms = "null";
     if (gpu_count_ != 0)
     {
@@ -96,11 +98,11 @@ void FrameBaseline::record(double milliseconds, std::optional<GpuTimings> gpu)
     }
     std::printf("{\"build\":\"%s\",\"renderer\":%s,\"gpu\":%s,\"explosions\":%u,\"capacity\":%u,\"profile_tick\":%s,"
         "\"vsync\":%s,\"smoke_resolution\":\"%s\",\"view\":%s,\"scene_format\":%s,\"width\":1280,\"height\":720,\"warmup_frames\":%zu,\"samples\":%zu,"
-        "\"cpu_ms\":{\"average\":%.4f,\"median\":%.4f,\"p99\":%.4f},\"gpu_ms\":%s}\n",
+        "\"alive\":%s,\"cpu_ms\":{\"average\":%.4f,\"median\":%.4f,\"p99\":%.4f},\"gpu_ms\":%s}\n",
         build_configuration, json_string(sample.renderer).c_str(), json_string(sample.gpu).c_str(),
         sample.explosions, sample.capacity, tick.c_str(), sample.profile_tick ? "false" : "true",
         sample.half_resolution_smoke ? "half" : "full", json_string(sample.view).c_str(), json_string(sample.scene_format).c_str(), warmup_frames, samples_.size(),
-        cpu.average, cpu.median, cpu.p99, gpu_ms.c_str());
+        alive_particles.c_str(), cpu.average, cpu.median, cpu.p99, gpu_ms.c_str());
     std::fflush(stdout);
 }
 }

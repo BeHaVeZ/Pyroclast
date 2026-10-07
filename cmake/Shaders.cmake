@@ -37,6 +37,8 @@ set(PYROCLAST_SHADERS
     particle_vertex:particles:vs:vs_main
     particle_pixel:particles:ps:ps_main
     particle_simulation:particles_compute:cs:cs_main
+    particle_scan:particle_scan:cs:cs_main
+    particle_scatter:particle_scatter:cs:cs_main
     composite_vertex:composite:vs:vs_main
     composite_pixel:composite:ps:ps_main
     terrain_vertex:terrain:vs:vs_main

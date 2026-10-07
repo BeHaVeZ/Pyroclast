@@ -4,9 +4,8 @@
 struct DrawConstants
 {
     uint record_count;
-    uint effect_count;
-    uint local_first;
-    uint local_count;
+    uint list_first;
+    uint list_count;
     uint depth_scale;
 };
 #ifdef __spirv__
@@ -14,6 +13,7 @@ struct DrawConstants
 #endif
 ConstantBuffer<DrawConstants> draw : register(b0);
 ByteAddressBuffer particles : register(t0);
+ByteAddressBuffer alive : register(t1);
 Texture2D<float> scene_depth : register(t9);
 
 struct PixelInput
@@ -32,19 +32,16 @@ PixelInput vs_main(uint vertex : SV_VertexID, uint instance : SV_InstanceID)
         float2(-1, 1), float2(1, 1), float2(1, -1),
         float2(-1, 1), float2(1, -1), float2(-1, -1)
     };
-    uint rank = instance / draw.local_count;
-    uint local = draw.local_first + instance % draw.local_count;
-    uint order = min(rank, maximum_effects - 1);
-    uint slot = frame.effect_order[order / 4][order % 4];
-    bool smoke = local < smoke_particles;
-    uint emissive_local = local - smoke_particles;
-    uint record = slot * explosion_particles + local;
+    uint record = instance < draw.list_count ? alive.Load((draw.list_first + instance) * 4) : draw.record_count;
     PixelInput output = (PixelInput)0;
-    if (rank >= draw.effect_count || slot >= maximum_effects || record >= draw.record_count)
+    if (record >= draw.record_count)
     {
         output.position = float4(0, 0, 0, 1);
         return output;
     }
+    uint local = record % explosion_particles;
+    bool smoke = local < smoke_particles;
+    uint emissive_local = local - smoke_particles;
     uint address = record * particle_stride;
     float4 position = asfloat(particles.Load4(address + particle_position_offset));
     float lifetime = asfloat(particles.Load(address + particle_velocity_offset + 12));

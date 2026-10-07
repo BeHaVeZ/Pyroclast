@@ -113,6 +113,12 @@ ImDrawData* DebugUi::build(const DiagnosticsSnapshot& snapshot, std::vector<UiCo
             row("Effects", "%u of %u slots, %llu started, %llu dropped", snapshot.active_effects, snapshot.effect_slots,
                 static_cast<unsigned long long>(snapshot.effects_started), static_cast<unsigned long long>(snapshot.effects_dropped));
             row("Simulation tick", "%u", snapshot.tick);
+            if (snapshot.particles)
+            {
+                const auto& counts = *snapshot.particles;
+                row("Alive particles", "%u (smoke %u, light %u) at tick %u", counts.alive, counts.smoke, counts.light, counts.tick);
+            }
+            else row("Alive particles", "none");
             row("Smoke resolution", "%s", snapshot.half_resolution_smoke ? "half" : "full");
             row("Scene target", "%.*s, exposure %.2f", static_cast<int>(snapshot.scene_format.size()), snapshot.scene_format.data(),
                 snapshot.exposure);

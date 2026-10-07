@@ -34,7 +34,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     effects.start(particles.tick());
     const auto active = effects.active();
     const auto work = particles.plan(elapsed_seconds, static_cast<std::uint32_t>(active.size()),
-        smoke_target_ ? smoke_target_->description().divisor : 1);
+        smoke_target_ ? smoke_target_->description().divisor : 0);
 
     FrameConstants constants{};
     const float w = static_cast<float>(width);
@@ -87,8 +87,10 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
         passes.push_back({scene_.get(), {smoke_target_.get(), depth_.get()}, over_scene, "Composite and light", true, depth_.get(), false});
     }
     passes.push_back({nullptr, {scene_.get(), nullptr}, {&present, 1}, "Present"});
-    const std::span<const Dispatch> dispatches = simulate ? std::span<const Dispatch>(&work.dispatch, 1) : std::span<const Dispatch>();
-    const auto result = device.render({dispatches, passes, {}, std::as_bytes(std::span(&constants, 1)), options.capture, options.overlay});
+    Frame frame{simulate ? std::span<const Dispatch>(work.dispatches) : std::span<const Dispatch>(), passes, {},
+        std::as_bytes(std::span(&constants, 1)), options.capture, options.overlay};
+    if (simulate) frame.readback = work.counters;
+    const auto result = device.render(frame);
     if (result == RenderResult::submitted)
     {
         particles.commit(work);

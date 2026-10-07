@@ -2,9 +2,11 @@
 
 #include "../graphics/graphics_device.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 
 namespace pyroclast
 {
@@ -28,12 +30,21 @@ static_assert(sizeof(Particle) == particle_layout::particle_stride &&
 
 struct ParticleWork
 {
-    Dispatch dispatch;
+    std::array<Dispatch, 3> dispatches;
     Draw particles;
     Draw offscreen_smoke;
     Draw light;
+    Frame::Readback counters;
     std::uint32_t steps;
     std::uint32_t effects;
+};
+
+struct ParticleCounters
+{
+    std::uint32_t tick = 0;
+    std::uint32_t alive = 0;
+    std::uint32_t smoke = 0;
+    std::uint32_t light = 0;
 };
 
 struct ParticleTargets
@@ -50,13 +61,15 @@ public:
     static constexpr std::uint32_t emissive_particles = particle_layout::emissive_particles;
     static constexpr std::uint32_t smoke_particles = particle_layout::smoke_particles;
     static constexpr std::uint32_t capacity = effect_slots * slab_records;
-    static constexpr std::uint32_t groups_per_slab = slab_records / particle_layout::simulation_group_size;
-    static_assert(slab_records % particle_layout::simulation_group_size == 0);
+    static constexpr std::uint32_t groups_per_slab = particle_layout::slab_groups;
+    static_assert(slab_records % particle_layout::simulation_group_size == 0 &&
+        smoke_particles % particle_layout::simulation_group_size == 0);
 
     bool initialize(GraphicsDevice& device, const Buffer& heights, ParticleTargets targets);
     const Buffer& particles() const { return *particles_; }
     std::uint32_t tick() const { return tick_; }
-    ParticleWork plan(double elapsed_seconds, std::uint32_t active_effects, std::uint32_t offscreen_divisor = 1);
+    ParticleWork plan(double elapsed_seconds, std::uint32_t active_effects, std::uint32_t offscreen_divisor = 0);
+    static std::optional<ParticleCounters> counters(const ReadbackData& data);
     void commit(const ParticleWork& work);
     void set_fixed_ticks(bool fixed) { fixed_ticks_ = fixed; }
     void prepare_profile(std::uint32_t tick);
@@ -68,10 +81,16 @@ public:
 
 private:
     std::unique_ptr<Buffer> particles_;
+    std::unique_ptr<Buffer> alive_masks_;
+    std::unique_ptr<Buffer> offsets_;
+    std::unique_ptr<Buffer> alive_;
+    std::unique_ptr<Buffer> arguments_;
     const Buffer* heights_ = nullptr;
     std::unique_ptr<GraphicsPipeline> graphics_;
     std::unique_ptr<GraphicsPipeline> offscreen_graphics_;
     std::unique_ptr<ComputePipeline> compute_;
+    std::unique_ptr<ComputePipeline> scan_;
+    std::unique_ptr<ComputePipeline> scatter_;
     std::uint32_t tick_ = 0;
     std::uint32_t pending_steps_ = 0;
     double accumulator_ = 0;

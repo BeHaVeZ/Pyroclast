@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../graphics/graphics_device.hpp"
+#include "../simulation/particle_system.hpp"
 
 #include <memory>
 #include <span>
@@ -30,6 +31,7 @@ struct DiagnosticsSnapshot
     std::uint64_t effects_started = 0;
     std::uint64_t effects_dropped = 0;
     std::uint32_t tick = 0;
+    std::optional<ParticleCounters> particles;
     bool debug_lines = false;
     bool paused = false;
     bool half_resolution_smoke = false;

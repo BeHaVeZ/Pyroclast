@@ -15,10 +15,12 @@ struct Parameters
 ConstantBuffer<Parameters> parameters : register(b0);
 ByteAddressBuffer heights : register(t0);
 RWByteAddressBuffer particles : register(u0);
+RWByteAddressBuffer alive_masks : register(u1);
 
 static const float gravity = 9.81;
 static const float3 wind = float3(2.0, 0, 0);
-static const uint groups_per_slab = explosion_particles / simulation_group_size;
+
+groupshared uint alive_bits[2];
 
 float3 around_normal(float3 direction, float3 normal)
 {
@@ -27,15 +29,8 @@ float3 around_normal(float3 direction, float3 normal)
     return tangent * direction.x + normal * direction.y + bitangent * direction.z;
 }
 
-[numthreads(simulation_group_size, 1, 1)]
-void cs_main(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID)
+bool simulate(uint slot, uint local, uint record)
 {
-    uint rank = group.x / groups_per_slab;
-    if (rank >= min(parameters.effect_count, maximum_effects)) return;
-    uint slot = frame.effect_order[rank / 4][rank % 4];
-    uint local = (group.x % groups_per_slab) * simulation_group_size + thread.x;
-    uint record = slot * explosion_particles + local;
-    if (slot >= maximum_effects || record >= parameters.record_count) return;
     bool smoke = local < smoke_particles;
     bool fireball = !smoke && local - smoke_particles < fireball_particles;
     uint address = record * particle_stride;
@@ -96,4 +91,23 @@ void cs_main(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID)
     particles.Store4(address + particle_position_offset, asuint(position));
     particles.Store4(address + particle_velocity_offset, asuint(velocity));
     particles.Store2(address + particle_size_offset, uint2(asuint(size), generation));
+    return velocity.w > 0;
+}
+
+[numthreads(simulation_group_size, 1, 1)]
+void cs_main(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID)
+{
+    uint rank = group.x / slab_groups;
+    if (rank >= min(parameters.effect_count, maximum_effects)) return;
+    uint slot = frame.effect_order[rank / 4][rank % 4];
+    uint local = (group.x % slab_groups) * simulation_group_size + thread.x;
+    uint record = slot * explosion_particles + local;
+    if (thread.x < 2) alive_bits[thread.x] = 0;
+    GroupMemoryBarrierWithGroupSync();
+    if (slot < maximum_effects && record < parameters.record_count && simulate(slot, local, record))
+    {
+        InterlockedOr(alive_bits[thread.x / 32], 1u << (thread.x % 32));
+    }
+    GroupMemoryBarrierWithGroupSync();
+    if (thread.x == 0) alive_masks.Store2(group.x * 8, uint2(alive_bits[0], alive_bits[1]));
 }

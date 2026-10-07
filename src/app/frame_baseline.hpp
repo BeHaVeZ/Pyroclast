@@ -31,7 +31,7 @@ public:
     explicit FrameBaseline(SampleDescription description) : description_(std::move(description)) {}
     void disable() { enabled_ = false; }
     bool enabled() const { return enabled_; }
-    void record(double milliseconds, std::optional<GpuTimings> gpu);
+    void record(double milliseconds, std::optional<GpuTimings> gpu, std::optional<std::uint32_t> alive);
 
 private:
     static constexpr std::size_t warmup_frames = 120;
