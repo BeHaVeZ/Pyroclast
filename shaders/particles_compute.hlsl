@@ -15,7 +15,7 @@ struct Parameters
 [[vk::push_constant]]
 #endif
 ConstantBuffer<Parameters> parameters : register(b0);
-ByteAddressBuffer heights : register(t0);
+ByteAddressBuffer environment : register(t0);
 ByteAddressBuffer classes : register(t1);
 RWByteAddressBuffer particles : register(u0);
 RWByteAddressBuffer alive_masks : register(u1);
@@ -101,7 +101,7 @@ bool simulate(uint slot, uint local, uint record)
         {
             position.w += dt;
             if (position.w < 0) continue;
-            float terrain = terrain_height(heights, position.xz);
+            float terrain = terrain_height(environment, position.xz);
             if (layer.drag > 0)
             {
                 float seconds = float(parameters.tick + step + 1 - state.z) / 60.0;
@@ -113,7 +113,7 @@ bool simulate(uint slot, uint local, uint record)
             if (layer.buoyancy > 0) velocity.y += layer.buoyancy * layer_temperature(layer, position.w) * dt;
             if (layer.gravity > 0) velocity.y -= layer.gravity * dt;
             position.xyz += velocity.xyz * dt;
-            terrain = terrain_height(heights, position.xz);
+            terrain = terrain_height(environment, position.xz);
             float ground = terrain + (smoke ? size : debris ? size * 0.5 : 0);
             if (position.y < ground)
             {

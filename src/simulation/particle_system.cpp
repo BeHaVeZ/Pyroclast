@@ -8,11 +8,11 @@
 
 namespace pyroclast
 {
-bool ParticleSystem::initialize(GraphicsDevice& device, const Buffer& heights, ParticleTargets targets,
+bool ParticleSystem::initialize(GraphicsDevice& device, const Buffer& environment, ParticleTargets targets,
     std::span<const EffectClass> classes)
 {
     assert(!classes.empty() && classes.size() <= particle_layout::maximum_effect_classes);
-    heights_ = &heights;
+    environment_ = &environment;
     const auto bytes = capacity * static_cast<std::uint32_t>(sizeof(Particle));
     particles_ = device.create_buffer(bytes, {});
     constexpr std::uint32_t groups = effect_slots * groups_per_slab;
@@ -48,7 +48,7 @@ constexpr double fixed_step = 1.0 / 60.0;
 
 ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_effects, std::uint32_t offscreen_divisor)
 {
-    assert(particles_ && heights_ && graphics_ && offscreen_graphics_ && debris_graphics_ && compute_ && scan_ && scatter_);
+    assert(particles_ && environment_ && graphics_ && offscreen_graphics_ && debris_graphics_ && compute_ && scan_ && scatter_);
     assert(std::isfinite(elapsed_seconds) && elapsed_seconds >= 0);
     assert(active_effects <= effect_slots);
     if (!paused_ && !fixed_ticks_)
@@ -58,7 +58,7 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_e
     const auto steps = paused_ ? std::min(pending_steps_, 1u) : fixed_ticks_ ? 1u :
         static_cast<std::uint32_t>(std::floor(accumulator_ / fixed_step));
     Bindings simulation{};
-    simulation.read[0] = heights_;
+    simulation.read[0] = environment_;
     simulation.read[1] = classes_.get();
     simulation.write[0] = particles_.get();
     simulation.write[1] = alive_masks_.get();

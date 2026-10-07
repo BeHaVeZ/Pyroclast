@@ -557,7 +557,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
         options.scene_format == pyroclast::SceneFormat::r11g11b10f ? pyroclast::TargetFormat::r11g11b10_float : pyroclast::TargetFormat::color;
     auto sandbox = std::make_unique<Sandbox>();
     if (!sandbox->range.initialize(device, scene_format) ||
-        !sandbox->particles.initialize(device, sandbox->range.heights(), {scene_format, pyroclast::ExplosionRenderer::smoke_format},
+        !sandbox->particles.initialize(device, sandbox->range.environment_buffer(), {scene_format, pyroclast::ExplosionRenderer::smoke_format},
             pyroclast::effect_classes()) ||
         !sandbox->renderer.initialize(device, options.half_smoke, scene_format))
     {

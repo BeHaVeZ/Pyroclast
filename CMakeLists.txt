@@ -64,6 +64,7 @@ add_executable(Pyroclast
     src/simulation/effect_lights.cpp
     src/simulation/wind.cpp
     src/simulation/terrain.cpp
+    src/simulation/environment.cpp
     src/graphics/graphics_device.cpp
     src/graphics/adapter_name.cpp
     src/graphics/draw_validation.cpp
@@ -108,8 +109,8 @@ if(BUILD_TESTING)
     list(APPEND project_targets CommandLineTests)
     add_executable(ParticleControlTests tests/particle_control_tests.cpp src/simulation/particle_system.cpp
         src/simulation/explosion_system.cpp src/simulation/explosion_scenarios.cpp src/simulation/explosion_presets.cpp
-        src/simulation/effect_lights.cpp src/simulation/wind.cpp src/simulation/terrain.cpp src/core/math.cpp src/app/explosion_renderer.cpp
-        src/app/camera.cpp
+        src/simulation/effect_lights.cpp src/simulation/wind.cpp src/simulation/terrain.cpp src/simulation/environment.cpp src/core/math.cpp
+        src/app/explosion_renderer.cpp src/app/camera.cpp
         src/app/test_range.cpp src/graphics/draw_validation.cpp)
     target_include_directories(ParticleControlTests PRIVATE src)
     target_link_libraries(ParticleControlTests PRIVATE SDL3::SDL3-static pyroclast_shader_list)
@@ -132,6 +133,11 @@ if(BUILD_TESTING)
     target_include_directories(TerrainTests PRIVATE src)
     add_test(NAME terrain COMMAND TerrainTests)
     list(APPEND project_targets TerrainTests)
+    add_executable(EnvironmentTests tests/environment_tests.cpp src/simulation/environment.cpp src/simulation/terrain.cpp
+        src/core/math.cpp)
+    target_include_directories(EnvironmentTests PRIVATE src)
+    add_test(NAME environment COMMAND EnvironmentTests)
+    list(APPEND project_targets EnvironmentTests)
     add_executable(ExplosionSystemTests tests/explosion_system_tests.cpp src/simulation/explosion_system.cpp
         src/simulation/explosion_scenarios.cpp src/simulation/explosion_presets.cpp src/simulation/terrain.cpp src/core/math.cpp)
     target_include_directories(ExplosionSystemTests PRIVATE src)

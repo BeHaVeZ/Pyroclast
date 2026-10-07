@@ -68,7 +68,7 @@ public:
     static constexpr std::uint32_t groups_per_slab = particle_layout::slab_groups;
     static_assert(slab_records % particle_layout::simulation_group_size == 0);
 
-    bool initialize(GraphicsDevice& device, const Buffer& heights, ParticleTargets targets, std::span<const EffectClass> classes);
+    bool initialize(GraphicsDevice& device, const Buffer& environment, ParticleTargets targets, std::span<const EffectClass> classes);
     const Buffer& particles() const { return *particles_; }
     std::uint32_t tick() const { return tick_; }
     ParticleWork plan(double elapsed_seconds, std::uint32_t active_effects, std::uint32_t offscreen_divisor = 0);
@@ -89,7 +89,7 @@ private:
     std::unique_ptr<Buffer> alive_;
     std::unique_ptr<Buffer> arguments_;
     std::unique_ptr<Buffer> classes_;
-    const Buffer* heights_ = nullptr;
+    const Buffer* environment_ = nullptr;
     std::unique_ptr<GraphicsPipeline> graphics_;
     std::unique_ptr<GraphicsPipeline> offscreen_graphics_;
     std::unique_ptr<GraphicsPipeline> debris_graphics_;

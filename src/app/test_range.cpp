@@ -8,12 +8,12 @@ namespace pyroclast
 {
 bool TestRange::initialize(GraphicsDevice& device, TargetFormat scene)
 {
-    const auto heights = terrain_.heights();
-    heights_ = device.create_buffer(static_cast<std::uint32_t>(heights.size_bytes()), std::as_bytes(heights));
+    const auto bytes = environment_.bytes();
+    environment_buffer_ = device.create_buffer(static_cast<std::uint32_t>(bytes.size()), bytes);
     terrain_pipeline_ = device.create_graphics_pipeline(
         {Shader::terrain_vertex, Shader::terrain_pixel, BlendMode::opaque, DepthMode::test_write, scene});
     sky_pipeline_ = device.create_graphics_pipeline({Shader::sky_vertex, Shader::sky_pixel, BlendMode::opaque, DepthMode::test, scene});
-    if (!heights_ || !terrain_pipeline_ || !sky_pipeline_)
+    if (!environment_buffer_ || !terrain_pipeline_ || !sky_pipeline_)
     {
         return false;
     }
@@ -24,9 +24,9 @@ bool TestRange::initialize(GraphicsDevice& device, TargetFormat scene)
 
 std::array<Draw, 2> TestRange::draws() const
 {
-    assert(heights_ && terrain_pipeline_ && sky_pipeline_);
+    assert(environment_buffer_ && terrain_pipeline_ && sky_pipeline_);
     Bindings terrain{};
-    terrain.read[0] = heights_.get();
+    terrain.read[0] = environment_buffer_.get();
     constexpr auto cells = Terrain::resolution - 1;
     return {Draw{*terrain_pipeline_, terrain, {}, cells * cells * 6, 1, "Terrain"},
         Draw{*sky_pipeline_, {}, {}, 3, 1, "Sky"}};
@@ -58,7 +58,7 @@ Camera TestRange::view(RangeView name) const
         camera.look_at({6, 5, 0});
         break;
     case RangeView::hill:
-        camera.position = {190, terrain_.height(190, 0) + 2, 0};
+        camera.position = {190, terrain().height(190, 0) + 2, 0};
         camera.look_at({0, 6, 0});
         break;
     case RangeView::aerial:

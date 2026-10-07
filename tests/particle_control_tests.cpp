@@ -18,7 +18,7 @@ public:
     {
         if (!initial.empty())
         {
-            heights_uploaded |= initial.size() == pyroclast::Terrain::resolution * pyroclast::Terrain::resolution * sizeof(float);
+            environment_uploaded |= initial.size() == pyroclast::terrain_layout::environment_bytes;
             if (initial.size() == pyroclast::particle_layout::maximum_effect_classes * sizeof(pyroclast::EffectClass))
             {
                 uploaded_classes.resize(pyroclast::particle_layout::maximum_effect_classes);
@@ -126,7 +126,7 @@ public:
     std::vector<std::uint32_t> zeroed_sizes;
     std::vector<pyroclast::EffectClass> uploaded_classes;
     std::vector<std::pair<const pyroclast::ComputePipeline*, pyroclast::Shader>> compute_shaders;
-    bool heights_uploaded = false;
+    bool environment_uploaded = false;
     bool depth_cleared_far = false;
     bool valid_frame = false;
     bool range_only = false;
@@ -164,7 +164,7 @@ int main()
     constexpr auto hdr = TargetFormat::r11g11b10_float;
     static_assert(hdr != ExplosionRenderer::smoke_format);
     constexpr ParticleTargets targets{hdr, ExplosionRenderer::smoke_format};
-    check(range.initialize(device, hdr) && device.heights_uploaded && device.terrain && device.sky, "the range uploads its heights");
+    check(range.initialize(device, hdr) && device.environment_uploaded && device.terrain && device.sky, "the range uploads its environment");
     const auto submit = [](ParticleSystem& particles, double elapsed, std::uint32_t effects = 1) {
         const auto work = particles.plan(elapsed, effects);
         particles.commit(work);
@@ -176,7 +176,7 @@ int main()
     namespace layout = particle_layout;
     constexpr std::uint32_t all_groups = ParticleSystem::effect_slots * groups;
     const auto classes = effect_classes();
-    check(system.initialize(device, range.heights(), targets, classes) && device.zeroed_sizes == std::vector<std::uint32_t>{
+    check(system.initialize(device, range.environment_buffer(), targets, classes) && device.zeroed_sizes == std::vector<std::uint32_t>{
         ParticleSystem::capacity * layout::particle_stride, all_groups * 8, all_groups * 4, 3 * ParticleSystem::capacity * 4, layout::arguments_bytes},
         "a zero-filled pool with one slab per effect slot, alive masks and offsets per group, alive lists and arguments");
     bool uploaded = device.uploaded_classes.size() == layout::maximum_effect_classes;
@@ -199,7 +199,7 @@ int main()
         device.shader_of(scatter.pipeline) == Shader::particle_scatter, "simulation, scan and scatter, in that order");
     check(simulation.groups[0] == 3 * groups && three.steps == 2 && simulation.constants[0] == three.steps && simulation.constants[1] == 3 &&
         simulation.constants[2] == ParticleSystem::capacity && simulation.bindings.write[0] == pool && masks &&
-        simulation.bindings.read[0] == &range.heights() && simulation.bindings.read[1],
+        simulation.bindings.read[0] == &range.environment_buffer() && simulation.bindings.read[1],
         "the simulation covers the active slabs, 40 groups each, by their classes, and writes their alive masks");
     const auto* class_buffer = simulation.bindings.read[1];
     check(scan.groups[0] == 1 && scan.constants[0] == 3 * groups && scan.constants[1] == system.tick() && scan.constants[2] == 0 &&
@@ -240,7 +240,7 @@ int main()
     check(!ParticleSystem::counters(record), "a readback of another size is no counter record");
 
     ParticleSystem timed;
-    timed.initialize(device, range.heights(), targets, classes);
+    timed.initialize(device, range.environment_buffer(), targets, classes);
     std::uint32_t ticks = 0;
     for (int frame = 0; frame < 240; ++frame) ticks += submit(timed, 1.0 / 240).steps;
     check(ticks == 60 && timed.tick() == 60, "240 Hz presentation still advances 60 simulation ticks per second");
@@ -263,7 +263,7 @@ int main()
     check(submit(timed, 0).steps == 1 && submit(timed, 5.0).steps == 1, "scripted runs advance one tick per frame whatever the elapsed time");
 
     ParticleSystem profile;
-    profile.initialize(device, range.heights(), targets, classes);
+    profile.initialize(device, range.environment_buffer(), targets, classes);
     profile.prepare_profile(180);
     profile.plan(1, 1);
     check(profile.has_pending_steps(), "skipped profile preparation retains ticks");
@@ -272,7 +272,7 @@ int main()
     check(submit(profile, 1).steps == 0, "profile state stays frozen regardless of elapsed time");
 
     ParticleSystem rendered;
-    rendered.initialize(device, range.heights(), targets, classes);
+    rendered.initialize(device, range.environment_buffer(), targets, classes);
     ExplosionSystem effects(ParticleSystem::effect_slots);
     const auto camera = range.view(RangeView::overview);
     ExplosionRenderer full_resolution;
@@ -326,7 +326,7 @@ int main()
     TestRange ordered_range;
     ordered_range.initialize(ordered_device, hdr);
     ParticleSystem ordered_particles;
-    ordered_particles.initialize(ordered_device, ordered_range.heights(), targets, classes);
+    ordered_particles.initialize(ordered_device, ordered_range.environment_buffer(), targets, classes);
     ExplosionSystem ordered_effects(ParticleSystem::effect_slots);
     for (const auto& event : group_events(ordered_range.terrain(), 100)) ordered_effects.submit(event);
     ExplosionRenderer ordered;
