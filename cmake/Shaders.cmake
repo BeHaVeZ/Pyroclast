@@ -39,6 +39,10 @@ set(PYROCLAST_SHADERS
     particle_simulation:particles_compute:cs:cs_main
     composite_vertex:composite:vs:vs_main
     composite_pixel:composite:ps:ps_main
+    terrain_vertex:terrain:vs:vs_main
+    terrain_pixel:terrain:ps:ps_main
+    sky_vertex:sky:vs:vs_main
+    sky_pixel:sky:ps:ps_main
 )
 
 # Vulkan bindings come from the shared binding layout, so C++ (binding_layout.hpp) and SPIR-V agree.

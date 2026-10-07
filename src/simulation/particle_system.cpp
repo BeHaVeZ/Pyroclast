@@ -7,7 +7,7 @@
 
 namespace pyroclast
 {
-bool ParticleSystem::initialize(GraphicsDevice& device, std::uint32_t explosions)
+bool ParticleSystem::initialize(GraphicsDevice& device, const Terrain& terrain, const Buffer& heights, std::uint32_t explosions)
 {
     if (!is_explosion_scenario(explosions))
     {
@@ -17,12 +17,24 @@ bool ParticleSystem::initialize(GraphicsDevice& device, std::uint32_t explosions
     explosion_count_ = explosions;
     burst_count_ = explosion_count_ * explosion_particles;
     capacity_ = std::max(minimum_capacity, burst_count_);
+    heights_ = &heights;
+    const std::uint32_t columns = explosions == 1 ? 1 : explosions == 10 ? 5 : 10;
+    const std::uint32_t rows = (explosions + columns - 1) / columns;
+    for (std::uint32_t effect = 0; effect < explosions; ++effect)
+    {
+        const float x = (static_cast<float>(effect % columns) - 0.5f * static_cast<float>(columns - 1)) * effect_spacing;
+        const float z = (static_cast<float>(effect / columns) - 0.5f * static_cast<float>(rows - 1)) * effect_spacing;
+        origins_[effect] = {x, terrain.height(x, z) + 0.5f, z, 0};
+    }
     const auto bytes = capacity_ * static_cast<std::uint32_t>(sizeof(Particle));
     particles_ = device.create_buffer(bytes, {});
-    graphics_ = device.create_graphics_pipeline({Shader::particle_vertex, Shader::particle_pixel, BlendMode::additive});
+    emissive_graphics_ = device.create_graphics_pipeline(
+        {Shader::particle_vertex, Shader::particle_pixel, BlendMode::additive, DepthMode::test});
     smoke_graphics_ = device.create_graphics_pipeline(
-        {Shader::particle_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha});
-    if (!particles_ || !graphics_ || !smoke_graphics_)
+        {Shader::particle_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha, DepthMode::test});
+    offscreen_smoke_graphics_ = device.create_graphics_pipeline(
+        {Shader::particle_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha, DepthMode::none});
+    if (!particles_ || !emissive_graphics_ || !smoke_graphics_ || !offscreen_smoke_graphics_)
     {
         return false;
     }
@@ -43,7 +55,7 @@ constexpr double fixed_step = 1.0 / 60.0;
 
 ParticleWork ParticleSystem::plan(double elapsed_seconds)
 {
-    assert(particles_ && graphics_ && smoke_graphics_ && compute_);
+    assert(particles_ && heights_ && emissive_graphics_ && smoke_graphics_ && offscreen_smoke_graphics_ && compute_);
     assert(std::isfinite(elapsed_seconds) && elapsed_seconds >= 0);
     if (!paused_)
     {
@@ -54,6 +66,7 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds)
     constexpr auto group_size = particle_layout::simulation_group_size;
     const auto emissive_count = explosion_count_ * emissive_particles;
     Bindings simulation{};
+    simulation.read[0] = heights_;
     simulation.write[0] = particles_.get();
     Bindings drawing{};
     drawing.read[0] = particles_.get();
@@ -64,7 +77,8 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds)
     return {
         {*compute_, simulation, parameters, {(capacity_ + group_size - 1) / group_size, 1, 1}, "Particle simulation"},
         {*smoke_graphics_, drawing, smoke_range, 6, capacity_ - emissive_count, "Smoke"},
-        {*graphics_, drawing, emissive_range, 6, emissive_count, "Light"},
+        {*offscreen_smoke_graphics_, drawing, smoke_range, 6, capacity_ - emissive_count, "Smoke"},
+        {*emissive_graphics_, drawing, emissive_range, 6, emissive_count, "Light"},
         steps};
 }
 

@@ -44,6 +44,11 @@ bool DebugUi::process_event(const SDL_Event& event)
     return (keyboard && io.WantCaptureKeyboard) || (mouse && io.WantCaptureMouse);
 }
 
+bool DebugUi::wants_keyboard() const
+{
+    return visible_ && ImGui::GetIO().WantCaptureKeyboard;
+}
+
 namespace
 {
 void row(const char* name, const char* format, auto... values)
@@ -108,6 +113,14 @@ ImDrawData* DebugUi::build(const DiagnosticsSnapshot& snapshot, std::vector<UiCo
             row("Pool capacity", "%u particles", snapshot.capacity);
             row("Smoke resolution", "%s", snapshot.half_resolution_smoke ? "half" : "full");
             row("State", "%s", snapshot.paused ? "paused" : "running");
+            ImGui::EndTable();
+        }
+        ImGui::SeparatorText("Camera");
+        if (ImGui::BeginTable("camera", 2, ImGuiTableFlags_SizingStretchProp))
+        {
+            row("Position", "%.1f, %.1f, %.1f m", snapshot.camera_position[0], snapshot.camera_position[1], snapshot.camera_position[2]);
+            row("Heading, elevation", "%.0f, %.0f deg", snapshot.camera_yaw, snapshot.camera_pitch);
+            row("Speed (wheel)", "%.0f m/s", snapshot.camera_speed);
             ImGui::EndTable();
         }
         if (ImGui::Button("Trigger (Space)")) commands.push_back(UiCommand::trigger);

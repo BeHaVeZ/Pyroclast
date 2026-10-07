@@ -6,9 +6,12 @@
 #include "frame_baseline.hpp"
 #include "../tools/debug_ui.hpp"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdio>
 #include <memory>
+#include <numbers>
 #include <vector>
 
 namespace
@@ -69,10 +72,42 @@ void apply(pyroclast::UiCommand command, pyroclast::ParticleSystem& demo)
     }
 }
 
+struct FlightControls
+{
+    bool looking = false;
+    pyroclast::float2 look;
+    float speed = 15;
+
+    void stop_looking(SDL_Window* window)
+    {
+        if (looking) SDL_SetWindowRelativeMouseMode(window, false);
+        looking = false;
+    }
+    pyroclast::CameraInput input(bool keyboard)
+    {
+        pyroclast::CameraInput result;
+        if (keyboard)
+        {
+            const bool* keys = SDL_GetKeyboardState(nullptr);
+            const auto axis = [keys](SDL_Scancode positive, SDL_Scancode negative) {
+                return static_cast<float>(keys[positive]) - static_cast<float>(keys[negative]);
+            };
+            result.move = {axis(SDL_SCANCODE_D, SDL_SCANCODE_A), axis(SDL_SCANCODE_E, SDL_SCANCODE_Q), axis(SDL_SCANCODE_W, SDL_SCANCODE_S)};
+            result.fast = keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT];
+        }
+        result.look = look;
+        look = {};
+        return result;
+    }
+};
+
 int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, pyroclast::ParticleSystem& demo,
-    pyroclast::ExplosionRenderer& explosions, pyroclast::DebugUi* ui, const pyroclast::ApplicationOptions& options)
+    const pyroclast::TestRange& range, pyroclast::ExplosionRenderer& explosions, pyroclast::DebugUi* ui,
+    const pyroclast::ApplicationOptions& options)
 {
     const auto window_id = SDL_GetWindowID(window);
+    auto camera = pyroclast::TestRange::overview();
+    FlightControls flight;
     const auto profile_tick = options.profile_tick;
     pyroclast::FrameBaseline baseline({pyroclast::renderer_name(options.renderer), std::string(renderer.adapter_name()),
         demo.explosion_count(), demo.capacity(), profile_tick, options.half_smoke});
@@ -101,7 +136,26 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, pyro
             {
                 return finish();
             }
+            if ((event.type == SDL_EVENT_MOUSE_BUTTON_UP && event.button.button == SDL_BUTTON_RIGHT) ||
+                event.type == SDL_EVENT_WINDOW_FOCUS_LOST)
+            {
+                flight.stop_looking(window);
+            }
             if (ui && ui->process_event(event)) continue;
+            if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.windowID == window_id && event.button.button == SDL_BUTTON_RIGHT)
+            {
+                flight.looking = SDL_SetWindowRelativeMouseMode(window, true);
+                baseline.disable();
+            }
+            if (event.type == SDL_EVENT_MOUSE_MOTION && flight.looking)
+            {
+                flight.look.x += event.motion.xrel;
+                flight.look.y += event.motion.yrel;
+            }
+            if (event.type == SDL_EVENT_MOUSE_WHEEL && event.wheel.windowID == window_id)
+            {
+                flight.speed = std::clamp(flight.speed * std::pow(1.25f, event.wheel.y), 1.0f, 400.0f);
+            }
             if (ui && event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_F1 && !event.key.repeat) ui->toggle_visible();
             if (event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_WINDOW_MINIMIZED ||
                 event.type == SDL_EVENT_WINDOW_FOCUS_LOST ||
@@ -145,6 +199,12 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, pyro
                 const double elapsed = static_cast<double>(start - previous_time) /
                     static_cast<double>(SDL_GetPerformanceFrequency());
                 previous_time = start;
+                const auto input = flight.input(!ui || !ui->wants_keyboard());
+                if (input.move.x != 0 || input.move.y != 0 || input.move.z != 0 || input.look.x != 0 || input.look.y != 0)
+                {
+                    baseline.disable();
+                    pyroclast::fly(camera, input, static_cast<float>(elapsed), flight.speed);
+                }
                 ImDrawData* overlay = nullptr;
                 if (ui)
                 {
@@ -152,14 +212,15 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, pyro
                         pyroclast::build_configuration, width, height, !profile_tick.has_value(),
                         std::span<const float>(history.milliseconds.data(), history.count),
                         history.count < history.milliseconds.size() ? 0 : static_cast<int>(history.next),
-                        renderer.completed_gpu_timings(), demo.explosion_count(), demo.capacity(), demo.paused(), options.half_smoke};
+                        renderer.completed_gpu_timings(), demo.explosion_count(), demo.capacity(), demo.paused(), options.half_smoke,
+                        {camera.position.x, camera.position.y, camera.position.z},
+                        camera.yaw * 180 / std::numbers::pi_v<float>, camera.pitch * 180 / std::numbers::pi_v<float>, flight.speed};
                     commands.clear();
                     overlay = ui->build(snapshot, commands);
                     for (const auto command : commands) apply(command, demo);
                 }
                 const bool capture = !options.capture_path.empty() && !demo.has_pending_steps();
-                const auto result = explosions.render(renderer, demo,
-                    static_cast<float>(width) / static_cast<float>(height), elapsed, capture, overlay);
+                const auto result = explosions.render(renderer, demo, range, camera, width, height, elapsed, capture, overlay);
                 if (result == pyroclast::RenderResult::failed) return 1;
                 if (result == pyroclast::RenderResult::submitted)
                 {
@@ -241,9 +302,11 @@ int run_application(const pyroclast::ApplicationOptions& options)
     }
     auto& device = *creation.device;
     SDL_Log("Smoke resolution: %s.", options.half_smoke ? "half" : "full");
+    pyroclast::TestRange range;
     pyroclast::ParticleSystem demo;
     pyroclast::ExplosionRenderer explosions;
-    if (!demo.initialize(device, options.explosions) || !explosions.initialize(device, options.half_smoke))
+    if (!range.initialize(device) || !demo.initialize(device, range.terrain(), range.heights(), options.explosions) ||
+        !explosions.initialize(device, options.half_smoke))
     {
         return 1;
     }
@@ -252,10 +315,10 @@ int run_application(const pyroclast::ApplicationOptions& options)
         demo.prepare_profile(*options.profile_tick);
         SDL_Log("Fixed-state profile: tick=%u; VSync off; timestamps on; zero integration steps after preparation.", *options.profile_tick);
     }
-    SDL_SetWindowTitle(window.get(), ui ? "Pyroclast - Explosion | Space: trigger | R: clear | P: pause | N: step | F1: overlay" :
-        "Pyroclast - Explosion | Space: trigger | R: clear | P: pause | N: step");
-    SDL_Log("Explosion demo ready. Space: trigger, R: clear, P: pause, N: single step.");
-    const int exit_code = run_event_loop(window.get(), device, demo, explosions, ui.get(), options);
+    SDL_SetWindowTitle(window.get(), ui ? "Pyroclast - Explosion | WASD/QE, right mouse: fly | Space: trigger | R: clear | P: pause | N: step | F1: overlay" :
+        "Pyroclast - Explosion | WASD/QE, right mouse: fly | Space: trigger | R: clear | P: pause | N: step");
+    SDL_Log("Explosion demo ready. Space: trigger, R: clear, P: pause, N: single step; WASD/QE with the right mouse button flies the camera.");
+    const int exit_code = run_event_loop(window.get(), device, demo, range, explosions, ui.get(), options);
     return device.wait_idle() ? exit_code : 1;
 }
 }

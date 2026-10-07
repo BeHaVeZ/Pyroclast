@@ -53,8 +53,12 @@ add_executable(Pyroclast
     src/app/frame_statistics.cpp
     src/app/command_line.cpp
     src/app/explosion_renderer.cpp
+    src/app/camera.cpp
+    src/app/test_range.cpp
+    src/core/math.cpp
     src/tools/debug_ui.cpp
     src/simulation/particle_system.cpp
+    src/simulation/terrain.cpp
     src/graphics/graphics_device.cpp
     src/graphics/adapter_name.cpp
     src/graphics/draw_validation.cpp
@@ -97,7 +101,8 @@ if(BUILD_TESTING)
     add_test(NAME command_line COMMAND CommandLineTests)
     list(APPEND project_targets CommandLineTests)
     add_executable(ParticleControlTests tests/particle_control_tests.cpp src/simulation/particle_system.cpp
-        src/app/explosion_renderer.cpp src/graphics/draw_validation.cpp)
+        src/simulation/terrain.cpp src/core/math.cpp src/app/explosion_renderer.cpp src/app/camera.cpp
+        src/app/test_range.cpp src/graphics/draw_validation.cpp)
     target_include_directories(ParticleControlTests PRIVATE src)
     target_link_libraries(ParticleControlTests PRIVATE SDL3::SDL3-static pyroclast_shader_list)
     add_test(NAME particle_controls COMMAND ParticleControlTests)
@@ -115,6 +120,10 @@ if(BUILD_TESTING)
     target_include_directories(MathTests PRIVATE src)
     add_test(NAME math COMMAND MathTests)
     list(APPEND project_targets MathTests)
+    add_executable(TerrainTests tests/terrain_tests.cpp src/simulation/terrain.cpp src/core/math.cpp src/app/camera.cpp)
+    target_include_directories(TerrainTests PRIVATE src)
+    add_test(NAME terrain COMMAND TerrainTests)
+    list(APPEND project_targets TerrainTests)
     add_executable(ImageCompareTests tests/image_compare_tests.cpp tools/image_diff/image_compare.cpp)
     target_include_directories(ImageCompareTests PRIVATE tools)
     add_test(NAME image_compare COMMAND ImageCompareTests)

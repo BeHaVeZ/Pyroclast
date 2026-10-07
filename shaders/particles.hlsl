@@ -1,12 +1,11 @@
 #include "explosion.hlsli"
+#include "frame_constants.hlsli"
 
 struct DrawConstants { uint first_record; uint layer; uint record_count; };
 #ifdef __spirv__
 [[vk::push_constant]]
 #endif
 ConstantBuffer<DrawConstants> draw : register(b0);
-struct FrameConstants { float aspect_ratio; };
-ConstantBuffer<FrameConstants> frame : register(b1);
 ByteAddressBuffer particles : register(t0);
 
 struct PixelInput
@@ -30,16 +29,18 @@ PixelInput vs_main(uint vertex : SV_VertexID, uint instance : SV_InstanceID)
         return output;
     }
     uint address = record * particle_stride;
-    float2 position = asfloat(particles.Load2(address + particle_motion_offset));
-    float3 life = asfloat(particles.Load3(address + particle_life_offset));
+    float4 position = asfloat(particles.Load4(address + particle_position_offset));
+    float lifetime = asfloat(particles.Load(address + particle_velocity_offset + 12));
+    float size = lifetime > 0 ? asfloat(particles.Load(address + particle_size_offset)) : 0;
+    float age = position.w;
     float2 corner = corners[vertex];
-    float size = life.y > 0 ? life.z : 0;
-    float progress = life.y > 0 ? saturate(life.x / max(life.y, 0.001)) : 1;
+    float progress = lifetime > 0 ? saturate(age / max(lifetime, 0.001)) : 1;
     bool smoke = draw.layer == particle_layer_smoke;
     bool fireball = !smoke && instance % emissive_particles < fireball_particles;
-    if (smoke) size *= 1 + 0.55 * life.x;
+    if (smoke) size *= 1 + 0.55 * age;
     else if (fireball) size *= 1 + 1.8 * progress;
-    output.position = float4((position + corner * size) * float2(1.0 / frame.aspect_ratio, 1), 0, 1);
+    float3 world = position.xyz + (corner.x * frame.camera_right.xyz + corner.y * frame.camera_up.xyz) * size;
+    output.position = mul(frame.view_projection, float4(world, 1));
     output.uv = corner;
     float3 hot = float3(1.0, 0.8, 0.3);
     float3 cool = float3(0.7, 0.08, 0.01);
@@ -47,8 +48,8 @@ PixelInput vs_main(uint vertex : SV_VertexID, uint instance : SV_InstanceID)
         (fireball ? 0.05 : 0.6) * (1 - progress) * (1 - progress));
     if (smoke)
     {
-        float temperature = smoke_temperature(life.x);
-        float opacity = 0.08 * saturate(life.x / 0.25) * (1 - progress) * (1 - progress);
+        float temperature = smoke_temperature(age);
+        float opacity = 0.08 * saturate(age / 0.25) * (1 - progress) * (1 - progress);
         output.color = float4(lerp(float3(0.30, 0.32, 0.34), float3(0.42, 0.30, 0.20), temperature), opacity);
     }
     return output;

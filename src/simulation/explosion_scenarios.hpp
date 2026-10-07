@@ -1,10 +1,12 @@
 #pragma once
 
+#include "../graphics/particle_layout.hpp"
+
 #include <cstdint>
 
 namespace pyroclast
 {
-constexpr std::uint32_t maximum_explosions = 100;
+constexpr std::uint32_t maximum_explosions = particle_layout::maximum_explosions;
 
 constexpr bool is_explosion_scenario(std::uint32_t explosions)
 {

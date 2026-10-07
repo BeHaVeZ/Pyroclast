@@ -28,6 +28,10 @@ struct DiagnosticsSnapshot
     std::uint32_t capacity = 0;
     bool paused = false;
     bool half_resolution_smoke = false;
+    float camera_position[3]{};
+    float camera_yaw = 0;
+    float camera_pitch = 0;
+    float camera_speed = 0;
 };
 
 enum class UiCommand { trigger, clear, toggle_pause, step };
@@ -44,6 +48,7 @@ public:
     bool process_event(const SDL_Event& event);
     void toggle_visible() { visible_ = !visible_; }
     bool visible() const { return visible_; }
+    bool wants_keyboard() const;
     ImDrawData* build(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>& commands);
 
 private:
