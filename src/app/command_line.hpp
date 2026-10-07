@@ -1,5 +1,6 @@
 #pragma once
 
+#include "range_view.hpp"
 #include "../graphics/graphics_api.hpp"
 
 #include <cstdint>
@@ -23,6 +24,7 @@ struct ApplicationOptions
     std::optional<std::uint32_t> profile_tick;
     std::optional<std::uint32_t> exit_after;
     std::string capture_path;
+    RangeView view = RangeView::overview;
 };
 
 struct CommandLineResult

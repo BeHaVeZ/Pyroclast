@@ -24,6 +24,7 @@ struct TestCase
     std::optional<bool> ui;
     bool gpu_regions = false;
     std::string_view adapter;
+    pyroclast::RangeView view = pyroclast::RangeView::overview;
 };
 }
 
@@ -36,6 +37,10 @@ int main()
         {"empty adapter", {"--adapter="}, d3d12, false, "Expected --adapter"},
         {"duplicate adapter", {"--adapter=a", "--adapter=b"}, d3d12, false, "only once"},
         {"GPU regions", {"--gpu-regions"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, true},
+        {"ground view", {"--view=ground"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, pyroclast::RangeView::ground},
+        {"aerial view", {"--view=aerial"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, pyroclast::RangeView::aerial},
+        {"invalid view", {"--view=top"}, d3d12, false, "Expected --view"},
+        {"duplicate view", {"--view=hill", "--view=hill"}, d3d12, false, "only once"},
         {"GPU regions duplicate", {"--gpu-regions", "--gpu-regions"}, d3d12, false, "only once"},
         {"GPU timing duplicate", {"--gpu-timing", "--gpu-timing"}, d3d12, false, "only once"},
         {"GPU validation duplicate", {"--gpu-validation", "--gpu-validation"}, d3d12, false, "only once"},
@@ -110,7 +115,8 @@ int main()
                 result.options.show_help == test.show_help && result.options.gpu_timing == test.gpu_timing && result.options.explosions == test.explosions && result.options.profile_tick == test.profile_tick && result.options.half_smoke == test.half_smoke &&
                 result.options.exit_after == test.exit_after && result.options.capture_path == test.capture_path &&
                 result.options.gpu_validation == test.gpu_validation && result.options.ui == test.ui &&
-                result.options.gpu_regions == test.gpu_regions && result.options.adapter == test.adapter
+                result.options.gpu_regions == test.gpu_regions && result.options.adapter == test.adapter &&
+                result.options.view == test.view
             : result.error.find(test.error_fragment) != std::string::npos;
         if (!passed)
         {

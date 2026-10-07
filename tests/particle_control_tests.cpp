@@ -239,7 +239,7 @@ int main()
 
     ParticleSystem rendered;
     initialize(rendered, device);
-    const auto camera = TestRange::overview();
+    const auto camera = range.view(RangeView::overview);
     ExplosionRenderer full_resolution;
     check(full_resolution.initialize(device, false) && device.scene && device.depth && !device.half_target && device.present,
         "full resolution creates a scene and a depth target");

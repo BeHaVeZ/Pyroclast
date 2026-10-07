@@ -32,6 +32,7 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
     bool profile_specified = false;
     bool smoke_specified = false;
     bool capture_specified = false;
+    bool view_specified = false;
     const auto set_once = [&result](bool& flag, const char* name) {
         if (flag)
         {
@@ -89,6 +90,25 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
                 return result;
             }
             result.options.ui = value == "on";
+        }
+        else if (option.starts_with("--view="))
+        {
+            if (view_specified)
+            {
+                result.error = "Specify --view only once.";
+                return result;
+            }
+            view_specified = true;
+            const auto value = option.substr(std::string_view("--view=").size());
+            if (value == "overview") result.options.view = RangeView::overview;
+            else if (value == "ground") result.options.view = RangeView::ground;
+            else if (value == "hill") result.options.view = RangeView::hill;
+            else if (value == "aerial") result.options.view = RangeView::aerial;
+            else
+            {
+                result.error = "Expected --view=overview, ground, hill or aerial.";
+                return result;
+            }
         }
         else if (option.starts_with("--smoke-resolution="))
         {

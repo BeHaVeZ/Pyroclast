@@ -2,6 +2,7 @@
 
 #include "camera.hpp"
 #include "frame_constants.hpp"
+#include "range_view.hpp"
 #include "../graphics/graphics_device.hpp"
 #include "../simulation/terrain.hpp"
 
@@ -18,7 +19,7 @@ public:
     const Buffer& heights() const { return *heights_; }
     std::array<Draw, 2> draws() const;
     static void light(FrameConstants& constants);
-    static Camera overview();
+    Camera view(RangeView name) const;
 
 private:
     Terrain terrain_;

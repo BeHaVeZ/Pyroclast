@@ -106,7 +106,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, pyro
     const pyroclast::ApplicationOptions& options)
 {
     const auto window_id = SDL_GetWindowID(window);
-    auto camera = pyroclast::TestRange::overview();
+    auto camera = range.view(options.view);
     FlightControls flight;
     const auto profile_tick = options.profile_tick;
     pyroclast::FrameBaseline baseline({pyroclast::renderer_name(options.renderer), std::string(renderer.adapter_name()),
@@ -338,7 +338,7 @@ int main(int argc, char** argv)
         std::puts(
             "Usage: Pyroclast.exe [--renderer=d3d12|vulkan] [--explosions=1|10|50|100] [--gpu-timing] [--gpu-regions] [--profile-tick=N]\n"
             "                     [--smoke-resolution=full|half] [--ui=on|off] [--gpu-validation]\n"
-            "                     [--capture=FILE.png] [--exit-after=N] [--help]\n"
+            "                     [--capture=FILE.png] [--exit-after=N] [--view=overview|ground|hill|aerial] [--help]\n"
             "  --renderer=d3d12   Request Direct3D 12 (default).\n"
             "  --renderer=vulkan  Request Vulkan.\n"
             "  --explosions=N     Simultaneous explosion group (1, 10, 50, 100; default 1).\n"
@@ -348,6 +348,7 @@ int main(int argc, char** argv)
             "  --gpu-regions      Also time every dispatch, pass and the overlay (serializes Vulkan GPU work).\n"
             "  --capture=FILE.png Write the first frame drawn at the profile tick, then exit (requires --profile-tick).\n"
             "  --exit-after=N     Exit after N submitted frames.\n"
+            "  --view=NAME        Start the camera at a named pose: overview (default), ground, hill or aerial.\n"
             "  --gpu-validation   Debug only: D3D12 GPU-based or Vulkan GPU-assisted validation (slow).\n"
             "  --ui=on|off        Dear ImGui overlay (default on, off with --profile-tick). F1 hides it.\n"
             "  --adapter=NAME     Use the GPU whose name contains NAME (case-insensitive); 'warp' is the D3D12 software rasterizer.\n"

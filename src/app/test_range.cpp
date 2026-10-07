@@ -43,11 +43,28 @@ void TestRange::light(FrameConstants& constants)
     constants.fog = {0.70f, 0.76f, 0.83f, 0.0035f};
 }
 
-Camera TestRange::overview()
+Camera TestRange::view(RangeView name) const
 {
     Camera camera;
-    camera.position = {0, 18, 78};
-    camera.look_at({0, 6, 0});
+    switch (name)
+    {
+    case RangeView::overview:
+        camera.position = {0, 18, 78};
+        camera.look_at({0, 6, 0});
+        break;
+    case RangeView::ground:
+        camera.position = {14, 1.7f, 26};
+        camera.look_at({0, 5, 0});
+        break;
+    case RangeView::hill:
+        camera.position = {-60, terrain_.height(-60, 205) + 3, 205};
+        camera.look_at({0, 6, 0});
+        break;
+    case RangeView::aerial:
+        camera.position = {0, 140, 120};
+        camera.look_at({0, 0, 0});
+        break;
+    }
     return camera;
 }
 }
