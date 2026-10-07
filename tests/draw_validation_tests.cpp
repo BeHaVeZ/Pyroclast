@@ -129,6 +129,25 @@ int main()
     check("an HDR scene tonemapped to the backbuffer", validate({hdr_scene, tonemap}), nullptr);
     check("a backbuffer pipeline in an HDR pass", validate({{&hdr, {}, {&terrain, 1}, nullptr, false, &depth, true}, tonemap}), "colour format");
     check("an HDR pipeline in the backbuffer pass", validate({{nullptr, {}, {&hdr_draw, 1}, nullptr, false, &depth, true}}), "colour format");
+    Buffer arguments(64);
+    Draw indirect{light, reads, {}, 0, 0};
+    indirect.indirect = &arguments;
+    indirect.indirect_offset = 48;
+    check("an indirect draw ignores its own counts", validate(with_draw(indirect)), nullptr);
+    indirect.indirect_offset = 52;
+    check("indirect arguments past the buffer", validate(with_draw(indirect)), "Indirect draw arguments");
+    indirect.indirect_offset = 2;
+    check("unaligned indirect arguments", validate(with_draw(indirect)), "Indirect draw arguments");
+    const auto with_readback = [&](Frame::Readback readback) {
+        const std::vector<std::byte> constants(16);
+        Frame frame{{}, one_pass, {}, constants};
+        frame.readback = readback;
+        return validate_frame(frame);
+    };
+    check("a readback of four counters", with_readback({&arguments, 48, 16}), nullptr);
+    check("a readback past its source", with_readback({&arguments, 56, 16}), "readback");
+    check("a readback without a source", with_readback({nullptr, 0, 16}), "readback");
+    check("a readback larger than allowed", with_readback({&writable, 0, max_readback_bytes + 4}), "readback");
     check("depth writes against read-only depth", validate({opaque, {&scene, {}, {&terrain, 1}, nullptr, true, &depth, false}, present}), "depth-writing");
     return failures == 0 ? 0 : 1;
 }

@@ -36,6 +36,7 @@ public:
     RenderResult render(const Frame& frame) override;
     bool wait_idle() override;
     std::optional<GpuTimings> completed_gpu_timings() const override { return gpu_timings_; }
+    std::optional<ReadbackData> completed_readback() const override { return readback_; }
     std::optional<CapturedImage> read_capture() override;
     std::string_view adapter_name() const override { return adapter_name_; }
 
@@ -78,6 +79,10 @@ private:
         std::uint64_t fence_value = 0;
         Microsoft::WRL::ComPtr<ID3D12Resource> constants;
         std::byte* mapped_constants = nullptr;
+        Microsoft::WRL::ComPtr<ID3D12Resource> readback;
+        const std::byte* mapped_readback = nullptr;
+        std::uint32_t readback_size = 0;
+        bool readback_pending = false;
     };
 
     class BufferStates
@@ -107,6 +112,7 @@ private:
     UINT begin_region(const char* label, const char* fallback);
     void end_region(UINT region);
     bool read_timestamps(std::size_t frame);
+    void read_readback(FrameSlot& slot);
     bool create_swapchain(SDL_Window* window);
     bool create_render_targets();
     bool wait_for_fence(std::uint64_t value);
@@ -141,6 +147,9 @@ private:
     UINT shader_descriptor_stride_ = 0;
     UINT next_shader_descriptor_ = 1;
     BufferStates buffer_states_;
+    Microsoft::WRL::ComPtr<ID3D12CommandSignature> draw_signature_;
+    std::optional<ReadbackData> readback_;
+    std::uint64_t readback_sample_id_ = 0;
     bool regions_ = false;
     Microsoft::WRL::ComPtr<ID3D12QueryHeap> timestamps_;
     Microsoft::WRL::ComPtr<ID3D12Resource> timestamp_readback_;

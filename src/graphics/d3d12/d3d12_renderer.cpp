@@ -162,24 +162,32 @@ void D3D12Renderer::draw(const Draw& draw)
     command_list_->IASetPrimitiveTopology(pipeline.topology);
     command_list_->SetGraphicsRoot32BitConstants(root_draw_constants, binding_layout::draw_constant_words, draw.constants.data(), 0);
     bind(draw.bindings, true);
-    command_list_->DrawInstanced(draw.vertex_count, draw.instance_count, 0, 0);
+    if (draw.indirect)
+    {
+        command_list_->ExecuteIndirect(draw_signature_.Get(), 1, native(draw.indirect), draw.indirect_offset, nullptr, 0);
+    }
+    else
+    {
+        command_list_->DrawInstanced(draw.vertex_count, draw.instance_count, 0, 0);
+    }
     end_event(command_list_.Get(), draw.label);
 }
 
 bool D3D12Renderer::owns(const Frame& frame) const
 {
-    const auto buffers_owned = [this](const Bindings& bindings) {
-        const auto owned = [this](const Buffer* buffer) {
-            const auto* resource = dynamic_cast<const D3D12Buffer*>(buffer);
-            return buffer == nullptr || (resource && resource->owner == this);
-        };
-        return std::all_of(bindings.read.begin(), bindings.read.end(), owned) &&
-            std::all_of(bindings.write.begin(), bindings.write.end(), owned);
+    const auto buffer_owned = [this](const Buffer* buffer) {
+        const auto* resource = dynamic_cast<const D3D12Buffer*>(buffer);
+        return buffer == nullptr || (resource && resource->owner == this);
+    };
+    const auto buffers_owned = [&buffer_owned](const Bindings& bindings) {
+        return std::all_of(bindings.read.begin(), bindings.read.end(), buffer_owned) &&
+            std::all_of(bindings.write.begin(), bindings.write.end(), buffer_owned);
     };
     const auto target_owned = [this](const RenderTarget* target) {
         const auto* native_target = dynamic_cast<const D3D12RenderTarget*>(target);
         return target == nullptr || (native_target && native_target->owner == this);
     };
+    if (!buffer_owned(frame.readback.source)) return false;
     for (const auto& dispatch : frame.dispatches)
     {
         const auto* pipeline = dynamic_cast<const D3D12ComputePipeline*>(&dispatch.pipeline);
@@ -192,7 +200,7 @@ bool D3D12Renderer::owns(const Frame& frame) const
         for (const auto& draw : pass.draws)
         {
             const auto* pipeline = dynamic_cast<const D3D12GraphicsPipeline*>(&draw.pipeline);
-            if (!pipeline || pipeline->owner != this || !buffers_owned(draw.bindings)) return false;
+            if (!pipeline || pipeline->owner != this || !buffers_owned(draw.bindings) || !buffer_owned(draw.indirect)) return false;
         }
     }
     return true;
@@ -242,6 +250,7 @@ RenderResult D3D12Renderer::render(const Frame& frame)
     {
         return RenderResult::failed;
     }
+    read_readback(slot);
     std::memcpy(slot.mapped_constants, frame.constants.data(), frame.constants.size());
     const auto frame_constants = slot.constants->GetGPUVirtualAddress();
     ID3D12DescriptorHeap* heaps[] = {shader_heap_.Get()};
@@ -275,8 +284,10 @@ RenderResult D3D12Renderer::render(const Frame& frame)
         for (const auto& draw : pass.draws)
         {
             for (const auto* buffer : draw.bindings.read) if (buffer) buffer_states_.require(native(buffer), buffer_read_state);
+            if (draw.indirect) buffer_states_.require(native(draw.indirect), D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
         }
     }
+    if (frame.readback.source) buffer_states_.require(native(frame.readback.source), D3D12_RESOURCE_STATE_COPY_SOURCE);
     buffer_states_.flush(command_list_.Get());
 
     if (timestamps_)
@@ -353,6 +364,11 @@ RenderResult D3D12Renderer::render(const Frame& frame)
         command_list_->ResolveQueryData(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query, 4 + 2 * slot.region_count,
             timestamp_readback_.Get(), query * sizeof(std::uint64_t));
     }
+    if (frame.readback.source)
+    {
+        command_list_->CopyBufferRegion(slot.readback.Get(), 0, native(frame.readback.source), frame.readback.offset, frame.readback.size);
+        slot.readback_size = frame.readback.size;
+    }
     if (frame.capture && !record_capture(backbuffer))
     {
         return RenderResult::failed;
@@ -372,6 +388,7 @@ RenderResult D3D12Renderer::render(const Frame& frame)
     }
     slot.fence_value = value;
     slot.timestamps_pending = timestamps_ != nullptr;
+    slot.readback_pending = frame.readback.source != nullptr;
     frame_index_ = (frame_index_ + 1) % frames_.size();
     return check(present_result, "Present frame") && check_validation() ? RenderResult::submitted : RenderResult::failed;
 }

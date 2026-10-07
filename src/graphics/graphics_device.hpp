@@ -115,6 +115,8 @@ struct Draw
     std::uint32_t vertex_count = 0;
     std::uint32_t instance_count = 1;
     const char* label = nullptr;
+    const Buffer* indirect = nullptr;
+    std::uint32_t indirect_offset = 0;
 };
 
 struct Pass
@@ -136,6 +138,21 @@ struct Frame
     std::span<const std::byte> constants;
     bool capture = false;
     ImDrawData* overlay = nullptr;
+    struct Readback
+    {
+        const Buffer* source = nullptr;
+        std::uint32_t offset = 0;
+        std::uint32_t size = 0;
+    } readback;
+};
+
+inline constexpr std::uint32_t max_readback_bytes = 256;
+
+struct ReadbackData
+{
+    std::array<std::byte, max_readback_bytes> bytes{};
+    std::uint32_t size = 0;
+    std::uint64_t sample_id = 0;
 };
 
 struct CapturedImage
@@ -177,6 +194,7 @@ public:
     virtual RenderResult render(const Frame& frame) = 0;
     virtual bool wait_idle() = 0;
     virtual std::optional<GpuTimings> completed_gpu_timings() const = 0;
+    virtual std::optional<ReadbackData> completed_readback() const = 0;
     // Waits for the GPU and returns the image copied by the last submitted frame that requested a capture.
     virtual std::optional<CapturedImage> read_capture() = 0;
     // The selected GPU as the driver reports it; valid for the device's lifetime.

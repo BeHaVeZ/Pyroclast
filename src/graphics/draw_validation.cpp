@@ -24,6 +24,14 @@ const char* validate_frame(const Frame& frame)
     {
         return "Frame constants exceed binding_layout::frame_constant_bytes.";
     }
+    if (const auto& readback = frame.readback; readback.size != 0 || readback.source)
+    {
+        if (!readback.source || readback.size == 0 || readback.size > max_readback_bytes || readback.size % 4 != 0 ||
+            readback.offset % 4 != 0 || readback.offset + readback.size > readback.source->size())
+        {
+            return "A readback needs a source and 4-byte aligned bytes within it, at most max_readback_bytes.";
+        }
+    }
     for (const auto& dispatch : frame.dispatches)
     {
         if (std::any_of(dispatch.groups.begin(), dispatch.groups.end(), [](auto groups) { return groups == 0 || groups > 65535; }))
@@ -96,7 +104,14 @@ const char* validate_frame(const Frame& frame)
         }
         for (const auto& draw : pass.draws)
         {
-            if (draw.vertex_count == 0 || draw.instance_count == 0)
+            if (draw.indirect)
+            {
+                if (draw.indirect_offset % 4 != 0 || draw.indirect_offset + 16 > draw.indirect->size())
+                {
+                    return "Indirect draw arguments must be four aligned words within their buffer.";
+                }
+            }
+            else if (draw.vertex_count == 0 || draw.instance_count == 0)
             {
                 return "A draw needs at least one vertex and one instance.";
             }

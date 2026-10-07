@@ -48,6 +48,11 @@ struct VulkanFrameSlot
     VkBuffer constants = VK_NULL_HANDLE;
     VkDeviceMemory constants_memory = VK_NULL_HANDLE;
     std::byte* mapped_constants = nullptr;
+    VkBuffer readback = VK_NULL_HANDLE;
+    VkDeviceMemory readback_memory = VK_NULL_HANDLE;
+    const std::byte* mapped_readback = nullptr;
+    std::uint32_t readback_size = 0;
+    bool readback_pending = false;
 };
 
 struct VulkanSwapchain
@@ -145,6 +150,7 @@ public:
     RenderResult render(const Frame& frame) override;
     bool wait_idle() override;
     std::optional<GpuTimings> completed_gpu_timings() const override { return gpu_timings_; }
+    std::optional<ReadbackData> completed_readback() const override { return readback_; }
     std::optional<CapturedImage> read_capture() override;
     std::string_view adapter_name() const override { return adapter_name_; }
 
@@ -165,6 +171,7 @@ private:
     static constexpr std::uint32_t queries_per_slot = 4 + 2 * max_gpu_regions;
     static constexpr std::uint32_t no_region = ~0u;
     bool read_timestamps(std::size_t frame);
+    void read_readback(VulkanFrameSlot& slot);
     bool create_frames();
     bool create_swapchain();
     bool create_capture_buffer(VkDeviceSize size);
@@ -210,5 +217,7 @@ private:
     bool regions_ = false;
     std::optional<GpuTimings> gpu_timings_;
     std::uint64_t timing_sample_id_ = 0;
+    std::optional<ReadbackData> readback_;
+    std::uint64_t readback_sample_id_ = 0;
 };
 }

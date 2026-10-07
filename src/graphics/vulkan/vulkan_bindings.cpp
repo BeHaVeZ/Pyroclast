@@ -95,8 +95,27 @@ bool VulkanRenderer::create_bindings()
             return false;
         }
         slot.mapped_constants = static_cast<std::byte*>(mapped);
+        if (!allocate_buffer(max_readback_bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+                "Create frame readback", slot.readback, slot.readback_memory) ||
+            !check(vkMapMemory(vk_.device, slot.readback_memory, 0, VK_WHOLE_SIZE, 0, &mapped), "Map frame readback"))
+        {
+            return false;
+        }
+        slot.mapped_readback = static_cast<const std::byte*>(mapped);
     }
     return validation_ok();
+}
+
+void VulkanRenderer::read_readback(VulkanFrameSlot& slot)
+{
+    if (!slot.readback_pending) return;
+    ReadbackData data;
+    std::memcpy(data.bytes.data(), slot.mapped_readback, slot.readback_size);
+    data.size = slot.readback_size;
+    data.sample_id = ++readback_sample_id_;
+    readback_ = data;
+    slot.readback_pending = false;
 }
 
 void VulkanRenderer::push_bindings(VkCommandBuffer command, VkPipelineBindPoint point, const Bindings& bindings,

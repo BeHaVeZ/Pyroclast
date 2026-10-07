@@ -3,6 +3,7 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <cstring>
 
 namespace pyroclast
 {
@@ -91,8 +92,21 @@ bool D3D12Renderer::create_bindings()
     null_texture.Texture2D.MipLevels = 1;
     device_->CreateShaderResourceView(nullptr, &null_texture, shader_heap_->GetCPUDescriptorHandleForHeapStart());
 
+    D3D12_INDIRECT_ARGUMENT_DESC draw_argument{};
+    draw_argument.Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW;
+    D3D12_COMMAND_SIGNATURE_DESC signature{};
+    signature.ByteStride = sizeof(D3D12_DRAW_ARGUMENTS);
+    signature.NumArgumentDescs = 1;
+    signature.pArgumentDescs = &draw_argument;
+    if (!check(device_->CreateCommandSignature(&signature, nullptr, IID_PPV_ARGS(&draw_signature_)), "Create draw command signature"))
+    {
+        return false;
+    }
+
     D3D12_HEAP_PROPERTIES upload{};
     upload.Type = D3D12_HEAP_TYPE_UPLOAD;
+    D3D12_HEAP_PROPERTIES readback{};
+    readback.Type = D3D12_HEAP_TYPE_READBACK;
     D3D12_RESOURCE_DESC buffer{};
     buffer.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
     buffer.Width = binding_layout::frame_constant_bytes;
@@ -112,8 +126,29 @@ bool D3D12Renderer::create_bindings()
             return false;
         }
         slot.mapped_constants = static_cast<std::byte*>(mapped);
+        buffer.Width = max_readback_bytes;
+        const D3D12_RANGE reads{0, max_readback_bytes};
+        if (!check(device_->CreateCommittedResource(&readback, D3D12_HEAP_FLAG_NONE, &buffer,
+                D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&slot.readback)), "Create frame readback") ||
+            !check(slot.readback->Map(0, &reads, &mapped), "Map frame readback"))
+        {
+            return false;
+        }
+        slot.mapped_readback = static_cast<const std::byte*>(mapped);
+        buffer.Width = binding_layout::frame_constant_bytes;
     }
     return check_validation();
+}
+
+void D3D12Renderer::read_readback(FrameSlot& slot)
+{
+    if (!slot.readback_pending) return;
+    ReadbackData data;
+    std::memcpy(data.bytes.data(), slot.mapped_readback, slot.readback_size);
+    data.size = slot.readback_size;
+    data.sample_id = ++readback_sample_id_;
+    readback_ = data;
+    slot.readback_pending = false;
 }
 
 D3D12_GPU_DESCRIPTOR_HANDLE D3D12Renderer::shader_descriptor(UINT index) const
@@ -130,6 +165,23 @@ void D3D12Renderer::BufferStates::require(ID3D12Resource* buffer, D3D12_RESOURCE
     {
         states_.emplace_back(buffer, D3D12_RESOURCE_STATE_COMMON);
         found = states_.end() - 1;
+    }
+    const auto reading = [](D3D12_RESOURCE_STATES value) {
+        return value != D3D12_RESOURCE_STATE_COMMON && value != D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    };
+    if (reading(found->second) && reading(state))
+    {
+        state |= found->second;
+        if (state == found->second) return;
+        const auto waiting = std::find_if(pending_.begin(), pending_.end(), [buffer](const D3D12_RESOURCE_BARRIER& barrier) {
+            return barrier.Type == D3D12_RESOURCE_BARRIER_TYPE_TRANSITION && barrier.Transition.pResource == buffer;
+        });
+        if (waiting != pending_.end())
+        {
+            waiting->Transition.StateAfter = state;
+            found->second = state;
+            return;
+        }
     }
     D3D12_RESOURCE_BARRIER barrier{};
     if (found->second == state)
