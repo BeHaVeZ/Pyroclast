@@ -159,7 +159,7 @@ int main()
         const auto& smoke = layer(effect, EffectLayer::blast_smoke);
         smoke_parameters = smoke_parameters && smoke.heat > 0 && smoke.cooling > 0 && smoke.turbulence > 0 && smoke.shadow_density > 0;
     }
-    check(smoke_parameters, "every class's blast smoke is hot, cools, is turbulent and casts shadow");
+    check(smoke_parameters, "every class's blast smoke is hot, cools, is turbulent and has a shadow density (it shades only with a flow field)");
 
     const WindSettings settings{4, 90, 0.5f};
     const auto steady = wind_velocity(settings, 1234, false);

@@ -141,7 +141,9 @@ void apply(pyroclast::UiCommand command, Sandbox& sandbox)
         if (command.value < pyroclast::preset_count) sandbox.click_preset = static_cast<pyroclast::ExplosionPreset>(command.value);
         break;
     case Kind::toggle_layer: sandbox.layer_mask ^= 1u << (command.value & 31); break;
-    case Kind::set_wind: sandbox.wind = command.wind; break;
+    case Kind::set_wind:
+        if (const auto wind = pyroclast::validated(command.wind)) sandbox.wind = *wind;
+        break;
     }
 }
 
@@ -170,6 +172,14 @@ public:
             last_gpu_sample_ = gpu->sample_id;
             draw_ms_.push_back(gpu->draw_ms);
             compute_ms_.push_back(gpu->compute_ms);
+            for (std::uint32_t index = 0; index < gpu->region_count; ++index)
+            {
+                const auto& region = gpu->regions[index];
+                auto found = std::find_if(regions_.begin(), regions_.end(), [&region](const RegionSum& sum) { return sum.label == region.label; });
+                if (found == regions_.end()) found = regions_.insert(regions_.end(), {region.label, 0, 0});
+                found->milliseconds += region.milliseconds;
+                ++found->samples;
+            }
         }
         peak_effects_ = std::max(peak_effects_, static_cast<std::uint32_t>(sandbox.effects.active().size()));
     }
@@ -212,11 +222,19 @@ public:
         const auto cpu = statistics(cpu_ms_);
         const auto draw = statistics(draw_ms_);
         const auto compute = statistics(compute_ms_);
+        std::string regions;
+        for (const auto& sum : regions_)
+        {
+            char entry[160];
+            std::snprintf(entry, sizeof(entry), "%s{\"label\":\"%s\",\"ms\":%.6f,\"samples\":%zu}", regions.empty() ? "" : ",",
+                sum.label, sum.milliseconds / static_cast<double>(sum.samples), sum.samples);
+            regions += entry;
+        }
         std::printf("{\"scenario\":\"%.*s\",\"valid\":%s,\"build\":\"%s\",\"renderer\":\"%s\",\"gpu\":%s,\"width\":%d,\"height\":%d,"
             "\"smoke_resolution\":\"%s\",\"scene_format\":\"%s\",\"view\":\"%s\",\"overlay\":%s,\"effect_lines\":%s,\"gpu_regions\":%s,"
             "\"preset\":\"%.*s\",\"layer_mask\":%u,\"wind\":[%.2f,%.1f,%.2f],\"ticks\":%u,\"frames\":%zu,\"effects_started\":%llu,\"effects_dropped\":%llu,\"peak_effects\":%u,"
             "\"particles\":{\"samples\":%zu,\"peak_alive\":%u,\"mean_alive\":%.3f,\"checksum\":\"%016llx\"},\"cpu_ms\":%s,"
-            "\"gpu_ms\":{\"samples\":%zu,\"draw\":%s,\"compute\":%s}}\n",
+            "\"gpu_ms\":{\"samples\":%zu,\"draw\":%s,\"compute\":%s,\"regions\":[%s]}}\n",
             static_cast<int>(scenario_.name.size()), scenario_.name.data(), valid_ ? "true" : "false", pyroclast::build_configuration,
             pyroclast::renderer_name(options.renderer), gpu.c_str(), width, height, options.half_smoke ? "half" : "full",
             pyroclast::scene_format_name(options.scene_format), pyroclast::view_name(options.view), overlay ? "true" : "false",
@@ -226,7 +244,7 @@ public:
             static_cast<double>(sandbox.wind.gustiness), scenario_.duration_ticks, frames,
             static_cast<unsigned long long>(sandbox.effects.started()), static_cast<unsigned long long>(sandbox.effects.dropped()),
             peak_effects_, counter_samples_, peak_alive_, mean_alive, static_cast<unsigned long long>(checksum_), cpu.c_str(),
-            draw_ms_.size(), draw.c_str(), compute.c_str());
+            draw_ms_.size(), draw.c_str(), compute.c_str(), regions.c_str());
         std::fflush(stdout);
         return valid_ ? 0 : 1;
     }
@@ -238,6 +256,13 @@ private:
     std::vector<double> draw_ms_;
     std::vector<double> compute_ms_;
     std::uint64_t last_gpu_sample_ = 0;
+    struct RegionSum
+    {
+        const char* label;
+        double milliseconds;
+        std::size_t samples;
+    };
+    std::vector<RegionSum> regions_;
     std::uint32_t peak_effects_ = 0;
     std::size_t counter_samples_ = 0;
     std::uint32_t peak_alive_ = 0;
@@ -609,8 +634,9 @@ int main(int argc, char** argv)
             "                     grid-100, barrage (80 impacts walking across the range) or presets (all seven in a row).\n"
             "  --preset=NAME      small-impact, small-he (default), artillery-he, heavy, fuel-fire, dust-blast or stress-test,\n"
             "                     for the startup group, profiles, scenarios and the first click.\n"
-            "  --disable=LIST     Hide layers or the lights: comma-separated dust, smoke, plume, flash, fireball, sparks,\n"
-            "                     debris, lights.\n"
+            "  --disable=LIST     Hide layers, the lights or smoke features: comma-separated dust, smoke, plume, flash,\n"
+            "                     fireball, sparks, debris, lights, curl, vortex, gusts, shading, shadow, emission.\n"
+            "  --wind=S,D,G       Wind speed 0-40 m/s, heading in degrees from +x towards +z, gustiness 0-1 (default 3,0,0.3).\n"
             "  --effect-lines     Start with each effect's origin, normal and reach drawn as lines (L toggles).\n"
             "  --gpu-validation   Debug only: D3D12 GPU-based or Vulkan GPU-assisted validation (slow).\n"
             "  --ui=on|off        Dear ImGui overlay (default on, off with --profile-tick). F1 hides it.\n"

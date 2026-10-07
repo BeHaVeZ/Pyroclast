@@ -16,7 +16,9 @@ struct PixelInput
 
 float3 box_corner(uint corner)
 {
-    return float3(corner & 1 ? 36 : -20, corner & 2 ? 40 : -2, corner & 4 ? 20 : -20);
+    float2 drift = frame.wind.xz * 8;
+    return float3(corner & 1 ? 20 + max(drift.x, 0) : -20 + min(drift.x, 0), corner & 2 ? 40 : -2,
+        corner & 4 ? 20 + max(drift.y, 0) : -20 + min(drift.y, 0));
 }
 
 PixelInput vs_main(uint vertex : SV_VertexID, uint instance : SV_InstanceID)

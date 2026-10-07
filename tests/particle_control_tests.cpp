@@ -2,6 +2,7 @@
 #include "graphics/draw_validation.hpp"
 #include "simulation/explosion_scenarios.hpp"
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <optional>
@@ -295,6 +296,18 @@ int main()
             device.constants.effect_states[slot][1] == effects.slots()[slot].generation && device.constants.effect_states[slot][2] == start_tick;
     }
     check(table, "the frame constants carry every started effect's slot");
+    const auto& drawn = device.constants;
+    const auto expected_wind = wind_velocity(WindSettings{}, rendered.tick(), true);
+    const float3 right = camera.right();
+    const float3 up = camera.up();
+    const float3 towards = cross(right, up);
+    const auto rebuild = [&](const float4& billboard) { return right * billboard.x + up * billboard.y + towards * billboard.z; };
+    const float3 sun{drawn.sun_direction.x, drawn.sun_direction.y, drawn.sun_direction.z};
+    const auto near = [](float3 a, float3 b) { return std::abs(a.x - b.x) < 1e-5f && std::abs(a.y - b.y) < 1e-5f && std::abs(a.z - b.z) < 1e-5f; };
+    check(drawn.clock[0] == rendered.tick() && drawn.wind.x == expected_wind.x && drawn.wind.z == expected_wind.z &&
+        near(rebuild(drawn.sun_billboard), sun) && near(rebuild(drawn.up_billboard), {0, 1, 0}) &&
+        dot(towards, camera.position - (camera.position + camera.forward())) > 0,
+        "the frame carries its tick, the gusting wind, and the sun and up directions in billboard space");
     check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, {false, nullptr, true}) == RenderResult::submitted &&
         device.valid_frame && device.lined_passes, "effect lines are drawn before the particles");
     device.result = RenderResult::skipped;

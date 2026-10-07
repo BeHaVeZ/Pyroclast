@@ -102,7 +102,7 @@ include(CTest)
 set(project_targets Pyroclast ImageDiff)
 if(BUILD_TESTING)
     add_executable(CommandLineTests tests/command_line_tests.cpp src/app/command_line.cpp src/graphics/adapter_name.cpp
-        src/simulation/explosion_presets.cpp)
+        src/simulation/explosion_presets.cpp src/simulation/wind.cpp)
     target_include_directories(CommandLineTests PRIVATE src)
     add_test(NAME command_line COMMAND CommandLineTests)
     list(APPEND project_targets CommandLineTests)

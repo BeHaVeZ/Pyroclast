@@ -35,6 +35,7 @@ float3 vortex_flow(Flow flow, float3 origin, float3 position, float seconds)
     float decay = exp(-max(seconds - flow.rise_time, 0) / max(flow.decay_time, 1e-3));
     float2 turn = flow.strength * decay * float2(from_core.y, -from_core.x) /
         (dot(from_core, from_core) + flow.core_radius * flow.core_radius);
+    turn.x *= saturate(radial_distance / max(flow.core_radius, 1e-3));
     return float3(outward.x * turn.x, turn.y, outward.y * turn.x);
 }
 

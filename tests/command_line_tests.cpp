@@ -1,6 +1,7 @@
 #include "app/command_line.hpp"
 #include "graphics/adapter_name.hpp"
 
+#include <cmath>
 #include <cstdio>
 #include <initializer_list>
 #include <string_view>
@@ -70,6 +71,12 @@ int main()
         {"wind with two values", {"--wind=5,0"}, d3d12, false, "Expected --wind"},
         {"wind with four values", {"--wind=5,0,0,1"}, d3d12, false, "Expected --wind"},
         {"wind not a number", {"--wind=fast,0,0"}, d3d12, false, "Expected --wind"},
+        {"wind heading wraps", {"--wind=2,450,0"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {}, {}, {}, false,
+            pyroclast::ExplosionPreset::small_he, pyroclast::particle_layout::full_mask, {2.0f, 90.0f, 0.0f}},
+        {"huge wind heading wraps", {"--wind=2,3e38,0"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {}, {}, {}, false,
+            pyroclast::ExplosionPreset::small_he, pyroclast::particle_layout::full_mask,
+            {2.0f, std::remainder(3e38f, 360.0f), 0.0f}},
+        {"infinite wind", {"--wind=inf,0,0"}, d3d12, false, "Expected --wind"},
         {"duplicate wind", {"--wind=1,0,0", "--wind=1,0,0"}, d3d12, false, "only once"},
         {"disable an unknown layer", {"--disable=smoke,clouds"}, d3d12, false, "Expected --disable"},
         {"disable nothing", {"--disable="}, d3d12, false, "Expected --disable"},

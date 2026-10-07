@@ -202,12 +202,13 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
                     (index == 2) == (comma == std::string_view::npos);
                 start = comma + 1;
             }
-            if (!valid || parsed[0] < 0 || parsed[0] > 40 || parsed[2] < 0 || parsed[2] > 1)
+            const auto wind = valid ? validated({parsed[0], parsed[1], parsed[2]}) : std::nullopt;
+            if (!wind)
             {
                 result.error = "Expected --wind=SPEED,DIRECTION,GUSTINESS (0-40 m/s, degrees, 0-1).";
                 return result;
             }
-            result.options.wind = {parsed[0], parsed[1], parsed[2]};
+            result.options.wind = *wind;
         }
         else if (option.starts_with("--disable="))
         {

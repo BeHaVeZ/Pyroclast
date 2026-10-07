@@ -125,7 +125,7 @@ PixelInput vs_main(uint vertex : SV_VertexID, uint instance : SV_InstanceID)
                 float seconds = float(frame.clock.x - state.z) / 60.0;
                 shadow = cloud_transmittance(layer, load_flow(classes, effect_class), frame.effect_origins[slot].xyz, position.xyz, seconds);
             }
-            output.shaded = 1;
+            output.shaded = flat ? 2 : 1;
             output.lighting = float4(added, shadow);
             output.color = float4(albedo, opacity);
         }
@@ -151,7 +151,7 @@ float4 ps_main(PixelInput input) : SV_Target
     float3 color = input.color.rgb;
     if (input.shaded > 0.5)
     {
-        float3 normal = float3(input.uv, sqrt(saturate(1 - radius)));
+        float3 normal = input.shaded > 1.5 ? float3(0, 0, 0.8) : float3(input.uv, sqrt(saturate(1 - radius)));
         float sun = saturate((dot(normal, frame.sun_billboard.xyz) + 0.6) / 1.6) * input.lighting.w;
         float3 sky = lerp(frame.ground_color.rgb, frame.sky_color.rgb, dot(normal, frame.up_billboard.xyz) * 0.5 + 0.5);
         float3 ambient = lerp(sky, dot(sky, 1.0 / 3).xxx, 0.5) + frame.sun_color.rgb * 0.1;

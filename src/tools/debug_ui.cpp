@@ -163,9 +163,10 @@ ImDrawData* DebugUi::build(const DiagnosticsSnapshot& snapshot, std::vector<UiCo
         }
         ImGui::Text("Temporary lights: %u", snapshot.lights);
         auto wind = snapshot.wind;
-        bool changed = ImGui::SliderFloat("Wind speed (m/s)", &wind.speed, 0, 20, "%.1f");
-        changed |= ImGui::SliderFloat("Wind heading (deg)", &wind.direction_degrees, -180, 180, "%.0f");
-        changed |= ImGui::SliderFloat("Gustiness", &wind.gustiness, 0, 1, "%.2f");
+        constexpr auto clamp = ImGuiSliderFlags_AlwaysClamp;
+        bool changed = ImGui::SliderFloat("Wind speed (m/s)", &wind.speed, 0, 20, "%.1f", clamp);
+        changed |= ImGui::SliderFloat("Wind heading (deg)", &wind.direction_degrees, -180, 180, "%.0f", clamp);
+        changed |= ImGui::SliderFloat("Gustiness", &wind.gustiness, 0, 1, "%.2f", clamp);
         if (changed) commands.push_back({UiCommand::Kind::set_wind, 0, wind});
         if (ImGui::Button("Trigger (Space)")) commands.push_back({UiCommand::Kind::trigger});
         ImGui::SameLine();
