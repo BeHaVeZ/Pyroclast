@@ -22,5 +22,8 @@ struct FrameConstants
     float4 effect_normals[maximum_effects];
     uint4 effect_states[maximum_effects];
     uint4 effect_order[maximum_effects / 4];
+    float4 light_positions[maximum_lights];
+    float4 light_colors[maximum_lights];
+    uint4 light_state;
 };
 ConstantBuffer<FrameConstants> frame : register(b1);

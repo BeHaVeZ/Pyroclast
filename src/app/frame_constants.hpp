@@ -29,6 +29,9 @@ struct FrameConstants
     std::array<float4, particle_layout::maximum_effects> effect_normals;
     std::array<std::array<std::uint32_t, 4>, particle_layout::maximum_effects> effect_states;
     std::array<std::array<std::uint32_t, 4>, particle_layout::maximum_effects / 4> effect_order;
+    std::array<float4, particle_layout::maximum_lights> light_positions;
+    std::array<float4, particle_layout::maximum_lights> light_colors;
+    std::array<std::uint32_t, 4> light_state;
 };
 static_assert(particle_layout::maximum_effects % 4 == 0);
 static_assert(sizeof(float4x4) == 64 && sizeof(float4) == 16);
@@ -42,5 +45,8 @@ static_assert(offsetof(FrameConstants, inverse_view_projection) == 64 && offseto
     offsetof(FrameConstants, effect_normals) == 320 + 16 * particle_layout::maximum_effects &&
     offsetof(FrameConstants, effect_states) == 320 + 32 * particle_layout::maximum_effects &&
     offsetof(FrameConstants, effect_order) == 320 + 48 * particle_layout::maximum_effects &&
-    sizeof(FrameConstants) == 320 + 52 * particle_layout::maximum_effects);
+    offsetof(FrameConstants, light_positions) == 320 + 52 * particle_layout::maximum_effects &&
+    offsetof(FrameConstants, light_colors) == 320 + 52 * particle_layout::maximum_effects + 16 * particle_layout::maximum_lights &&
+    offsetof(FrameConstants, light_state) == 320 + 52 * particle_layout::maximum_effects + 32 * particle_layout::maximum_lights &&
+    sizeof(FrameConstants) == 336 + 52 * particle_layout::maximum_effects + 32 * particle_layout::maximum_lights);
 }

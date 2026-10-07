@@ -28,6 +28,8 @@ struct TestCase
     pyroclast::SceneFormat scene_format = pyroclast::SceneFormat::rgba16f;
     std::string_view scenario;
     bool effect_lines = false;
+    pyroclast::ExplosionPreset preset = pyroclast::ExplosionPreset::small_he;
+    std::uint32_t layer_mask = pyroclast::particle_layout::all_layers_mask;
 };
 }
 
@@ -50,7 +52,17 @@ int main()
         {"invalid scene format", {"--scene-format=rgba32f"}, d3d12, false, "Expected --scene-format"},
         {"barrage scenario", {"--scenario=barrage"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {},
             pyroclast::SceneFormat::rgba16f, "barrage"},
-        {"invalid scenario", {"--scenario=storm"}, d3d12, false, "Expected --scenario=single, grid-10, grid-50, grid-100 or barrage"},
+        {"invalid scenario", {"--scenario=storm"}, d3d12, false, "Expected --scenario=single, grid-10, grid-50, grid-100, barrage or presets"},
+        {"presets scenario", {"--scenario=presets"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {}, {}, "presets"},
+        {"preset", {"--preset=fuel-fire"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {}, {}, {}, false,
+            pyroclast::ExplosionPreset::fuel_fire},
+        {"invalid preset", {"--preset=nuke"}, d3d12, false, "Expected --preset=small-impact, small-he, artillery-he, heavy, fuel-fire, dust-blast or stress-test"},
+        {"duplicate preset", {"--preset=heavy", "--preset=heavy"}, d3d12, false, "only once"},
+        {"disable layers", {"--disable=debris,lights,smoke"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {}, {}, {},
+            false, pyroclast::ExplosionPreset::small_he, 0xff & ~((1u << 6) | (1u << 7) | (1u << 1))},
+        {"disable an unknown layer", {"--disable=smoke,clouds"}, d3d12, false, "Expected --disable"},
+        {"disable nothing", {"--disable="}, d3d12, false, "Expected --disable"},
+        {"disable with a trailing comma", {"--disable=smoke,"}, d3d12, false, "Expected --disable"},
         {"duplicate scenario", {"--scenario=single", "--scenario=single"}, d3d12, false, "only once"},
         {"duplicate effect lines", {"--effect-lines", "--effect-lines"}, d3d12, false, "only once"},
         {"effect lines", {"--effect-lines"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {},
@@ -135,7 +147,8 @@ int main()
                 result.options.gpu_validation == test.gpu_validation && result.options.ui == test.ui &&
                 result.options.gpu_regions == test.gpu_regions && result.options.adapter == test.adapter &&
                 result.options.view == test.view && result.options.scene_format == test.scene_format &&
-                result.options.scenario == test.scenario && result.options.effect_lines == test.effect_lines
+                result.options.scenario == test.scenario && result.options.effect_lines == test.effect_lines &&
+                result.options.preset == test.preset && result.options.layer_mask == test.layer_mask
             : result.error.find(test.error_fragment) != std::string::npos;
         if (!passed)
         {

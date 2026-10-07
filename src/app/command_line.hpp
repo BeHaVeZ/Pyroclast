@@ -2,6 +2,7 @@
 
 #include "range_view.hpp"
 #include "../graphics/graphics_api.hpp"
+#include "../simulation/explosion_presets.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -30,6 +31,8 @@ struct ApplicationOptions
     SceneFormat scene_format = SceneFormat::rgba16f;
     std::string scenario;
     bool effect_lines = false;
+    ExplosionPreset preset = ExplosionPreset::small_he;
+    std::uint32_t layer_mask = particle_layout::all_layers_mask;
 };
 
 struct CommandLineResult
@@ -43,4 +46,5 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments);
 const char* renderer_name(Renderer renderer);
 const char* view_name(RangeView view);
 const char* scene_format_name(SceneFormat format);
+inline constexpr std::string_view disable_names = "dust, smoke, plume, flash, fireball, sparks, debris, lights";
 }

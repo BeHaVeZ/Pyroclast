@@ -44,6 +44,7 @@ void ExplosionSystem::start(std::uint32_t tick)
         slot.origin = event.position;
         slot.normal = event.normal;
         slot.seed = event.seed;
+        slot.preset = event.preset;
         slot.effect_class = effect_class_index(event.preset, event.surface);
         slot.lifetime_ticks = effect_ticks(event.preset, event.surface);
         slot.start_tick = tick;

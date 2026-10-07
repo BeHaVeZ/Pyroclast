@@ -1,4 +1,5 @@
 #include "explosion_renderer.hpp"
+#include "../simulation/effect_lights.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -65,13 +66,27 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     };
     std::stable_sort(order.begin(), order.end(), [&distance](std::uint32_t a, std::uint32_t b) { return distance(a) > distance(b); });
     for (std::size_t rank = 0; rank < order.size(); ++rank) constants.effect_order[rank / 4][rank % 4] = order[rank];
+    std::array<PointLight, particle_layout::maximum_lights> lights;
+    const bool lit = ((options.layer_mask >> particle_layout::lights_mask_bit) & 1) != 0;
+    const auto light_count = lit ? select_lights(slots, active, particles.tick(), lights) : 0;
+    for (std::uint32_t index = 0; index < light_count; ++index)
+    {
+        const auto& light = lights[index];
+        constants.light_positions[index] = {light.position.x, light.position.y, light.position.z, light.radius};
+        constants.light_colors[index] = {light.color.x, light.color.y, light.color.z, 0};
+    }
+    constants.light_state = {light_count, options.layer_mask, 0, 0};
+    lights_ = light_count;
 
     const auto opaque = range.draws();
     const Draw present{*present_, {}, {}, 3, 1, "Tonemap"};
     const Draw lines{*lines_, {}, {work.effects}, 32, std::max(work.effects, 1u), "Effect lines"};
     const bool simulate = work.effects != 0;
     const bool show_lines = options.debug_lines && simulate;
-    std::vector<Pass> passes{{scene_.get(), {}, opaque, "Scene", false, depth_.get(), true}};
+    std::vector<Draw> scene_draws{opaque[0]};
+    if (simulate) scene_draws.push_back(work.debris);
+    scene_draws.push_back(opaque[1]);
+    std::vector<Pass> passes{{scene_.get(), {}, scene_draws, "Scene", false, depth_.get(), true}};
     std::vector<Draw> over_scene;
     if (show_lines) over_scene.push_back(lines);
     if (simulate && !smoke_target_)

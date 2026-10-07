@@ -1,8 +1,11 @@
 """Interleaved A/B timing of two Pyroclast builds on fixed-state workloads or scripted scenarios.
 
   python tools/ab.py --a <dir-with-Pyroclast.exe> --b <dir> [--runs 5] [--matrix default|quick|scenarios]
-                     [--renderers d3d12,vulkan] [--csv out/ab/latest.csv]
+                     [--cases 100@6,1@6 [--smoke full,half]] [--renderers d3d12,vulkan] [--csv out/ab/latest.csv]
                      [--a-args="--flag=value ..."] [--b-args="..."]
+
+--cases replaces the matrix with fixed-state cases <explosions>@<tick> on every renderer and smoke
+resolution given (--smoke, default full), e.g. an early tick while the temporary lights are lit.
 
 --a-args and --b-args append flags to every launch of that side, so one build can be compared
 under two settings (pass the same directory to --a and --b), e.g. a format or a feature toggle.
@@ -99,6 +102,8 @@ def main():
     parser.add_argument("--b", required=True, help="directory containing the candidate Pyroclast.exe")
     parser.add_argument("--runs", type=int, default=5)
     parser.add_argument("--matrix", default="default", choices=sorted(MATRICES))
+    parser.add_argument("--cases", default="", help="fixed-state cases <explosions>@<tick>, comma-separated, instead of the matrix")
+    parser.add_argument("--smoke", default="full", help="smoke resolutions for --cases, comma-separated")
     parser.add_argument("--renderers", default="d3d12,vulkan", help="comma-separated subset of the matrix to run")
     parser.add_argument("--csv", default="out/ab/latest.csv")
     parser.add_argument("--a-args", default="", help="extra flags for every A launch")
@@ -113,7 +118,12 @@ def main():
     with output.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=FIELDS)
         writer.writeheader()
-        for case in [case for case in MATRICES[arguments.matrix] if case[0] in renderers]:
+        matrix = MATRICES[arguments.matrix]
+        if arguments.cases:
+            pairs = [tuple(int(part) for part in case.split("@")) for case in arguments.cases.split(",")]
+            matrix = [(renderer, smoke, explosions, tick) for renderer in ("d3d12", "vulkan")
+                      for smoke in arguments.smoke.split(",") for explosions, tick in pairs]
+        for case in [case for case in matrix if case[0] in renderers]:
             samples = {"A": [], "B": []}
             for run in range(arguments.runs):
                 for build in ("A", "B") if run % 2 == 0 else ("B", "A"):

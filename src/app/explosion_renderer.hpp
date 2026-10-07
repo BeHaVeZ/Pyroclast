@@ -17,9 +17,11 @@ public:
         bool capture = false;
         ImDrawData* overlay = nullptr;
         bool debug_lines = false;
+        std::uint32_t layer_mask = particle_layout::all_layers_mask;
     };
     RenderResult render(GraphicsDevice& device, ParticleSystem& particles, ExplosionSystem& effects, const TestRange& range,
         const Camera& camera, int width, int height, double elapsed_seconds, const FrameOptions& options);
+    std::uint32_t lights() const { return lights_; }
 
 private:
     std::unique_ptr<RenderTarget> scene_;
@@ -28,5 +30,6 @@ private:
     std::unique_ptr<GraphicsPipeline> lines_;
     std::unique_ptr<RenderTarget> smoke_target_;
     std::unique_ptr<GraphicsPipeline> composite_;
+    std::uint32_t lights_ = 0;
 };
 }

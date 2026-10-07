@@ -15,17 +15,27 @@ namespace pyroclast
 enum class SurfaceType : std::uint32_t { dirt, concrete };
 inline constexpr std::uint32_t surface_type_count = 2;
 
-enum class ExplosionPreset : std::uint32_t { small_he };
-inline constexpr std::uint32_t preset_count = 1;
+enum class ExplosionPreset : std::uint32_t
+{
+    small_impact,
+    small_he,
+    artillery_he,
+    heavy,
+    fuel_fire,
+    dust_blast,
+    stress_test
+};
+inline constexpr std::uint32_t preset_count = 7;
 
 enum class EffectLayer : std::uint32_t { ground_dust, blast_smoke, plume, flash, fireball, sparks, debris };
+inline constexpr std::uint32_t layer_count = particle_layout::layer_count;
 
 struct LayerParameters
 {
     std::uint32_t first_group = 0;
     std::uint32_t groups = 0;
     std::uint32_t count = 0;
-    std::uint32_t reserved = 0;
+    std::uint32_t spawn = particle_layout::spawn_burst;
     float radius = 0;
     float speed_min = 0;
     float speed_range = 0;
@@ -41,7 +51,7 @@ struct LayerParameters
     float buoyancy = 0;
     float restitution = 0;
     float friction = 1;
-    float unused = 0;
+    float stretch = 0;
     float growth = 0;
     float progress_growth = 0;
     float strength = 0;
@@ -63,9 +73,11 @@ struct EffectClass
 };
 static_assert(sizeof(EffectClass) == particle_layout::class_stride && particle_layout::slab_groups <= particle_layout::class_layers_offset);
 
-inline constexpr std::string_view preset_names = "small-he";
+inline constexpr std::string_view preset_names = "small-impact, small-he, artillery-he, heavy, fuel-fire, dust-blast, stress-test";
 std::string_view preset_name(ExplosionPreset preset);
 std::optional<ExplosionPreset> preset_from_name(std::string_view name);
+std::string_view surface_name(SurfaceType surface);
+std::string_view layer_name(EffectLayer layer);
 
 constexpr std::uint32_t effect_class_index(ExplosionPreset preset, SurfaceType surface)
 {
@@ -77,4 +89,17 @@ static_assert(effect_class_count <= particle_layout::maximum_effect_classes);
 EffectClass make_effect_class(ExplosionPreset preset, SurfaceType surface);
 std::vector<EffectClass> effect_classes();
 std::uint32_t effect_ticks(ExplosionPreset preset, SurfaceType surface);
+
+struct LightCurve
+{
+    float flash_intensity = 0;
+    float flash_seconds = 0;
+    float glow_intensity = 0;
+    float glow_seconds = 0;
+    float3 color{1, 1, 1};
+    float radius = 0;
+    float height = 0;
+};
+LightCurve light_curve(ExplosionPreset preset);
+float light_intensity(const LightCurve& curve, float seconds);
 }

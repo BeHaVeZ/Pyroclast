@@ -41,6 +41,7 @@ public:
             (description.depth == DepthMode::test ? particles : offscreen) = pipeline.get();
         if (description.vertex_shader == Shader::composite_vertex) composite = pipeline.get();
         if (description.vertex_shader == Shader::terrain_vertex) terrain = pipeline.get();
+        if (description.vertex_shader == Shader::debris_vertex && description.depth == DepthMode::test_write) debris = pipeline.get();
         if (description.vertex_shader == Shader::sky_vertex) sky = pipeline.get();
         if (description.vertex_shader == Shader::debug_lines_vertex && description.topology == pyroclast::Topology::lines) lines = pipeline.get();
         return pipeline;
@@ -90,7 +91,7 @@ public:
         const auto& passes = frame.passes;
         const auto range_pass = [&](const pyroclast::Pass& pass) {
             return pass.target == scene && !pass.load && pass.depth == depth && pass.depth_write && inputs(pass, nullptr) &&
-                draws(pass, {terrain, sky});
+                (frame.dispatches.empty() ? draws(pass, {terrain, sky}) : draws(pass, {terrain, debris, sky}));
         };
         const auto present_pass = [&](const pyroclast::Pass& pass) {
             return !pass.target && !pass.depth && inputs(pass, scene) && draws(pass, {present}) && pass.draws[0].vertex_count == 3;
@@ -143,6 +144,7 @@ public:
     const pyroclast::GraphicsPipeline* present = nullptr;
     const pyroclast::GraphicsPipeline* composite = nullptr;
     const pyroclast::GraphicsPipeline* terrain = nullptr;
+    const pyroclast::GraphicsPipeline* debris = nullptr;
     const pyroclast::GraphicsPipeline* sky = nullptr;
     const pyroclast::GraphicsPipeline* lines = nullptr;
     pyroclast::RenderResult result = pyroclast::RenderResult::submitted;
@@ -174,7 +176,7 @@ int main()
     constexpr std::uint32_t all_groups = ParticleSystem::effect_slots * groups;
     const auto classes = effect_classes();
     check(system.initialize(device, range.heights(), targets, classes) && device.zeroed_sizes == std::vector<std::uint32_t>{
-        ParticleSystem::capacity * layout::particle_stride, all_groups * 8, all_groups * 4, 2 * ParticleSystem::capacity * 4, layout::arguments_bytes},
+        ParticleSystem::capacity * layout::particle_stride, all_groups * 8, all_groups * 4, 3 * ParticleSystem::capacity * 4, layout::arguments_bytes},
         "a zero-filled pool with one slab per effect slot, alive masks and offsets per group, alive lists and arguments");
     bool uploaded = device.uploaded_classes.size() == layout::maximum_effect_classes;
     for (std::size_t index = 0; uploaded && index < device.uploaded_classes.size(); ++index)
@@ -204,7 +206,7 @@ int main()
         offsets && arguments && arguments->size() == layout::arguments_bytes,
         "one scan group turns the masks into offsets and arguments stamped with the tick after the steps");
     check(scatter.groups[0] == 3 * groups && scatter.constants[0] == 3 && scatter.constants[1] == 0 && scatter.bindings.read[0] == masks &&
-        scatter.bindings.read[1] == offsets && scatter.bindings.read[2] == class_buffer && alive && alive->size() == 2 * ParticleSystem::capacity * 4,
+        scatter.bindings.read[1] == offsets && scatter.bindings.read[2] == class_buffer && alive && alive->size() == 3 * ParticleSystem::capacity * 4,
         "the scatter writes one list of every alive particle without offscreen smoke");
     check(three.counters.source == arguments && three.counters.offset == layout::counters_offset &&
         three.counters.size == sizeof(ParticleCounters), "the counter record is read back from the arguments");
@@ -221,13 +223,19 @@ int main()
         draws(layered.offscreen_smoke, device.offscreen, 0, layout::light_list_first, 2, layout::smoke_arguments_offset) &&
         draws(layered.light, device.particles, layout::light_list_first, ParticleSystem::capacity, 1,
             layout::light_arguments_offset), "offscreen smoke and light are drawn from a list per layer");
+    const auto& debris = three.debris;
+    check(&debris.pipeline == device.debris && debris.constants[0] == ParticleSystem::capacity && debris.constants[1] == layout::debris_list_first &&
+        debris.constants[2] == ParticleSystem::capacity && debris.indirect == arguments && debris.indirect_offset == layout::debris_arguments_offset &&
+        debris.bindings.read[0] == pool && debris.bindings.read[1] == alive && debris.bindings.read[2] == class_buffer,
+        "debris is drawn from its own list, opaque with depth");
     ReadbackData record;
-    const std::uint32_t words[] = {7, 30, 10, 20};
+    const std::uint32_t words[] = {7, 36, 10, 20, 6, 0, 0, 0};
     std::memcpy(record.bytes.data(), words, sizeof(words));
     record.size = sizeof(words);
     const auto counted = ParticleSystem::counters(record);
-    check(counted && counted->tick == 7 && counted->alive == 30 && counted->smoke == 10 && counted->light == 20, "a counter record reads back");
-    record.size = 12;
+    check(counted && counted->tick == 7 && counted->alive == 36 && counted->smoke == 10 && counted->light == 20 && counted->debris == 6,
+        "a counter record reads back");
+    record.size = 16;
     check(!ParticleSystem::counters(record), "a readback of another size is no counter record");
 
     ParticleSystem timed;

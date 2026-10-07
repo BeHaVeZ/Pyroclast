@@ -52,6 +52,13 @@ float Terrain::height(float x, float z) const
     return near_row + (far_row - near_row) * fz;
 }
 
+SurfaceType Terrain::surface(float x, float z)
+{
+    using namespace terrain_layout;
+    const bool pad = x >= concrete_pad_min_x && x <= concrete_pad_max_x && z >= concrete_pad_min_z && z <= concrete_pad_max_z;
+    return pad ? SurfaceType::concrete : SurfaceType::dirt;
+}
+
 float3 Terrain::normal(float x, float z) const
 {
     const float dx = height(x + spacing, z) - height(x - spacing, z);

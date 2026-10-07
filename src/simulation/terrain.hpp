@@ -1,5 +1,6 @@
 #pragma once
 
+#include "explosion_presets.hpp"
 #include "../core/math.hpp"
 
 #include <cstdint>
@@ -26,6 +27,7 @@ public:
     Terrain();
     float height(float x, float z) const;
     float3 normal(float x, float z) const;
+    static SurfaceType surface(float x, float z);
     std::optional<float3> raycast(const Ray& ray, float max_distance) const;
     // Row-major: sample (column, row) at index row * resolution + column, at x = column * spacing - half_extent.
     std::span<const float> heights() const { return heights_; }

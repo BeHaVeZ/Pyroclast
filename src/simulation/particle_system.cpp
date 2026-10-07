@@ -18,7 +18,7 @@ bool ParticleSystem::initialize(GraphicsDevice& device, const Buffer& heights, P
     constexpr std::uint32_t groups = effect_slots * groups_per_slab;
     alive_masks_ = device.create_buffer(groups * 8, {});
     offsets_ = device.create_buffer(groups * 4, {});
-    alive_ = device.create_buffer(2 * capacity * 4, {});
+    alive_ = device.create_buffer(3 * capacity * 4, {});
     std::vector<EffectClass> table(particle_layout::maximum_effect_classes);
     std::copy(classes.begin(), classes.end(), table.begin());
     classes_ = device.create_buffer(static_cast<std::uint32_t>(table.size() * sizeof(EffectClass)), std::as_bytes(std::span(table)));
@@ -27,11 +27,13 @@ bool ParticleSystem::initialize(GraphicsDevice& device, const Buffer& heights, P
         {Shader::particle_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha, DepthMode::test, targets.scene});
     offscreen_graphics_ = device.create_graphics_pipeline(
         {Shader::particle_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha, DepthMode::none, targets.offscreen});
+    debris_graphics_ = device.create_graphics_pipeline(
+        {Shader::debris_vertex, Shader::debris_pixel, BlendMode::opaque, DepthMode::test_write, targets.scene});
     compute_ = device.create_compute_pipeline(Shader::particle_simulation);
     scan_ = device.create_compute_pipeline(Shader::particle_scan);
     scatter_ = device.create_compute_pipeline(Shader::particle_scatter);
     if (!particles_ || !alive_masks_ || !offsets_ || !alive_ || !arguments_ || !classes_ || !graphics_ || !offscreen_graphics_ ||
-        !compute_ || !scan_ || !scatter_)
+        !debris_graphics_ || !compute_ || !scan_ || !scatter_)
     {
         return false;
     }
@@ -46,7 +48,7 @@ constexpr double fixed_step = 1.0 / 60.0;
 
 ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_effects, std::uint32_t offscreen_divisor)
 {
-    assert(particles_ && heights_ && graphics_ && offscreen_graphics_ && compute_ && scan_ && scatter_);
+    assert(particles_ && heights_ && graphics_ && offscreen_graphics_ && debris_graphics_ && compute_ && scan_ && scatter_);
     assert(std::isfinite(elapsed_seconds) && elapsed_seconds >= 0);
     assert(active_effects <= effect_slots);
     if (!paused_ && !fixed_ticks_)
@@ -83,6 +85,7 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_e
     const DrawConstants both_layers{capacity, 0, capacity, 1};
     const DrawConstants smoke_layer{capacity, 0, light_first, std::max(offscreen_divisor, 1u)};
     const DrawConstants light_layer{capacity, light_first, capacity, 1};
+    const DrawConstants debris_list{capacity, particle_layout::debris_list_first, capacity};
     return {
         {{{*compute_, simulation, parameters, {groups, 1, 1}, "Particle simulation"},
             {*scan_, scan, scan_parameters, {1, 1, 1}, "Particle scan"},
@@ -90,6 +93,7 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_e
         {*graphics_, drawing, both_layers, 0, 0, "Particles", arguments_.get(), particle_layout::particle_arguments_offset},
         {*offscreen_graphics_, drawing, smoke_layer, 0, 0, "Smoke", arguments_.get(), particle_layout::smoke_arguments_offset},
         {*graphics_, drawing, light_layer, 0, 0, "Light", arguments_.get(), particle_layout::light_arguments_offset},
+        {*debris_graphics_, drawing, debris_list, 0, 0, "Debris", arguments_.get(), particle_layout::debris_arguments_offset},
         {arguments_.get(), particle_layout::counters_offset, static_cast<std::uint32_t>(sizeof(ParticleCounters))},
         steps, active_effects};
 }

@@ -1,6 +1,7 @@
 #include "effect_classes.hlsli"
 #include "explosion.hlsli"
 #include "frame_constants.hlsli"
+#include "lights.hlsli"
 
 struct DrawConstants
 {
@@ -66,6 +67,21 @@ PixelInput vs_main(uint vertex : SV_VertexID, uint instance : SV_InstanceID)
         size *= 0.5 / pixels;
     }
     float3 world = position.xyz + (corner.x * frame.camera_right.xyz + corner.y * frame.camera_up.xyz) * size;
+    if (layer.stretch > 0 && !flat)
+    {
+        float3 velocity = asfloat(particles.Load3(address + particle_velocity_offset));
+        float3 view = normalize(position.xyz - frame.camera_position.xyz);
+        float3 trail = velocity * layer.stretch;
+        float3 across = trail - view * dot(trail, view);
+        float trail_length = length(across);
+        if (trail_length > size)
+        {
+            float3 along = across / trail_length;
+            float3 side = normalize(cross(view, along));
+            float3 middle = position.xyz - across * 0.5;
+            world = middle + along * (corner.x * (0.5 * trail_length + size)) + side * (corner.y * size);
+        }
+    }
     output.position = mul(frame.view_projection, float4(world, 1));
     output.distance = output.position.w;
     output.softness = softness;
@@ -76,7 +92,9 @@ PixelInput vs_main(uint vertex : SV_VertexID, uint instance : SV_InstanceID)
     {
         float temperature = smoke_temperature(age);
         float opacity = layer.strength * saturate(age * layer.fade_in_rate) * (1 - progress) * (1 - progress) * coverage;
-        output.color = float4(lerp(layer.first_color, layer.second_color, temperature), opacity);
+        float3 color = lerp(layer.first_color, layer.second_color, temperature);
+        color += color * point_lights(position.xyz, 0, false);
+        output.color = float4(color, opacity);
     }
     output.occlusion = smoke ? 1 : 0;
     return output;

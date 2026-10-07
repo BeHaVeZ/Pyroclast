@@ -26,6 +26,7 @@ struct EffectSlot
     std::uint32_t seed = 0;
     std::uint32_t generation = 0;
     std::uint32_t start_tick = 0;
+    ExplosionPreset preset = ExplosionPreset::small_he;
     std::uint32_t effect_class = 0;
     std::uint32_t lifetime_ticks = 0;
     bool active = false;

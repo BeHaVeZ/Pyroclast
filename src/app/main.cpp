@@ -75,6 +75,8 @@ struct Sandbox
     std::vector<pyroclast::ExplosionEvent> group;
     bool debug_lines = false;
     std::uint32_t next_seed = 100000;
+    pyroclast::ExplosionPreset click_preset = pyroclast::ExplosionPreset::small_he;
+    std::uint32_t layer_mask = pyroclast::particle_layout::all_layers_mask;
     std::optional<pyroclast::ParticleCounters> counters;
     std::uint64_t counter_sample = 0;
 
@@ -115,20 +117,29 @@ struct Sandbox
             return;
         }
         const auto normal = range.terrain().normal(hit->x, hit->z);
-        effects.submit({*hit + normal * 0.5f, normal, next_seed++});
-        SDL_Log("Explosion at (%.1f, %.1f, %.1f).", hit->x, hit->y, hit->z);
+        const auto surface = pyroclast::Terrain::surface(hit->x, hit->z);
+        effects.submit({*hit + normal * 0.5f, normal, next_seed++, click_preset, surface});
+        const auto preset = pyroclast::preset_name(click_preset);
+        const auto ground = pyroclast::surface_name(surface);
+        SDL_Log("Explosion at (%.1f, %.1f, %.1f): %.*s on %.*s.", hit->x, hit->y, hit->z, static_cast<int>(preset.size()), preset.data(),
+            static_cast<int>(ground.size()), ground.data());
     }
 };
 
 void apply(pyroclast::UiCommand command, Sandbox& sandbox)
 {
-    switch (command)
+    using Kind = pyroclast::UiCommand::Kind;
+    switch (command.kind)
     {
-    case pyroclast::UiCommand::trigger: sandbox.trigger_group(); break;
-    case pyroclast::UiCommand::clear: sandbox.clear(); break;
-    case pyroclast::UiCommand::toggle_pause: sandbox.particles.toggle_pause(); break;
-    case pyroclast::UiCommand::step: sandbox.particles.step(); break;
-    case pyroclast::UiCommand::toggle_debug_lines: sandbox.debug_lines = !sandbox.debug_lines; break;
+    case Kind::trigger: sandbox.trigger_group(); break;
+    case Kind::clear: sandbox.clear(); break;
+    case Kind::toggle_pause: sandbox.particles.toggle_pause(); break;
+    case Kind::step: sandbox.particles.step(); break;
+    case Kind::toggle_debug_lines: sandbox.debug_lines = !sandbox.debug_lines; break;
+    case Kind::select_preset:
+        if (command.value < pyroclast::preset_count) sandbox.click_preset = static_cast<pyroclast::ExplosionPreset>(command.value);
+        break;
+    case Kind::toggle_layer: sandbox.layer_mask ^= 1u << (command.value & 31); break;
     }
 }
 
@@ -346,11 +357,12 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
             if (event.type == SDL_EVENT_KEY_DOWN) baseline.disable();
             if (event.type == SDL_EVENT_KEY_DOWN && event.key.windowID == window_id && !event.key.repeat)
             {
-                if (event.key.key == SDLK_SPACE) apply(pyroclast::UiCommand::trigger, sandbox);
-                if (event.key.key == SDLK_R) apply(pyroclast::UiCommand::clear, sandbox);
-                if (event.key.key == SDLK_P) apply(pyroclast::UiCommand::toggle_pause, sandbox);
-                if (event.key.key == SDLK_N) apply(pyroclast::UiCommand::step, sandbox);
-                if (event.key.key == SDLK_L) apply(pyroclast::UiCommand::toggle_debug_lines, sandbox);
+                using Kind = pyroclast::UiCommand::Kind;
+                if (event.key.key == SDLK_SPACE) apply({Kind::trigger}, sandbox);
+                if (event.key.key == SDLK_R) apply({Kind::clear}, sandbox);
+                if (event.key.key == SDLK_P) apply({Kind::toggle_pause}, sandbox);
+                if (event.key.key == SDLK_N) apply({Kind::step}, sandbox);
+                if (event.key.key == SDLK_L) apply({Kind::toggle_debug_lines}, sandbox);
             }
         }
 
@@ -400,7 +412,8 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                         options.half_smoke,
                         pyroclast::scene_format_name(options.scene_format), pyroclast::TestRange::exposure,
                         {camera.position.x, camera.position.y, camera.position.z},
-                        camera.yaw * 180 / std::numbers::pi_v<float>, camera.pitch * 180 / std::numbers::pi_v<float>, flight.speed};
+                        camera.yaw * 180 / std::numbers::pi_v<float>, camera.pitch * 180 / std::numbers::pi_v<float>, flight.speed,
+                        sandbox.click_preset, sandbox.layer_mask, sandbox.renderer.lights()};
                     commands.clear();
                     overlay = ui->build(snapshot, commands);
                     if (!scenario) for (const auto command : commands) apply(command, sandbox);
@@ -408,7 +421,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                 if (scenario) scenario->submit_due(sandbox);
                 const bool capture = !options.capture_path.empty() && !demo.has_pending_steps();
                 const auto result = sandbox.renderer.render(renderer, demo, sandbox.effects, sandbox.range, camera, width, height, elapsed,
-                    {capture, overlay, sandbox.debug_lines});
+                    {capture, overlay, sandbox.debug_lines, sandbox.layer_mask});
                 if (result == pyroclast::RenderResult::failed) return 1;
                 const auto counters = sandbox.poll_counters(renderer);
                 if (scenario && counters) scenario->count(*counters);
@@ -519,10 +532,14 @@ int run_application(const pyroclast::ApplicationOptions& options)
         return 1;
     }
     sandbox->debug_lines = options.effect_lines;
+    sandbox->click_preset = options.preset;
+    sandbox->layer_mask = options.layer_mask;
+    const auto preset = pyroclast::preset_name(options.preset);
+    SDL_Log("Preset: %.*s; layer mask 0x%02x.", static_cast<int>(preset.size()), preset.data(), options.layer_mask);
     std::optional<ScenarioRun> scenario;
     if (!options.scenario.empty())
     {
-        auto script = pyroclast::make_scenario(options.scenario, sandbox->range.terrain());
+        auto script = pyroclast::make_scenario(options.scenario, sandbox->range.terrain(), options.preset);
         if (!script) return 1;
         SDL_Log("Scenario %s: %zu events over %u ticks, one tick per frame; VSync off; timestamps on.", options.scenario.c_str(),
             script->events.size(), script->duration_ticks);
@@ -531,7 +548,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
     }
     else
     {
-        sandbox->group = pyroclast::group_events(sandbox->range.terrain(), options.explosions);
+        sandbox->group = pyroclast::group_events(sandbox->range.terrain(), options.explosions, options.preset);
         sandbox->start_group();
     }
     if (options.profile_tick)

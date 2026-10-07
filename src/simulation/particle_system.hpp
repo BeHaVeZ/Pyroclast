@@ -19,7 +19,8 @@ struct Particle
     float lifetime;
     float size;
     std::uint32_t generation;
-    std::uint32_t reserved[2];
+    float spin;
+    std::uint32_t reserved;
 };
 static_assert(sizeof(Particle) == particle_layout::particle_stride &&
     offsetof(Particle, position) == particle_layout::particle_position_offset &&
@@ -27,7 +28,8 @@ static_assert(sizeof(Particle) == particle_layout::particle_stride &&
     offsetof(Particle, velocity) == particle_layout::particle_velocity_offset &&
     offsetof(Particle, lifetime) == particle_layout::particle_velocity_offset + 12 &&
     offsetof(Particle, size) == particle_layout::particle_size_offset &&
-    offsetof(Particle, generation) == particle_layout::particle_generation_offset);
+    offsetof(Particle, generation) == particle_layout::particle_generation_offset &&
+    offsetof(Particle, spin) == particle_layout::particle_spin_offset);
 
 struct ParticleWork
 {
@@ -35,6 +37,7 @@ struct ParticleWork
     Draw particles;
     Draw offscreen_smoke;
     Draw light;
+    Draw debris;
     Frame::Readback counters;
     std::uint32_t steps;
     std::uint32_t effects;
@@ -46,6 +49,8 @@ struct ParticleCounters
     std::uint32_t alive = 0;
     std::uint32_t smoke = 0;
     std::uint32_t light = 0;
+    std::uint32_t debris = 0;
+    std::uint32_t reserved[3]{};
 };
 
 struct ParticleTargets
@@ -87,6 +92,7 @@ private:
     const Buffer* heights_ = nullptr;
     std::unique_ptr<GraphicsPipeline> graphics_;
     std::unique_ptr<GraphicsPipeline> offscreen_graphics_;
+    std::unique_ptr<GraphicsPipeline> debris_graphics_;
     std::unique_ptr<ComputePipeline> compute_;
     std::unique_ptr<ComputePipeline> scan_;
     std::unique_ptr<ComputePipeline> scatter_;

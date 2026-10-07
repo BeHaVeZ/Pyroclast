@@ -27,9 +27,10 @@ void cs_main(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID)
     uint place = low ? countbits(bits.x & (bit - 1)) : countbits(bits.x) + countbits(bits.y & (bit - 1));
     uint slot = frame.effect_order[rank / 4][rank % 4];
     uint local = (group.x % slab_groups) * simulation_group_size + thread.x;
-    bool light = !smoke_like(group_layer(classes, frame.effect_states[min(slot, maximum_effects - 1)].w, group.x % slab_groups));
-    uint index = (parameters.layered != 0 && light ? light_list_first : 0) + offsets.Load(group.x * 4) + place;
-    if (slot < maximum_effects && index < light_list_first + maximum_effects * explosion_particles)
+    uint layer_index = group_layer(classes, frame.effect_states[min(slot, maximum_effects - 1)].w, group.x % slab_groups);
+    uint first = layer_index == layer_debris ? debris_list_first : parameters.layered != 0 && !smoke_like(layer_index) ? light_list_first : 0;
+    uint index = first + offsets.Load(group.x * 4) + place;
+    if (slot < maximum_effects && index < debris_list_first + maximum_effects * explosion_particles)
     {
         alive.Store(index * 4, slot * explosion_particles + local);
     }

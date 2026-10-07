@@ -1,0 +1,137 @@
+#include "simulation/effect_lights.hpp"
+#include "simulation/explosion_presets.hpp"
+#include "simulation/terrain.hpp"
+
+#include <array>
+#include <cmath>
+#include <cstdio>
+
+int main()
+{
+    using namespace pyroclast;
+    namespace layout = particle_layout;
+    int failures = 0;
+    const auto check = [&failures](bool value, const char* name) {
+        if (!value) { std::fprintf(stderr, "FAIL: %s\n", name); ++failures; }
+    };
+    const auto layer = [](const EffectClass& effect, EffectLayer which) -> const LayerParameters& {
+        return effect.layers[static_cast<std::uint32_t>(which)];
+    };
+
+    bool names = true;
+    for (std::uint32_t index = 0; index < preset_count; ++index)
+    {
+        const auto preset = static_cast<ExplosionPreset>(index);
+        names = names && preset_from_name(preset_name(preset)) == preset && preset_names.find(preset_name(preset)) != std::string_view::npos;
+    }
+    check(names && !preset_from_name("nuke") && !preset_from_name(""), "every preset has a name --preset accepts");
+
+    const auto classes = effect_classes();
+    check(classes.size() == effect_class_count && effect_class_index(ExplosionPreset::stress_test, SurfaceType::concrete) == effect_class_count - 1,
+        "one class per preset and surface, in index order");
+    bool layouts = true;
+    for (std::uint32_t index = 0; index < classes.size() && layouts; ++index)
+    {
+        const auto& effect = classes[index];
+        std::uint32_t next = 0;
+        for (std::uint32_t which = 0; which < layout::layer_count && layouts; ++which)
+        {
+            const auto& entry = effect.layers[which];
+            layouts = entry.first_group == next && entry.groups * layout::simulation_group_size >= entry.count &&
+                (entry.groups == 0 || (entry.groups - 1) * layout::simulation_group_size < entry.count);
+            for (std::uint32_t group = 0; group < entry.groups && layouts; ++group)
+            {
+                layouts = effect.group_layers[entry.first_group + group] == which;
+            }
+            next += entry.groups;
+        }
+        layouts = layouts && next <= layout::slab_groups;
+        for (std::uint32_t group = next; group < layout::slab_groups && layouts; ++group)
+        {
+            layouts = effect.group_layers[group] == layout::no_layer;
+        }
+        layouts = layouts && layer(effect, EffectLayer::ground_dust).spawn == layout::spawn_ring &&
+            layer(effect, EffectLayer::blast_smoke).spawn == layout::spawn_burst;
+    }
+    check(layouts, "every class lays its layers out in whole groups, in draw order, within one slab");
+    bool composed = true;
+    for (const auto& effect : classes)
+    {
+        composed = composed && layer(effect, EffectLayer::blast_smoke).count > 0 && layer(effect, EffectLayer::fireball).count > 0 &&
+            layer(effect, EffectLayer::flash).count > 0;
+    }
+    check(composed, "every preset has a flash, a fireball and blast smoke");
+    const auto artillery = make_effect_class(ExplosionPreset::artillery_he, SurfaceType::dirt);
+    const auto fuel = make_effect_class(ExplosionPreset::fuel_fire, SurfaceType::dirt);
+    const auto dust = make_effect_class(ExplosionPreset::dust_blast, SurfaceType::dirt);
+    check(layer(artillery, EffectLayer::plume).count > 0 && layer(artillery, EffectLayer::plume).delay_range > 0 &&
+        layer(fuel, EffectLayer::debris).count == 0 &&
+        layer(fuel, EffectLayer::fireball).count > layer(artillery, EffectLayer::fireball).count &&
+        layer(dust, EffectLayer::ground_dust).count > layer(artillery, EffectLayer::ground_dust).count,
+        "presets differ by their layers: a fed plume, fuel without debris and with a larger fireball, a dust-heavy blast");
+
+    bool surfaces = true;
+    for (std::uint32_t index = 0; index < preset_count; ++index)
+    {
+        const auto preset = static_cast<ExplosionPreset>(index);
+        const auto dirt = make_effect_class(preset, SurfaceType::dirt);
+        const auto concrete = make_effect_class(preset, SurfaceType::concrete);
+        const auto& dirt_debris = layer(dirt, EffectLayer::debris);
+        const auto& concrete_debris = layer(concrete, EffectLayer::debris);
+        surfaces = surfaces && layer(concrete, EffectLayer::ground_dust).count < layer(dirt, EffectLayer::ground_dust).count &&
+            layer(concrete, EffectLayer::sparks).count > layer(dirt, EffectLayer::sparks).count &&
+            layer(concrete, EffectLayer::ground_dust).first_color.x > layer(dirt, EffectLayer::ground_dust).first_color.x &&
+            (dirt_debris.count == 0 || (concrete_debris.size_min < dirt_debris.size_min && concrete_debris.first_color.x > dirt_debris.first_color.x));
+    }
+    check(surfaces, "concrete: less and lighter dust, smaller lighter fragments, more sparks");
+
+    check(effect_ticks(ExplosionPreset::small_he, SurfaceType::dirt) == 480, "small-he lives 8 s, its smoke's longest life");
+    const auto& feed = layer(fuel, EffectLayer::plume);
+    check(effect_ticks(ExplosionPreset::fuel_fire, SurfaceType::dirt) ==
+        static_cast<std::uint32_t>(std::ceil((feed.delay_range + feed.lifetime_min + feed.lifetime_range) * 60.0f)),
+        "a fed plume lives until its last-born record has died");
+
+    const auto curve = light_curve(ExplosionPreset::artillery_he);
+    check(light_intensity(curve, 0) == curve.flash_intensity + curve.glow_intensity &&
+        light_intensity(curve, curve.flash_seconds) < curve.glow_intensity && light_intensity(curve, curve.flash_seconds) > 0 &&
+        light_intensity(curve, curve.glow_seconds) == 0 && light_intensity(curve, -1) == 0,
+        "a light starts at flash plus glow, keeps only the fading glow, then goes out");
+    bool fading = true;
+    for (int tick = 1; tick < 120 && fading; ++tick) fading = light_intensity(curve, tick / 60.0f) <= light_intensity(curve, (tick - 1) / 60.0f);
+    check(fading, "lights never brighten");
+
+    ExplosionSystem system(particle_layout::maximum_effects);
+    for (std::uint32_t index = 0; index < 20; ++index)
+    {
+        const auto preset = index % 2 == 0 ? ExplosionPreset::small_he : ExplosionPreset::heavy;
+        system.submit({{static_cast<float>(index), 0, 0}, {0, 1, 0}, index, preset, SurfaceType::dirt});
+    }
+    system.start(100);
+    std::array<PointLight, particle_layout::maximum_lights> lights;
+    const auto count = select_lights(system.slots(), system.active(), 103, lights);
+    bool brightest = count == particle_layout::maximum_lights;
+    for (std::uint32_t index = 0; index < 10 && brightest; ++index)
+    {
+        brightest = lights[index].position.x == static_cast<float>(2 * index + 1) &&
+            lights[index].position.y == light_curve(ExplosionPreset::heavy).height;
+    }
+    for (std::uint32_t index = 10; index < count && brightest; ++index)
+    {
+        brightest = lights[index].position.x == static_cast<float>(2 * (index - 10)) && lights[index].radius == light_curve(ExplosionPreset::small_he).radius;
+    }
+    check(brightest, "the brightest lights win, equal ones in slot order, positioned above their events");
+    check(select_lights(system.slots(), system.active(), 100 + 600, lights) == 0, "faded lights are not selected");
+    std::array<PointLight, 4> few;
+    check(select_lights(system.slots(), system.active(), 100, few) == 4, "selection respects the space given");
+
+    const auto& heavy = system.slots()[1];
+    check(heavy.preset == ExplosionPreset::heavy && heavy.effect_class == effect_class_index(ExplosionPreset::heavy, SurfaceType::dirt) &&
+        heavy.lifetime_ticks == effect_ticks(ExplosionPreset::heavy, SurfaceType::dirt), "a slot keeps its preset, class and lifetime");
+
+    check(Terrain::surface(30, 0) == SurfaceType::concrete && Terrain::surface(18, -18) == SurfaceType::concrete &&
+        Terrain::surface(54, 18) == SurfaceType::concrete && Terrain::surface(17.9f, 0) == SurfaceType::dirt &&
+        Terrain::surface(0, 0) == SurfaceType::dirt && Terrain::surface(30, -18.1f) == SurfaceType::dirt,
+        "the pad is concrete, edges included; the rest of the range is dirt");
+
+    return failures == 0 ? 0 : 1;
+}

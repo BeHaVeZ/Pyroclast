@@ -7,6 +7,7 @@ struct Layer
     uint first_group;
     uint groups;
     uint count;
+    uint spawn;
     float radius;
     float speed_min;
     float speed_range;
@@ -22,6 +23,7 @@ struct Layer
     float buoyancy;
     float restitution;
     float friction;
+    float stretch;
     float growth;
     float progress_growth;
     float strength;
@@ -54,6 +56,7 @@ Layer load_layer(ByteAddressBuffer classes, uint effect_class, uint layer_index)
     layer.first_group = layout.x;
     layer.groups = layout.y;
     layer.count = layout.z;
+    layer.spawn = layout.w;
     layer.radius = spawn.x;
     layer.speed_min = spawn.y;
     layer.speed_range = spawn.z;
@@ -69,6 +72,7 @@ Layer load_layer(ByteAddressBuffer classes, uint effect_class, uint layer_index)
     layer.buoyancy = contact.x;
     layer.restitution = contact.y;
     layer.friction = contact.z;
+    layer.stretch = contact.w;
     layer.growth = look.x;
     layer.progress_growth = look.y;
     layer.strength = look.z;
@@ -81,4 +85,9 @@ Layer load_layer(ByteAddressBuffer classes, uint effect_class, uint layer_index)
 bool smoke_like(uint layer_index)
 {
     return layer_index < layer_flash;
+}
+
+bool layer_enabled(uint mask, uint layer_index)
+{
+    return layer_index < layer_count && ((mask >> layer_index) & 1) != 0;
 }

@@ -24,6 +24,17 @@ std::optional<std::uint32_t> parse_count(std::string_view value, std::uint32_t m
 }
 }
 
+namespace
+{
+std::string or_list(std::string_view names)
+{
+    std::string text(names);
+    const auto last = text.rfind(", ");
+    if (last != std::string::npos) text.replace(last, 2, " or ");
+    return text;
+}
+}
+
 CommandLineResult parse_command_line(std::span<const char* const> arguments)
 {
     CommandLineResult result;
@@ -33,6 +44,8 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
     bool smoke_specified = false;
     bool scene_format_specified = false;
     bool scenario_specified = false;
+    bool preset_specified = false;
+    bool disable_specified = false;
     bool capture_specified = false;
     bool view_specified = false;
     const auto set_once = [&result](bool& flag, const char* name) {
@@ -127,9 +140,52 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
             result.options.scenario = option.substr(std::string_view("--scenario=").size());
             if (!is_scenario_name(result.options.scenario))
             {
-                result.error = "Expected --scenario=" + std::string(scenario_names) + ".";
-                result.error.replace(result.error.find(", barrage"), 9, " or barrage");
+                result.error = "Expected --scenario=" + or_list(scenario_names) + ".";
                 return result;
+            }
+        }
+        else if (option.starts_with("--preset="))
+        {
+            if (preset_specified)
+            {
+                result.error = "Specify --preset only once.";
+                return result;
+            }
+            preset_specified = true;
+            const auto preset = preset_from_name(option.substr(std::string_view("--preset=").size()));
+            if (!preset)
+            {
+                result.error = "Expected --preset=" + or_list(preset_names) + ".";
+                return result;
+            }
+            result.options.preset = *preset;
+        }
+        else if (option.starts_with("--disable="))
+        {
+            if (disable_specified)
+            {
+                result.error = "Specify --disable only once.";
+                return result;
+            }
+            disable_specified = true;
+            const auto list = option.substr(std::string_view("--disable=").size());
+            for (std::size_t start = 0;;)
+            {
+                const auto comma = list.find(',', start);
+                const auto name = list.substr(start, comma == std::string_view::npos ? std::string_view::npos : comma - start);
+                std::uint32_t bit = name == "lights" ? particle_layout::lights_mask_bit : 32;
+                for (std::uint32_t layer = 0; layer < particle_layout::layer_count; ++layer)
+                {
+                    if (layer_name(static_cast<EffectLayer>(layer)) == name) bit = layer;
+                }
+                if (bit == 32 || name.empty())
+                {
+                    result.error = "Expected --disable=<comma-separated " + or_list(disable_names) + ">.";
+                    return result;
+                }
+                result.options.layer_mask &= ~(1u << bit);
+                if (comma == std::string_view::npos) break;
+                start = comma + 1;
             }
         }
         else if (option.starts_with("--scene-format="))

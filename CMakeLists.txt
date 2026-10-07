@@ -61,6 +61,7 @@ add_executable(Pyroclast
     src/simulation/explosion_system.cpp
     src/simulation/explosion_scenarios.cpp
     src/simulation/explosion_presets.cpp
+    src/simulation/effect_lights.cpp
     src/simulation/terrain.cpp
     src/graphics/graphics_device.cpp
     src/graphics/adapter_name.cpp
@@ -99,13 +100,14 @@ target_link_libraries(ImageDiff PRIVATE SDL3::SDL3-static)
 include(CTest)
 set(project_targets Pyroclast ImageDiff)
 if(BUILD_TESTING)
-    add_executable(CommandLineTests tests/command_line_tests.cpp src/app/command_line.cpp src/graphics/adapter_name.cpp)
+    add_executable(CommandLineTests tests/command_line_tests.cpp src/app/command_line.cpp src/graphics/adapter_name.cpp
+        src/simulation/explosion_presets.cpp)
     target_include_directories(CommandLineTests PRIVATE src)
     add_test(NAME command_line COMMAND CommandLineTests)
     list(APPEND project_targets CommandLineTests)
     add_executable(ParticleControlTests tests/particle_control_tests.cpp src/simulation/particle_system.cpp
         src/simulation/explosion_system.cpp src/simulation/explosion_scenarios.cpp src/simulation/explosion_presets.cpp
-        src/simulation/terrain.cpp src/core/math.cpp src/app/explosion_renderer.cpp src/app/camera.cpp
+        src/simulation/effect_lights.cpp src/simulation/terrain.cpp src/core/math.cpp src/app/explosion_renderer.cpp src/app/camera.cpp
         src/app/test_range.cpp src/graphics/draw_validation.cpp)
     target_include_directories(ParticleControlTests PRIVATE src)
     target_link_libraries(ParticleControlTests PRIVATE SDL3::SDL3-static pyroclast_shader_list)
@@ -133,6 +135,11 @@ if(BUILD_TESTING)
     target_include_directories(ExplosionSystemTests PRIVATE src)
     add_test(NAME explosion_system COMMAND ExplosionSystemTests)
     list(APPEND project_targets ExplosionSystemTests)
+    add_executable(ExplosionPresetTests tests/explosion_preset_tests.cpp src/simulation/explosion_presets.cpp
+        src/simulation/effect_lights.cpp src/simulation/explosion_system.cpp src/simulation/terrain.cpp src/core/math.cpp)
+    target_include_directories(ExplosionPresetTests PRIVATE src)
+    add_test(NAME explosion_presets COMMAND ExplosionPresetTests)
+    list(APPEND project_targets ExplosionPresetTests)
     add_executable(ImageCompareTests tests/image_compare_tests.cpp tools/image_diff/image_compare.cpp)
     target_include_directories(ImageCompareTests PRIVATE tools)
     add_test(NAME image_compare COMMAND ImageCompareTests)

@@ -42,21 +42,35 @@ bool simulate(uint slot, uint local, uint record)
     float4 velocity = asfloat(particles.Load4(address + particle_velocity_offset));
     float size = asfloat(particles.Load(address + particle_size_offset));
     uint generation = particles.Load(address + particle_generation_offset);
+    float spin = asfloat(particles.Load(address + particle_spin_offset));
     if (generation != state.y)
     {
         generation = state.y;
         float3 origin = frame.effect_origins[slot].xyz;
         float3 normal = frame.effect_normals[slot].xyz;
         uint id = state.x * explosion_particles + local;
-        float3 direction = around_normal(particle_direction(id), normal);
+        float3 local_direction = particle_direction(id);
+        if (layer.spawn == spawn_ring)
+        {
+            float angle = particle_random(id, 8) * 6.2831853;
+            local_direction = normalize(float3(cos(angle), 0.06 + 0.1 * particle_random(id, 9), sin(angle)));
+        }
+        else if (layer.spread < 1)
+        {
+            local_direction = normalize(float3(local_direction.x * layer.spread, local_direction.y, local_direction.z * layer.spread));
+        }
+        float3 direction = around_normal(local_direction, normal);
         position.xyz = origin + direction * particle_random(id, 3) * layer.radius;
         velocity.xyz = direction * (layer.speed_min + particle_random(id, 2) * layer.speed_range) + float3(0, layer.up_kick, 0);
         velocity.w = layer.lifetime_min + particle_random(id, 4) * layer.lifetime_range;
         size = layer.size_min + particle_random(id, 5) * layer.size_range;
         position.w = 0;
         if (layer.delay_range > 0) position.w = -particle_random(id, 7) * layer.delay_range;
+        spin = 0;
     }
     bool smoke = smoke_like(layer_index);
+    bool debris = layer_index == layer_debris;
+    float spin_rate = debris ? (particle_random(state.x * explosion_particles + local, 10) - 0.5) * 24 : 0;
     const float dt = 1.0 / 60.0;
     for (uint step = 0; step < min(parameters.steps, maximum_simulation_steps); ++step)
     {
@@ -68,21 +82,25 @@ bool simulate(uint slot, uint local, uint record)
             if (layer.buoyancy > 0) velocity.y += layer.buoyancy * smoke_temperature(position.w) * dt;
             if (layer.gravity > 0) velocity.y -= layer.gravity * dt;
             position.xyz += velocity.xyz * dt;
-            float ground = terrain_height(heights, position.xz) + (smoke ? size : 0);
+            if (debris) spin += spin_rate * dt * saturate(length(velocity.xyz) * 0.25);
+            float terrain = terrain_height(heights, position.xz);
+            float ground = terrain + (smoke ? size : debris ? size * 0.5 : 0);
             if (position.y < ground)
             {
                 position.y = ground;
                 bool bounce = layer.restitution > 0 && velocity.y < 0;
                 if (bounce) velocity.xz *= layer.friction;
                 velocity.y = bounce ? -velocity.y * layer.restitution : max(velocity.y, 0);
+                if (debris && dot(velocity.xyz, velocity.xyz) < 0.5) velocity.xyz = 0;
             }
+            if (layer.spawn == spawn_ring) position.y = min(position.y, terrain + size + 0.3 * position.w);
             if (position.w >= velocity.w) velocity.w = 0;
         }
     }
     particles.Store4(address + particle_position_offset, asuint(position));
     particles.Store4(address + particle_velocity_offset, asuint(velocity));
-    particles.Store2(address + particle_size_offset, uint2(asuint(size), generation));
-    return velocity.w > 0 && position.w >= 0;
+    particles.Store3(address + particle_size_offset, uint3(asuint(size), generation, asuint(spin)));
+    return velocity.w > 0 && position.w >= 0 && layer_enabled(frame.light_state.y, layer_index);
 }
 
 [numthreads(simulation_group_size, 1, 1)]

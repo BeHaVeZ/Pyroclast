@@ -1,4 +1,5 @@
 #include "frame_constants.hlsli"
+#include "lights.hlsli"
 #include "terrain.hlsli"
 
 ByteAddressBuffer heights : register(t0);
@@ -40,10 +41,18 @@ float4 ps_main(PixelInput input) : SV_Target
     float3 normal = normalize(input.normal);
     float range = smoothstep(80, 140, length(input.world.xz));
     float3 albedo = lerp(float3(0.13, 0.115, 0.085), float3(0.05, 0.09, 0.028), range);
+    float2 pad_centre = float2(concrete_pad_min_x + concrete_pad_max_x, concrete_pad_min_z + concrete_pad_max_z) * 0.5;
+    float2 pad_half = float2(concrete_pad_max_x - concrete_pad_min_x, concrete_pad_max_z - concrete_pad_min_z) * 0.5;
+    float2 outside = abs(input.world.xz - pad_centre) - pad_half;
+    float pad_distance = max(outside.x, outside.y);
+    float pixel = max(abs(ddx_fine(pad_distance)) + abs(ddy_fine(pad_distance)), 1e-4);
+    float pad = saturate(0.5 - pad_distance / pixel);
+    float3 concrete = float3(0.30, 0.29, 0.27) * (1 - 0.35 * grid_line(input.world.xz - pad_centre, 6));
+    albedo = lerp(albedo, concrete, pad);
     albedo *= 1 - 0.25 * grid_line(input.world.xz, 10) - 0.35 * grid_line(input.world.xz, 50);
     float sun = saturate(dot(normal, frame.sun_direction.xyz));
     float3 ambient = lerp(frame.ground_color.rgb, frame.sky_color.rgb, normal.y * 0.5 + 0.5);
-    float3 color = albedo * (frame.sun_color.rgb * sun + ambient);
+    float3 color = albedo * (frame.sun_color.rgb * sun + ambient + point_lights(input.world, normal, true));
     float distance = length(input.world - frame.camera_position.xyz);
     float visibility = exp(-frame.fog.a * distance);
     return float4(lerp(frame.fog.rgb, color, visibility), 1);

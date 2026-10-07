@@ -13,57 +13,124 @@ constexpr std::uint32_t layer_index(EffectLayer layer)
     return static_cast<std::uint32_t>(layer);
 }
 
+constexpr std::uint32_t groups_for(std::uint32_t count)
+{
+    return (count + particle_layout::simulation_group_size - 1) / particle_layout::simulation_group_size;
+}
+
 constexpr float4 hot_emission{4.0f, 2.4f, 0.3f, 0};
 constexpr float4 cool_emission{1.8f, 0.03f, 0.003f, 0};
+constexpr float4 cold_smoke{0.11f, 0.12f, 0.13f, 0};
+constexpr float4 hot_smoke{0.20f, 0.10f, 0.045f, 0};
+constexpr float4 sooty_smoke{0.045f, 0.04f, 0.038f, 0};
 
-LayerParameters blast_smoke(std::uint32_t count)
+LayerParameters ground_dust(std::uint32_t count, float reach, float size)
 {
     LayerParameters layer;
     layer.count = count;
-    layer.radius = 1.75f;
-    layer.speed_min = 2.5f;
-    layer.speed_range = 3.75f;
-    layer.up_kick = 3.0f;
+    layer.spawn = particle_layout::spawn_ring;
+    layer.radius = 0.15f * reach;
+    layer.speed_min = 0.8f * reach;
+    layer.speed_range = 0.7f * reach;
+    layer.lifetime_min = 3.5f;
+    layer.lifetime_range = 2.5f;
+    layer.size_min = 0.6f * size;
+    layer.size_range = 0.8f * size;
+    layer.drag = 2.2f;
+    layer.buoyancy = 0.6f;
+    layer.growth = 0.45f;
+    layer.strength = 0.11f;
+    layer.fade_in_rate = 6.0f;
+    return layer;
+}
+
+LayerParameters blast_smoke(std::uint32_t count, float scale, float4 cold = cold_smoke)
+{
+    LayerParameters layer;
+    layer.count = count;
+    layer.radius = 1.75f * scale;
+    layer.speed_min = 2.5f * scale;
+    layer.speed_range = 3.75f * scale;
+    layer.up_kick = 3.0f * scale;
     layer.lifetime_min = 6.0f;
     layer.lifetime_range = 2.0f;
-    layer.size_min = 1.0f;
-    layer.size_range = 1.0f;
+    layer.size_min = 1.0f * scale;
+    layer.size_range = 1.0f * scale;
     layer.drag = 1.4f;
     layer.buoyancy = 5.0f;
     layer.growth = 0.55f;
     layer.strength = 0.08f;
     layer.fade_in_rate = 4.0f;
-    layer.first_color = {0.11f, 0.12f, 0.13f, 0};
-    layer.second_color = {0.20f, 0.10f, 0.045f, 0};
+    layer.first_color = cold;
+    layer.second_color = hot_smoke;
     return layer;
 }
 
-LayerParameters fireball(std::uint32_t count)
+LayerParameters plume(std::uint32_t count, float scale, float feed_seconds, float4 cold = cold_smoke)
 {
     LayerParameters layer;
     layer.count = count;
-    layer.radius = 0.625f;
-    layer.speed_min = 2.0f;
-    layer.speed_range = 6.25f;
-    layer.up_kick = 1.25f;
-    layer.lifetime_min = 0.35f;
-    layer.lifetime_range = 0.45f;
-    layer.size_min = 1.0f;
-    layer.size_range = 0.625f;
+    layer.radius = 1.2f * scale;
+    layer.spread = 0.3f;
+    layer.speed_min = 1.5f * scale;
+    layer.speed_range = 2.0f * scale;
+    layer.up_kick = 2.0f * scale;
+    layer.lifetime_min = 5.0f;
+    layer.lifetime_range = 3.0f;
+    layer.size_min = 1.0f * scale;
+    layer.size_range = 0.8f * scale;
+    layer.delay_range = feed_seconds;
+    layer.drag = 0.9f;
+    layer.buoyancy = 7.0f;
+    layer.growth = 0.5f;
+    layer.strength = 0.06f;
+    layer.fade_in_rate = 2.0f;
+    layer.first_color = cold;
+    layer.second_color = hot_smoke;
+    return layer;
+}
+
+LayerParameters flash(float size)
+{
+    LayerParameters layer;
+    layer.count = 4;
+    layer.lifetime_min = 0.06f;
+    layer.lifetime_range = 0.05f;
+    layer.size_min = size;
+    layer.size_range = 0.3f * size;
+    layer.progress_growth = 0.6f;
+    layer.strength = 0.5f;
+    layer.first_color = {12.0f, 10.0f, 7.0f, 0};
+    layer.second_color = {6.0f, 3.0f, 1.0f, 0};
+    return layer;
+}
+
+LayerParameters fireball(std::uint32_t count, float scale, float burn = 1.0f, float strength = 0.05f, float4 hot = hot_emission)
+{
+    LayerParameters layer;
+    layer.count = count;
+    layer.radius = 0.625f * scale;
+    layer.speed_min = 2.0f * scale;
+    layer.speed_range = 6.25f * scale;
+    layer.up_kick = 1.25f * scale;
+    layer.lifetime_min = 0.35f * burn;
+    layer.lifetime_range = 0.45f * burn;
+    layer.size_min = 1.0f * scale;
+    layer.size_range = 0.625f * scale;
     layer.progress_growth = 1.8f;
-    layer.strength = 0.05f;
-    layer.first_color = hot_emission;
+    layer.strength = strength;
+    layer.first_color = hot;
     layer.second_color = cool_emission;
     return layer;
 }
 
-LayerParameters sparks(std::uint32_t count)
+LayerParameters sparks(std::uint32_t count, float speed)
 {
     LayerParameters layer;
     layer.count = count;
     layer.radius = 0.625f;
-    layer.speed_min = 6.0f;
-    layer.speed_range = 10.0f;
+    layer.speed_min = 6.0f * speed;
+    layer.speed_range = 10.0f * speed;
     layer.up_kick = 4.0f;
     layer.lifetime_min = 1.0f;
     layer.lifetime_range = 1.2f;
@@ -72,24 +139,150 @@ LayerParameters sparks(std::uint32_t count)
     layer.gravity = 9.81f;
     layer.restitution = 0.35f;
     layer.friction = 0.7f;
+    layer.stretch = 0.035f;
     layer.strength = 0.6f;
     layer.first_color = hot_emission;
     layer.second_color = cool_emission;
     return layer;
 }
 
-std::array<LayerParameters, particle_layout::layer_count> preset_layers(ExplosionPreset preset)
+LayerParameters debris(std::uint32_t count, float speed, float size)
 {
-    std::array<LayerParameters, particle_layout::layer_count> layers{};
+    LayerParameters layer;
+    layer.count = count;
+    layer.radius = 0.5f;
+    layer.spread = 0.75f;
+    layer.speed_min = 5.0f * speed;
+    layer.speed_range = 8.0f * speed;
+    layer.up_kick = 3.0f;
+    layer.lifetime_min = 4.0f;
+    layer.lifetime_range = 3.0f;
+    layer.size_min = 0.12f * size;
+    layer.size_range = 0.22f * size;
+    layer.gravity = 9.81f;
+    layer.restitution = 0.3f;
+    layer.friction = 0.55f;
+    layer.strength = 1.0f;
+    return layer;
+}
+
+using Layers = std::array<LayerParameters, particle_layout::layer_count>;
+
+Layers preset_layers(ExplosionPreset preset)
+{
+    Layers layers{};
+    auto& dust = layers[layer_index(EffectLayer::ground_dust)];
+    auto& smoke = layers[layer_index(EffectLayer::blast_smoke)];
+    auto& column = layers[layer_index(EffectLayer::plume)];
+    auto& light = layers[layer_index(EffectLayer::flash)];
+    auto& fire = layers[layer_index(EffectLayer::fireball)];
+    auto& spark = layers[layer_index(EffectLayer::sparks)];
+    auto& fragments = layers[layer_index(EffectLayer::debris)];
     switch (preset)
     {
+    case ExplosionPreset::small_impact:
+        dust = ground_dust(128, 4, 0.6f);
+        smoke = blast_smoke(128, 0.5f);
+        light = flash(1.5f);
+        fire = fireball(64, 0.4f, 0.6f);
+        spark = sparks(256, 0.7f);
+        fragments = debris(64, 0.6f, 0.6f);
+        break;
     case ExplosionPreset::small_he:
-        layers[layer_index(EffectLayer::blast_smoke)] = blast_smoke(512);
-        layers[layer_index(EffectLayer::fireball)] = fireball(256);
-        layers[layer_index(EffectLayer::sparks)] = sparks(1792);
+        dust = ground_dust(256, 7, 1.0f);
+        smoke = blast_smoke(512, 1);
+        light = flash(3);
+        fire = fireball(256, 1);
+        spark = sparks(768, 1);
+        fragments = debris(128, 1, 1);
+        break;
+    case ExplosionPreset::artillery_he:
+        dust = ground_dust(384, 11, 1.6f);
+        smoke = blast_smoke(768, 1.5f);
+        column = plume(256, 1.3f, 2.0f);
+        light = flash(5);
+        fire = fireball(384, 1.5f, 1.2f);
+        spark = sparks(512, 1.3f);
+        fragments = debris(192, 1.3f, 1.4f);
+        break;
+    case ExplosionPreset::heavy:
+        dust = ground_dust(384, 15, 2.2f);
+        smoke = blast_smoke(896, 2.2f);
+        column = plume(384, 2.0f, 3.0f);
+        light = flash(8);
+        fire = fireball(512, 2.2f, 1.5f);
+        spark = sparks(192, 1.6f);
+        fragments = debris(128, 1.6f, 2.0f);
+        break;
+    case ExplosionPreset::fuel_fire:
+        dust = ground_dust(64, 5, 1.0f);
+        smoke = blast_smoke(384, 1.6f, sooty_smoke);
+        column = plume(640, 1.6f, 4.0f, sooty_smoke);
+        light = flash(6);
+        fire = fireball(1024, 2.0f, 2.5f, 0.018f, {3.0f, 1.3f, 0.2f, 0});
+        spark = sparks(128, 0.8f);
+        break;
+    case ExplosionPreset::dust_blast:
+        dust = ground_dust(1024, 14, 2.0f);
+        smoke = blast_smoke(448, 1.2f);
+        light = flash(3);
+        fire = fireball(128, 0.8f, 0.8f);
+        spark = sparks(128, 0.8f);
+        fragments = debris(384, 1.2f, 1.3f);
+        break;
+    case ExplosionPreset::stress_test:
+        dust = ground_dust(384, 12, 1.8f);
+        smoke = blast_smoke(768, 1.8f);
+        column = plume(384, 1.6f, 3.0f);
+        light = flash(6);
+        fire = fireball(512, 1.8f, 1.3f);
+        spark = sparks(320, 1.4f);
+        fragments = debris(128, 1.4f, 1.5f);
         break;
     }
     return layers;
+}
+
+void apply_surface(Layers& layers, SurfaceType surface)
+{
+    auto& dust = layers[layer_index(EffectLayer::ground_dust)];
+    auto& spark = layers[layer_index(EffectLayer::sparks)];
+    auto& fragments = layers[layer_index(EffectLayer::debris)];
+    const auto times = [](std::uint32_t count, float factor) {
+        return static_cast<std::uint32_t>(std::lround(static_cast<float>(count) * factor));
+    };
+    if (surface == SurfaceType::dirt)
+    {
+        dust.first_color = {0.16f, 0.13f, 0.09f, 0};
+        dust.second_color = {0.20f, 0.14f, 0.08f, 0};
+        fragments.first_color = {0.07f, 0.05f, 0.035f, 0};
+        spark.count = times(spark.count, 0.6f);
+        return;
+    }
+    dust.count = times(dust.count, 0.6f);
+    dust.first_color = {0.25f, 0.245f, 0.23f, 0};
+    dust.second_color = {0.28f, 0.25f, 0.21f, 0};
+    fragments.count = times(fragments.count, 1.25f);
+    fragments.size_min *= 0.7f;
+    fragments.size_range *= 0.7f;
+    fragments.first_color = {0.33f, 0.32f, 0.30f, 0};
+    spark.count = times(spark.count, 1.5f);
+}
+
+std::uint32_t total_groups(const Layers& layers)
+{
+    std::uint32_t groups = 0;
+    for (const auto& layer : layers) groups += groups_for(layer.count);
+    return groups;
+}
+
+void fit_slab(Layers& layers)
+{
+    while (total_groups(layers) > particle_layout::slab_groups)
+    {
+        auto largest = std::max_element(layers.begin(), layers.end(), [](const auto& a, const auto& b) { return a.count < b.count; });
+        largest->count = (groups_for(largest->count) - 1) * particle_layout::simulation_group_size;
+    }
 }
 }
 
@@ -97,7 +290,13 @@ std::string_view preset_name(ExplosionPreset preset)
 {
     switch (preset)
     {
+    case ExplosionPreset::small_impact: return "small-impact";
     case ExplosionPreset::small_he: return "small-he";
+    case ExplosionPreset::artillery_he: return "artillery-he";
+    case ExplosionPreset::heavy: return "heavy";
+    case ExplosionPreset::fuel_fire: return "fuel-fire";
+    case ExplosionPreset::dust_blast: return "dust-blast";
+    case ExplosionPreset::stress_test: return "stress-test";
     }
     return "unknown";
 }
@@ -112,18 +311,39 @@ std::optional<ExplosionPreset> preset_from_name(std::string_view name)
     return std::nullopt;
 }
 
+std::string_view surface_name(SurfaceType surface)
+{
+    return surface == SurfaceType::concrete ? "concrete" : "dirt";
+}
+
+std::string_view layer_name(EffectLayer layer)
+{
+    switch (layer)
+    {
+    case EffectLayer::ground_dust: return "dust";
+    case EffectLayer::blast_smoke: return "smoke";
+    case EffectLayer::plume: return "plume";
+    case EffectLayer::flash: return "flash";
+    case EffectLayer::fireball: return "fireball";
+    case EffectLayer::sparks: return "sparks";
+    case EffectLayer::debris: return "debris";
+    }
+    return "unknown";
+}
+
 EffectClass make_effect_class(ExplosionPreset preset, SurfaceType surface)
 {
-    static_cast<void>(surface);
     EffectClass effect;
     effect.layers = preset_layers(preset);
+    apply_surface(effect.layers, surface);
+    fit_slab(effect.layers);
     effect.group_layers.fill(static_cast<std::uint8_t>(particle_layout::no_layer));
     std::uint32_t next_group = 0;
     for (std::uint32_t index = 0; index < particle_layout::layer_count; ++index)
     {
         auto& layer = effect.layers[index];
         layer.first_group = next_group;
-        layer.groups = (layer.count + particle_layout::simulation_group_size - 1) / particle_layout::simulation_group_size;
+        layer.groups = groups_for(layer.count);
         assert(next_group + layer.groups <= particle_layout::slab_groups && "a preset's layers must fit one slab");
         for (std::uint32_t group = 0; group < layer.groups; ++group)
         {
@@ -156,5 +376,31 @@ std::uint32_t effect_ticks(ExplosionPreset preset, SurfaceType surface)
         if (layer.count != 0) seconds = std::max(seconds, layer.delay_range + layer.lifetime_min + layer.lifetime_range);
     }
     return static_cast<std::uint32_t>(std::ceil(seconds * 60.0f));
+}
+
+LightCurve light_curve(ExplosionPreset preset)
+{
+    constexpr float3 fire{1.0f, 0.55f, 0.22f};
+    switch (preset)
+    {
+    case ExplosionPreset::small_impact: return {120, 0.08f, 20, 0.4f, fire, 12, 1.0f};
+    case ExplosionPreset::small_he: return {600, 0.12f, 120, 0.9f, fire, 30, 2.0f};
+    case ExplosionPreset::artillery_he: return {1500, 0.15f, 300, 1.3f, fire, 45, 3.0f};
+    case ExplosionPreset::heavy: return {3500, 0.2f, 700, 1.8f, fire, 70, 5.0f};
+    case ExplosionPreset::fuel_fire: return {1200, 0.15f, 900, 3.5f, {1.0f, 0.45f, 0.15f}, 55, 4.0f};
+    case ExplosionPreset::dust_blast: return {500, 0.1f, 80, 0.8f, fire, 30, 2.0f};
+    case ExplosionPreset::stress_test: return {2000, 0.15f, 400, 1.5f, fire, 50, 3.0f};
+    }
+    return {};
+}
+
+float light_intensity(const LightCurve& curve, float seconds)
+{
+    const auto ease = [seconds](float intensity, float duration) {
+        if (duration <= 0 || seconds < 0 || seconds >= duration) return 0.0f;
+        const float left = 1 - seconds / duration;
+        return intensity * left * left;
+    };
+    return ease(curve.flash_intensity, curve.flash_seconds) + ease(curve.glow_intensity, curve.glow_seconds);
 }
 }

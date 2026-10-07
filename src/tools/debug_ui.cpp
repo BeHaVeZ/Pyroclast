@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <numeric>
+#include <string>
 
 namespace pyroclast
 {
@@ -133,17 +134,40 @@ ImDrawData* DebugUi::build(const DiagnosticsSnapshot& snapshot, std::vector<UiCo
             row("Speed (wheel)", "%.0f m/s", snapshot.camera_speed);
             ImGui::EndTable();
         }
-        if (ImGui::Button("Trigger (Space)")) commands.push_back(UiCommand::trigger);
+        ImGui::SeparatorText("Effects");
+        const auto selected = preset_name(snapshot.click_preset);
+        if (ImGui::BeginCombo("Click preset", std::string(selected).c_str()))
+        {
+            for (std::uint32_t index = 0; index < preset_count; ++index)
+            {
+                const auto preset = static_cast<ExplosionPreset>(index);
+                if (ImGui::Selectable(std::string(preset_name(preset)).c_str(), preset == snapshot.click_preset))
+                {
+                    commands.push_back({UiCommand::Kind::select_preset, index});
+                }
+            }
+            ImGui::EndCombo();
+        }
+        for (std::uint32_t bit = 0; bit <= particle_layout::layer_count; ++bit)
+        {
+            const std::uint32_t mask_bit = bit == particle_layout::layer_count ? particle_layout::lights_mask_bit : bit;
+            const auto name = bit == particle_layout::layer_count ? std::string_view("lights") : layer_name(static_cast<EffectLayer>(bit));
+            bool shown = ((snapshot.layer_mask >> mask_bit) & 1) != 0;
+            if (bit % 4 != 0) ImGui::SameLine();
+            if (ImGui::Checkbox(std::string(name).c_str(), &shown)) commands.push_back({UiCommand::Kind::toggle_layer, mask_bit});
+        }
+        ImGui::Text("Temporary lights: %u", snapshot.lights);
+        if (ImGui::Button("Trigger (Space)")) commands.push_back({UiCommand::Kind::trigger});
         ImGui::SameLine();
-        if (ImGui::Button("Clear (R)")) commands.push_back(UiCommand::clear);
+        if (ImGui::Button("Clear (R)")) commands.push_back({UiCommand::Kind::clear});
         ImGui::SameLine();
-        if (ImGui::Button(snapshot.paused ? "Resume (P)" : "Pause (P)")) commands.push_back(UiCommand::toggle_pause);
+        if (ImGui::Button(snapshot.paused ? "Resume (P)" : "Pause (P)")) commands.push_back({UiCommand::Kind::toggle_pause});
         ImGui::SameLine();
         ImGui::BeginDisabled(!snapshot.paused);
-        if (ImGui::Button("Step (N)")) commands.push_back(UiCommand::step);
+        if (ImGui::Button("Step (N)")) commands.push_back({UiCommand::Kind::step});
         ImGui::EndDisabled();
         bool lines = snapshot.debug_lines;
-        if (ImGui::Checkbox("Effect lines (L)", &lines)) commands.push_back(UiCommand::toggle_debug_lines);
+        if (ImGui::Checkbox("Effect lines (L)", &lines)) commands.push_back({UiCommand::Kind::toggle_debug_lines});
         ImGui::SameLine();
         ImGui::TextDisabled("Left click: explosion on the terrain");
         ImGui::End();

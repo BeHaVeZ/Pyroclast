@@ -6,6 +6,7 @@ static const uint particle_position_offset = 0;
 static const uint particle_velocity_offset = 16;
 static const uint particle_size_offset = 32;
 static const uint particle_generation_offset = 36;
+static const uint particle_spin_offset = 40;
 
 static const uint explosion_particles = 2560;
 static const uint maximum_effects = 128;
@@ -17,12 +18,15 @@ static const uint maximum_simulation_steps = 4;
 static const uint slab_groups = explosion_particles / simulation_group_size;
 static const uint scan_threads = 512;
 static const uint particle_vertices = 6;
+static const uint debris_vertices = 36;
 static const uint particle_arguments_offset = 0;
 static const uint smoke_arguments_offset = 16;
 static const uint light_arguments_offset = 32;
-static const uint counters_offset = 48;
-static const uint arguments_bytes = 64;
+static const uint debris_arguments_offset = 48;
+static const uint counters_offset = 64;
+static const uint arguments_bytes = 96;
 static const uint light_list_first = maximum_effects * explosion_particles;
+static const uint debris_list_first = 2 * maximum_effects * explosion_particles;
 
 static const uint layer_ground_dust = 0;
 static const uint layer_blast_smoke = 1;
@@ -33,6 +37,13 @@ static const uint layer_sparks = 5;
 static const uint layer_debris = 6;
 static const uint layer_count = 7;
 static const uint no_layer = 255;
+static const uint lights_mask_bit = 7;
+static const uint all_layers_mask = 0xff;
+
+static const uint spawn_burst = 0;
+static const uint spawn_ring = 1;
+
+static const uint maximum_lights = 16;
 
 static const uint maximum_effect_classes = 16;
 static const uint class_stride = 1024;
