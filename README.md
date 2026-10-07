@@ -6,7 +6,9 @@
 
 Early development.
 
-The project currently runs a GPU explosion and smoke prototype on D3D12 and Vulkan. Scaling investigations are underway; tooling follows in later phases.
+The project currently runs a 2D GPU explosion and smoke prototype on D3D12 and Vulkan through a
+rendering interface that is now ready for the 3D, GPU-driven work that follows (camera, scene,
+explosion presets, GPU particle lifecycle, Dear ImGui tooling, benchmark mode).
 
 ## Core question
 
@@ -53,9 +55,26 @@ It is not affiliated with Bohemia Interactive, Arma, Enfusion, or Blastcore, and
 
 ## Current milestone
 
-**Phase 10 - Profiling and measured smoke optimizations**
+**M11 - Rendering interface for a 3D, GPU-driven frame** (complete)
 
-Both backends run the same shared HLSL explosion: a brief fireball, ballistic
+A pure refactor with pixel-identical output: every fixed-state capture (both APIs, full and half
+smoke, ticks 0/60/180/480, 1 and 100 explosions, Debug and Release) matches the pre-refactor build
+exactly. What changed underneath:
+
+- A frame is a list of compute dispatches and a list of passes; each pass names its target, the
+  render targets it samples, and its draws. Backends derive the barriers from the bindings.
+- One binding model for every pipeline (`shaders/binding_layout.hlsli`): 16 draw constants (b0),
+  per-frame constants (b1), eight read-only buffers (t0-t7), two render-target inputs (t8-t9), six
+  writable buffers for dispatches (u0-u5), and linear/point samplers (s0/s1). D3D12 implements it
+  as one version 1.1 root signature with root descriptors; Vulkan as one pipeline layout with a
+  push-descriptor set.
+- Vertex shaders pull particle records from buffers, so there are no input layouts.
+- Vulkan requires 1.3 and uses dynamic rendering, synchronization2 and `VK_KHR_push_descriptor`.
+- GPU buffers are created zero-filled on the GPU; Vulkan keeps them in plain device-local memory.
+- Shaders are registered once, in `cmake/Shaders.cmake`.
+- In-app frame capture (`--capture`), `--exit-after`, and validation/measurement tools (below).
+
+Previous milestone, Phase 10 (profiling and measured smoke optimizations): both backends run the same shared HLSL explosion: a brief fireball, ballistic
 sparks, and longer-lived smoke. The default single burst activates 2,560 particles
 (256 fireball particles, 1,792 sparks, and 512 smoke particles) in an 8,192-slot
 GPU pool. Single-effect particle state remains 256 KiB. The GPU handles spawning, movement,
@@ -104,7 +123,8 @@ cmake --preset windows-x64
 ```
 
 Runtime requires a Vulkan-capable graphics driver. The Vulkan backend currently
-requires Vulkan 1.1, a combined graphics/compute/present queue, and
+requires Vulkan 1.3 with dynamic rendering and synchronization2, a combined
+graphics/compute/present queue, `VK_KHR_push_descriptor`, and
 `VK_EXT_swapchain_maintenance1` with its surface dependencies. Presentation
 fences from this extension allow explicit resource cleanup on resize and shutdown.
 Unsupported configurations fail with a diagnostic; there is no silent API fallback.
@@ -199,7 +219,7 @@ In Visual Studio, open this repository with **File > Open > Folder**, select the
 right-click the executable in CMake Targets View and select **Add Debug
 Configuration**. Set `args` in the generated `launch.vs.json`, for example
 `"args": ["--renderer=vulkan"]`. Keep the generated target and executable fields.
-The local `.vs/` settings are ignored by Git. Run the `command_line`, `particle_controls`, `draw_validation` and `frame_statistics` tests from
+The local `.vs/` settings are ignored by Git. Run the `command_line`, `particle_controls`, `draw_validation`, `frame_statistics` and `image_compare` tests from
 **Test > Test Explorer**, or run the CTest commands above in Developer PowerShell.
 
 For Vulkan Debug with a copy-only SDK, also add an `env` property to that launch
@@ -230,21 +250,24 @@ Debug run logs `Vulkan validation summary: 0 warnings, 0 errors` and exits with
 code 0. Loader messages from installed third-party overlays are logged as
 `Vulkan loader:` and are not counted in the summary.
 
-`cmake/Shaders.cmake` compiles `shaders/particles.hlsl` (`vs_main`, `ps_main`)
-and `shaders/particles_compute.hlsl` (`cs_main`) for both backends.
-`shaders/explosion.hlsli` shares layer classification and deterministic spawn hashing:
+`cmake/Shaders.cmake` lists every shader once in `PYROCLAST_SHADERS`
+(`<enumerator>:<file>:<stage>:<entry point>`) and compiles each for both backends; the list
+generates the `Shader` enum and both backends' bytecode tables, so adding a shader is one line.
+SPIR-V register shifts come from `shaders/binding_layout.hlsli`, the same file the C++ binding
+code includes. `shaders/explosion.hlsli` shares layer classification and deterministic spawn hashing:
 
 - DXIL and bytecode headers: `out/build/windows-x64/generated/shaders/<configuration>/d3d12/`
 - SPIR-V and bytecode headers: `out/build/windows-x64/generated/shaders/<configuration>/vulkan/`
 
 The particle workload uses 128 groups of 64 threads and two ordered draws totaling
 six vertices per slot.
-Each backend orders the previous simulation/draw before the next update, and
-compute writes before instance fetch. No per-frame descriptor allocation, particle
-upload, or particle readback is needed.
+Each backend orders the previous frame's draws before the next update, and compute
+writes before the vertex shaders read them. No per-frame descriptor allocation,
+particle upload, or particle readback is needed.
 
 Debug disables shader optimization and includes debug information; Release uses
-`-O3`. SPIR-V targets Vulkan 1.1 and is validated by DXC. Shader warnings fail
+`-O3`. SPIR-V targets the Vulkan 1.1 environment (unchanged when the API moved to 1.3, so the
+generated code did not change) and is validated by DXC. Shader warnings fail
 the build, and errors report source filenames and line numbers. DXC dependency
 files track includes, so source or include changes rebuild the affected outputs
 for the configuration being built. Unchanged shaders are left alone.
@@ -294,18 +317,38 @@ that record instead of matching log text.
 
 In Visual Studio, add `"--profile-tick=180"` to your existing profile's `args`.
 The frozen plume is intentional. Remove that argument to restore normal playback.
-Vulkan logs its selected buffer memory type and prefers device-local,
-host-visible coherent memory for the GPU-owned pool when compatible. It retains
-the prior host-visible fallback on devices without that combination. The first
-measured Phase 10 optimization changes memory placement; it adds no particle LOD,
-culling, compaction, indirect rendering, or ImGui.
+Vulkan logs the memory type of each buffer it creates. The GPU-owned particle pool lives in
+plain device-local memory and is zero-filled with `vkCmdFillBuffer`, which does not depend on
+resizable BAR. (Phase 10 first moved the pool from system memory to host-visible device-local
+memory; M11 measured plain device-local memory as equally fast on the RTX 4090.)
+
+### Validation and measurement tools
+
+`--capture=FILE.png` (requires `--profile-tick`) writes the first frame drawn at the profile tick,
+copied on the GPU before Present, then exits. `--exit-after=N` ends any run after N submitted
+frames. The tools in `tools/` build on these:
+
+```powershell
+# Capture the fixed-state matrix, compare against an earlier set, compare D3D12 with Vulkan
+python tools/captures.py capture --config Debug --out out/baselines/mine
+python tools/captures.py compare out/baselines/mine out/baselines/theirs   # exact by default
+python tools/captures.py cross-api out/baselines/mine                      # max 2 levels, 99.9% within 1
+# Interleaved A/B timing of two builds (directories containing Pyroclast.exe)
+python tools/ab.py --a C:/baseline/out/build/windows-x64/Release --b out/build/windows-x64/Release --runs 5
+# Interactive lifecycle under native validation: controls, 30 resizes, minimize/restore, minimized start
+powershell -File tools/lifecycle.ps1 -Configuration Debug -Renderer vulkan -SmokeResolution half
+```
+
+`ImageDiff` (built with the project) compares two captures and can write an amplified difference
+image (`--difference=out.png`). Desktop screenshots are not used for correctness: they proved
+unreliable for unpaced D3D12 presentation.
 
 For the optional half-resolution smoke experiment, add
 `"--smoke-resolution=half"` to your Visual Studio launch `args`. Full resolution
 remains the default; use `"--smoke-resolution=full"` for the comparison. Both APIs
-render smoke into a reusable target with half the width and height, upscale with
-the same linear-filtered HLSL shader, then draw fireball and sparks at full
-resolution. Particle simulation, counts, and draw ranges are unchanged.
+render smoke into a reusable target with half the width and height, composite it
+over the backbuffer with an ordinary linear-filtered draw (`shaders/composite.hlsl`, the target
+bound as a pass input), then draw fireball and sparks at full resolution. Particle simulation, counts, and draw ranges are unchanged.
 
 ```powershell
 .\out\build\windows-x64\Release\Pyroclast.exe --renderer=d3d12 --explosions=100 --profile-tick=180 --smoke-resolution=half
@@ -321,7 +364,7 @@ a different compositing path. Reduced detail and an extra pass are explicit
 trade-offs, so half resolution is optional.
 
 See `docs/PHASE1.md` through `docs/PHASE10.md`, `docs/PHASE10_PROFILING.md`,
-and `docs/PHASE10_SMOKE_RESOLUTION.md`
+`docs/PHASE10_SMOKE_RESOLUTION.md` and `docs/PHASE11.md` (M11)
 for ownership, synchronization, measurements, validation, and current limitations.
 
 Build output stays under `out/`. Machine-specific overrides can go in the ignored
