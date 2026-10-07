@@ -14,9 +14,14 @@ namespace pyroclast
 std::unique_ptr<GraphicsPipeline> D3D12Renderer::create_graphics_pipeline(
     const GraphicsPipelineDescription& shaders)
 {
+    if (shaders.target == TargetFormat::depth)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "A graphics pipeline's colour target cannot be a depth format.");
+        return nullptr;
+    }
     const auto vertex_shader = d3d12_shader(shaders.vertex_shader);
     const auto pixel_shader = d3d12_shader(shaders.pixel_shader);
-    auto pipeline = std::make_unique<D3D12GraphicsPipeline>(shaders.blend, shaders.depth);
+    auto pipeline = std::make_unique<D3D12GraphicsPipeline>(shaders.blend, shaders.depth, shaders.target);
     pipeline->owner = this;
     D3D12_FEATURE_DATA_SHADER_MODEL shader_model{D3D_SHADER_MODEL_6_0};
     if (!check(device_->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL,
@@ -36,7 +41,7 @@ std::unique_ptr<GraphicsPipeline> D3D12Renderer::create_graphics_pipeline(
     description.PS = {pixel_shader.data(), pixel_shader.size()};
     description.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     description.NumRenderTargets = 1;
-    description.RTVFormats[0] = backbuffer_format;
+    description.RTVFormats[0] = color_format(shaders.target);
     description.SampleDesc.Count = 1;
     description.SampleMask = std::numeric_limits<UINT>::max();
     description.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;

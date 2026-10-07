@@ -111,7 +111,7 @@ int main()
 
     check("load without an earlier pass", validate({{&scene, {}, {}, nullptr, true}, present}), "load only");
     check("backbuffer load", validate({{nullptr, {}, {}, nullptr, true}}), "load only");
-    check("colour pass on a depth target", validate({{&depth, {}, {}}, {nullptr, {}, {}}}), "colour format");
+    check("colour pass on a depth target", validate({{&depth, {}, {}}, {nullptr, {}, {}}}), "a colour format");
     check("depth pass on a colour target", validate({{&scene, {}, {}, nullptr, false, &half, true}, present}), "depth format");
     check("depth target of another size", validate({{&half, {}, {}, nullptr, false, &depth, true}, {nullptr, {&half, nullptr}, {}}}), "size");
     check("depth cleared twice", validate({opaque, {&second_scene, {}, {}, nullptr, false, &depth, true}, present}), "more than one pass");
@@ -121,6 +121,14 @@ int main()
     check("depth sampled before it is written", validate({{&scene, {&depth, nullptr}, {&terrain, 1}, nullptr, false, &depth, true}, present}), "drawn earlier");
     check("depthless pipeline in a depth pass", validate({opaque, {&scene, {}, {&copy, 1}, nullptr, true, &depth, false}, present}), "depth mode");
     check("depth pipeline without a depth target", validate({opaque, {nullptr, {&scene, nullptr}, {&blended_particles, 1}}}), "depth mode");
+    RenderTarget hdr({1, {}, TargetFormat::rgba16_float});
+    const GraphicsPipeline hdr_terrain(BlendMode::opaque, DepthMode::test_write, TargetFormat::rgba16_float);
+    const Draw hdr_draw{hdr_terrain, reads, {}, 6, 1};
+    const Pass hdr_scene{&hdr, {}, {&hdr_draw, 1}, nullptr, false, &depth, true};
+    const Pass tonemap{nullptr, {&hdr, nullptr}, {&copy, 1}};
+    check("an HDR scene tonemapped to the backbuffer", validate({hdr_scene, tonemap}), nullptr);
+    check("a backbuffer pipeline in an HDR pass", validate({{&hdr, {}, {&terrain, 1}, nullptr, false, &depth, true}, tonemap}), "colour format");
+    check("an HDR pipeline in the backbuffer pass", validate({{nullptr, {}, {&hdr_draw, 1}, nullptr, false, &depth, true}}), "colour format");
     check("depth writes against read-only depth", validate({opaque, {&scene, {}, {&terrain, 1}, nullptr, true, &depth, false}, present}), "depth-writing");
     return failures == 0 ? 0 : 1;
 }

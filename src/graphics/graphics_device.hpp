@@ -35,17 +35,22 @@ private:
     std::uint32_t size_;
 };
 
+enum class TargetFormat { color, rgba16_float, r11g11b10_float, depth };
+
 class GraphicsPipeline
 {
 public:
-    explicit GraphicsPipeline(BlendMode blend, DepthMode depth = DepthMode::none) : blend_(blend), depth_(depth) {}
+    explicit GraphicsPipeline(BlendMode blend, DepthMode depth = DepthMode::none, TargetFormat target = TargetFormat::color)
+        : blend_(blend), depth_(depth), target_(target) {}
     virtual ~GraphicsPipeline() = default;
     BlendMode blend() const { return blend_; }
     DepthMode depth() const { return depth_; }
+    TargetFormat target() const { return target_; }
 
 private:
     BlendMode blend_;
     DepthMode depth_;
+    TargetFormat target_;
 };
 
 class ComputePipeline
@@ -60,9 +65,8 @@ struct GraphicsPipelineDescription
     Shader pixel_shader;
     BlendMode blend = BlendMode::opaque;
     DepthMode depth = DepthMode::none;
+    TargetFormat target = TargetFormat::color;
 };
-
-enum class TargetFormat { color, depth };
 
 struct RenderTargetDescription
 {

@@ -160,13 +160,28 @@ std::unique_ptr<Buffer> VulkanRenderer::create_buffer(std::uint32_t size, std::s
 std::unique_ptr<GraphicsPipeline> VulkanRenderer::create_graphics_pipeline(
     const GraphicsPipelineDescription& shaders)
 {
+    if (shaders.target == TargetFormat::depth)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "A graphics pipeline's colour target cannot be a depth format.");
+        return nullptr;
+    }
+    VkFormatProperties properties{};
+    vkGetPhysicalDeviceFormatProperties(vk_.physical, vulkan_format(shaders.target), &properties);
+    const VkFormatFeatureFlags required = VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT |
+        (shaders.blend != BlendMode::opaque ? VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT : 0);
+    if ((properties.optimalTilingFeatures & required) != required)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The Vulkan adapter cannot render%s to this pipeline's colour format.",
+            shaders.blend != BlendMode::opaque ? " and blend" : "");
+        return nullptr;
+    }
     VulkanShaderModule vertex;
     VulkanShaderModule pixel;
     if (!create_shader_module(shaders.vertex_shader, vertex) || !create_shader_module(shaders.pixel_shader, pixel))
     {
         return nullptr;
     }
-    auto pipeline = std::make_unique<VulkanGraphicsPipeline>(shaders.blend, shaders.depth);
+    auto pipeline = std::make_unique<VulkanGraphicsPipeline>(shaders.blend, shaders.depth, shaders.target);
     pipeline->device = vk_.device;
     pipeline->owner = this;
     VkPipelineShaderStageCreateInfo stages[2]{};
@@ -237,7 +252,8 @@ std::unique_ptr<GraphicsPipeline> VulkanRenderer::create_graphics_pipeline(
     VkPipelineRenderingCreateInfo rendering{};
     rendering.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
     rendering.colorAttachmentCount = 1;
-    rendering.pColorAttachmentFormats = &format_;
+    const VkFormat color_format = vulkan_format(shaders.target);
+    rendering.pColorAttachmentFormats = &color_format;
     rendering.depthAttachmentFormat = shaders.depth != DepthMode::none ? depth_format : VK_FORMAT_UNDEFINED;
     info.pNext = &rendering;
     if (!check(vkCreateGraphicsPipelines(vk_.device, VK_NULL_HANDLE, 1, &info, nullptr, &pipeline->pipeline), "Create Vulkan graphics pipeline"))

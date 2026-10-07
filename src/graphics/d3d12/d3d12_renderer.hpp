@@ -44,6 +44,11 @@ private:
     static constexpr UINT backbuffer_count = 2;
     static constexpr DXGI_FORMAT backbuffer_format = DXGI_FORMAT_R8G8B8A8_UNORM;
     static constexpr DXGI_FORMAT depth_format = DXGI_FORMAT_D32_FLOAT;
+    static constexpr DXGI_FORMAT color_format(TargetFormat format)
+    {
+        return format == TargetFormat::rgba16_float ? DXGI_FORMAT_R16G16B16A16_FLOAT :
+            format == TargetFormat::r11g11b10_float ? DXGI_FORMAT_R11G11B10_FLOAT : backbuffer_format;
+    }
     static constexpr D3D12_RESOURCE_STATES color_resting_state = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     static constexpr D3D12_RESOURCE_STATES depth_resting_state =
         D3D12_RESOURCE_STATE_DEPTH_READ | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;

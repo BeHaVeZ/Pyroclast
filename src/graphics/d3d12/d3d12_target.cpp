@@ -48,13 +48,14 @@ bool D3D12Renderer::size_target(D3D12RenderTarget& target)
     texture.Height = static_cast<UINT>(height);
     texture.DepthOrArraySize = 1;
     texture.MipLevels = 1;
-    texture.Format = depth ? DXGI_FORMAT_R32_TYPELESS : backbuffer_format;
+    const auto format = target.description().format;
+    texture.Format = depth ? DXGI_FORMAT_R32_TYPELESS : color_format(format);
     texture.SampleDesc.Count = 1;
     texture.Flags = depth ? D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL : D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
     D3D12_HEAP_PROPERTIES heap{};
     heap.Type = D3D12_HEAP_TYPE_DEFAULT;
     const auto& color = target.description().clear_color;
-    D3D12_CLEAR_VALUE clear{backbuffer_format, {color[0], color[1], color[2], color[3]}};
+    D3D12_CLEAR_VALUE clear{color_format(format), {color[0], color[1], color[2], color[3]}};
     if (depth)
     {
         clear.Format = depth_format;
@@ -78,7 +79,7 @@ bool D3D12Renderer::size_target(D3D12RenderTarget& target)
         device_->CreateRenderTargetView(target.texture.Get(), nullptr, render_view);
     }
     D3D12_SHADER_RESOURCE_VIEW_DESC view{};
-    view.Format = depth ? DXGI_FORMAT_R32_FLOAT : backbuffer_format;
+    view.Format = depth ? DXGI_FORMAT_R32_FLOAT : color_format(format);
     view.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     view.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     view.Texture2D.MipLevels = 1;
@@ -87,7 +88,8 @@ bool D3D12Renderer::size_target(D3D12RenderTarget& target)
     device_->CreateShaderResourceView(target.texture.Get(), &view, descriptor);
     target.width = width;
     target.height = height;
-    SDL_Log("D3D12 render target: %dx%d, %s.", width, height, depth ? "D32" : "RGBA8");
+    SDL_Log("D3D12 render target: %dx%d, %s.", width, height, depth ? "D32" : format == TargetFormat::rgba16_float ? "RGBA16F" :
+        format == TargetFormat::r11g11b10_float ? "R11G11B10F" : "RGBA8");
     return check_validation();
 }
 }

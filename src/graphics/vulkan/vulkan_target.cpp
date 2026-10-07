@@ -21,14 +21,14 @@ std::unique_ptr<RenderTarget> VulkanRenderer::create_render_target(const RenderT
     }
     const bool depth = description.format == TargetFormat::depth;
     VkFormatProperties properties{};
-    vkGetPhysicalDeviceFormatProperties(vk_.physical, depth ? depth_format : format_, &properties);
+    vkGetPhysicalDeviceFormatProperties(vk_.physical, vulkan_format(description.format), &properties);
     const VkFormatFeatureFlags required = depth ? VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT :
         VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT |
         VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
     if ((properties.optimalTilingFeatures & required) != required)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, depth ? "Vulkan D32 depth cannot be a depth attachment and sampled." :
-            "Vulkan color format cannot be rendered to and linearly sampled.");
+            "Vulkan colour target format cannot be rendered to, blended and linearly sampled.");
         return nullptr;
     }
     auto target = std::make_unique<VulkanRenderTarget>(description);
@@ -57,7 +57,7 @@ bool VulkanRenderer::size_target(VulkanRenderTarget& target)
     target.memory = VK_NULL_HANDLE;
 
     const bool depth = target.description().format == TargetFormat::depth;
-    const auto format = depth ? depth_format : format_;
+    const auto format = vulkan_format(target.description().format);
     VkImageCreateInfo texture{};
     texture.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     texture.imageType = VK_IMAGE_TYPE_2D;
@@ -90,7 +90,9 @@ bool VulkanRenderer::size_target(VulkanRenderTarget& target)
     view.subresourceRange = {static_cast<VkImageAspectFlags>(depth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT), 0, 1, 0, 1};
     if (!check(vkCreateImageView(vk_.device, &view, nullptr, &target.view), "Create render target view")) return false;
     target.extent = extent;
-    SDL_Log("Vulkan render target: %ux%u, %s.", extent.width, extent.height, depth ? "D32" : "UNORM8");
+    const auto kind = target.description().format;
+    SDL_Log("Vulkan render target: %ux%u, %s.", extent.width, extent.height, depth ? "D32" : kind == TargetFormat::rgba16_float ? "RGBA16F" :
+        kind == TargetFormat::r11g11b10_float ? "R11G11B10F" : "UNORM8");
     return validation_ok();
 }
 }

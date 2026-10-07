@@ -150,6 +150,11 @@ public:
 
 private:
     static constexpr VkFormat depth_format = VK_FORMAT_D32_SFLOAT;
+    VkFormat vulkan_format(TargetFormat format) const
+    {
+        return format == TargetFormat::depth ? depth_format : format == TargetFormat::rgba16_float ? VK_FORMAT_R16G16B16A16_SFLOAT :
+            format == TargetFormat::r11g11b10_float ? VK_FORMAT_B10G11R11_UFLOAT_PACK32 : format_;
+    }
     bool create_instance(bool gpu_validation);
     bool create_device(std::string_view requested_adapter);
     bool create_bindings();

@@ -43,9 +43,9 @@ const char* validate_frame(const Frame& frame)
         {
             return "The last pass, and only the last, must draw to the backbuffer.";
         }
-        if (pass.target && pass.target->description().format != TargetFormat::color)
+        if (pass.target && pass.target->description().format == TargetFormat::depth)
         {
-            return "A pass's colour target must have the colour format.";
+            return "A pass's colour target must have a colour format.";
         }
         const auto earlier = frame.passes.first(index);
         const auto drawn_earlier = [&earlier](const RenderTarget* target) {
@@ -103,6 +103,10 @@ const char* validate_frame(const Frame& frame)
             if (std::any_of(draw.bindings.write.begin(), draw.bindings.write.end(), [](const Buffer* buffer) { return buffer != nullptr; }))
             {
                 return "Draws cannot bind writable buffers.";
+            }
+            if (draw.pipeline.target() != (pass.target ? pass.target->description().format : TargetFormat::color))
+            {
+                return "A pipeline's colour format must match its pass's target.";
             }
             if ((draw.pipeline.depth() == DepthMode::none) != (pass.depth == nullptr))
             {
