@@ -37,6 +37,7 @@ struct ParticleWork
     Draw particles;
     Draw offscreen_smoke;
     Draw light;
+    Draw offscreen_particles;
     Draw debris;
     Frame::Readback counters;
     std::uint32_t steps;
@@ -61,6 +62,7 @@ struct ParticleCounters
 struct ParticleListing
 {
     bool measure = false;
+    bool offscreen_light = false;
 };
 
 struct ParticleTargets

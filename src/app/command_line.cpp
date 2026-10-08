@@ -90,6 +90,7 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
     bool wind_specified = false;
     bool capture_specified = false;
     bool view_specified = false;
+    bool budget_specified = false;
     const auto set_once = [&result](bool& flag, const char* name) {
         if (flag)
         {
@@ -114,6 +115,10 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
         else if (option == "--gpu-regions")
         {
             if (!set_once(result.options.gpu_regions, "--gpu-regions")) return result;
+        }
+        else if (option == "--half-light")
+        {
+            if (!set_once(result.options.scalability.half_light, "--half-light")) return result;
         }
         else if (option == "--coverage")
         {
@@ -339,12 +344,33 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
             }
             smoke_specified = true;
             const auto value = option.substr(std::string_view("--smoke-resolution=").size());
-            if (value == "half") result.options.half_smoke = true;
+            auto& resolution = result.options.scalability.smoke_resolution;
+            if (value == "half") resolution = SmokeResolution::half;
+            else if (value == "auto") resolution = SmokeResolution::automatic;
             else if (value != "full")
             {
-                result.error = "Expected --smoke-resolution=full or half.";
+                result.error = "Expected --smoke-resolution=full, half or auto.";
                 return result;
             }
+        }
+        else if (option.starts_with("--smoke-budget="))
+        {
+            if (budget_specified)
+            {
+                result.error = "Specify --smoke-budget only once.";
+                return result;
+            }
+            budget_specified = true;
+            const auto value = option.substr(std::string_view("--smoke-budget=").size());
+            const bool count = value.starts_with("count:");
+            float limit[1]{};
+            const auto number = value.substr(value.find(':') == std::string_view::npos ? value.size() : value.find(':') + 1);
+            if ((!count && !value.starts_with("coverage:")) || !parse_numbers(number, limit) || limit[0] <= 0)
+            {
+                result.error = "Expected --smoke-budget=coverage:SCREENS or count:PARTICLES, a positive number.";
+                return result;
+            }
+            result.options.scalability.smoke_budget = {count, limit[0]};
         }
         else if (option.starts_with("--profile-tick="))
         {
@@ -488,6 +514,14 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
     if (result.options.camera && view_specified)
     {
         result.error = "Give --view or --camera, not both.";
+    }
+    if (result.options.scalability.half_light && result.options.scalability.smoke_resolution == SmokeResolution::full)
+    {
+        result.error = "--half-light requires --smoke-resolution=half or auto.";
+    }
+    if (budget_specified && result.options.scalability.smoke_resolution != SmokeResolution::automatic)
+    {
+        result.error = "--smoke-budget requires --smoke-resolution=auto.";
     }
     if (!result.options.counter_log.empty() && !profile_specified && !scenario_specified)
     {

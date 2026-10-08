@@ -3,6 +3,7 @@
 #include "camera.hpp"
 #include "scalability.hpp"
 #include "showcase_marks.hpp"
+#include "smoke_resolution_policy.hpp"
 #include "test_range.hpp"
 #include "../simulation/explosion_system.hpp"
 #include "../simulation/particle_system.hpp"
@@ -14,7 +15,7 @@ class ExplosionRenderer final
 {
 public:
     static constexpr TargetFormat smoke_format = TargetFormat::rgba16_float;
-    bool initialize(GraphicsDevice& device, bool half_resolution_smoke, TargetFormat scene_format);
+    bool initialize(GraphicsDevice& device, TargetFormat scene_format);
     struct FrameOptions
     {
         bool capture = false;
@@ -24,10 +25,13 @@ public:
         WindSettings wind;
         std::span<const ShowcaseMark> marks;
         ScalabilitySettings scalability;
+        std::optional<ParticleCounters> counters;
     };
     RenderResult render(GraphicsDevice& device, ParticleSystem& particles, ExplosionSystem& effects, const TestRange& range,
         const Camera& camera, int width, int height, double elapsed_seconds, const FrameOptions& options);
     std::uint32_t lights() const { return lights_; }
+    bool half_smoke() const { return half_smoke_; }
+    const SmokeResolutionPolicy& smoke_policy() const { return smoke_policy_; }
 
 private:
     std::unique_ptr<RenderTarget> scene_;
@@ -38,5 +42,7 @@ private:
     std::unique_ptr<RenderTarget> smoke_target_;
     std::unique_ptr<GraphicsPipeline> composite_;
     std::uint32_t lights_ = 0;
+    bool half_smoke_ = false;
+    SmokeResolutionPolicy smoke_policy_;
 };
 }

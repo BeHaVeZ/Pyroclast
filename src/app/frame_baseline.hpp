@@ -5,6 +5,7 @@
 #include "../simulation/wind.hpp"
 #include <array>
 #include <cstddef>
+#include <functional>
 #include <optional>
 #include <string>
 
@@ -23,7 +24,7 @@ struct SampleDescription
     std::uint32_t explosions = 1;
     std::uint32_t capacity = 0;
     std::optional<std::uint32_t> profile_tick;
-    bool half_resolution_smoke = false;
+    std::string smoke_resolution = "full";
     std::string view = "overview";
     std::optional<std::array<float, 6>> camera;
     std::string scenario;
@@ -41,8 +42,8 @@ public:
     explicit FrameBaseline(SampleDescription description) : description_(std::move(description)) {}
     void disable() { enabled_ = false; }
     bool enabled() const { return enabled_; }
-    void record(double milliseconds, std::optional<GpuTimings> gpu, std::optional<std::uint32_t> alive,
-        const CoverageStatistics* coverage = nullptr);
+    void record(double milliseconds, std::optional<GpuTimings> gpu, std::optional<std::uint32_t> alive);
+    void set_extra(std::function<std::string()> extra) { extra_ = std::move(extra); }
 
 private:
     static constexpr std::size_t warmup_frames = 120;
@@ -58,5 +59,6 @@ private:
     std::array<double, max_gpu_regions> region_ms_{};
     std::array<const char*, max_gpu_regions> region_labels_{};
     std::uint32_t region_count_ = 0;
+    std::function<std::string()> extra_;
 };
 }

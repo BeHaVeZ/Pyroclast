@@ -23,7 +23,6 @@ struct ApplicationOptions
     bool show_help = false;
     bool gpu_timing = false;
     bool gpu_regions = false;
-    bool half_smoke = false;
     bool gpu_validation = false;
     std::optional<bool> ui;
     std::string adapter;

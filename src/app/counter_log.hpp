@@ -14,7 +14,7 @@ namespace pyroclast
 class CounterLog final
 {
 public:
-    explicit CounterLog(bool coverage = false) : coverage_(coverage) {}
+    explicit CounterLog(bool coverage = false, bool smoke_resolution = false) : coverage_(coverage), smoke_resolution_(smoke_resolution) {}
     struct Frame
     {
         std::uint32_t tick = 0;
@@ -23,6 +23,7 @@ public:
         std::uint64_t started = 0;
         std::uint64_t dropped = 0;
         bool readback = false;
+        bool half = false;
     };
 
     void add_frame(const Frame& frame);
@@ -46,5 +47,6 @@ private:
     std::size_t next_counters_ = 0;
     std::size_t mismatches_ = 0;
     bool coverage_ = false;
+    bool smoke_resolution_ = false;
 };
 }

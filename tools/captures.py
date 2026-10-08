@@ -6,6 +6,7 @@
   python tools/captures.py compare <dir-a> <dir-b> [--subset] [--max-level 0] [--max-outliers 0] [--min-within-one 1.0]
                                    [--blur R]
   python tools/captures.py cross-api <dir> [--max-level 2] [--max-outliers 9] [--min-within-one 0.999] [--blur R]
+  python tools/captures.py policy-check <reference-dir> <auto-dir>
 
 --scenarios captures scripted runs instead of fixed states: each scenario at each tick (--capture-tick, the
 frame that draws that tick; 1 or more, default 6,45,180,360), over the renderers, smoke resolutions, views and
@@ -20,6 +21,10 @@ hold only some of the second's. cross-api requires every capture to exist for bo
 
 --blur R passes --blur=R to ImageDiff: both images are box-blurred with radius R pixels before the
 comparison, so the tolerances apply to density at that scale rather than to single pixels.
+
+policy-check checks captures taken with --smoke auto (named <renderer>-auto-...): each must equal exactly the
+reference's capture of the same case at full or at half resolution (<renderer>-full-... or <renderer>-half-...),
+since the automatic smoke resolution only chooses between the two. It reports which one each matched.
 
 --max-outliers pixels may exceed --max-level. Cross-API it defaults to 9 (0.001% of 1280 x 720): an
 opaque edge, such as a small debris fragment's, can cover a pixel centre on one API and not the other
@@ -147,6 +152,32 @@ def cross_api(arguments):
     return compare_pairs(pairs, arguments)
 
 
+def policy_check(arguments):
+    reference, directory = Path(arguments.reference), Path(arguments.directory)
+    tool = image_diff_path(arguments)
+    cases = sorted(name for name in capture_names(directory) if "-auto-" in name)
+    failures = 0
+    counts = {"full": 0, "half": 0}
+    for name in cases:
+        matched = None
+        for mode in ("full", "half"):
+            candidate = reference / name.replace("-auto-", f"-{mode}-", 1)
+            if not candidate.exists():
+                continue
+            result = subprocess.run([str(tool), str(directory / name), str(candidate)], capture_output=True, text=True)
+            if result.returncode == 0:
+                matched = mode
+                break
+        if matched:
+            counts[matched] += 1
+            print(f"{name}: equals {matched}")
+        else:
+            failures += 1
+            print(f"{name}: equals neither the full nor the half reference")
+    print(f"{len(cases) - failures}/{len(cases)} equal a fixed resolution ({counts['full']} full, {counts['half']} half)")
+    return 1 if failures or not cases else 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -175,8 +206,12 @@ def main():
         command.add_argument("--min-within-one", type=float, default=default_fraction)
         command.add_argument("--blur", type=int, help="box-blur radius in pixels applied to both images before comparing (ImageDiff --blur)")
         command.add_argument("--image-diff", help="ImageDiff.exe path (default: Release build output)")
+    check = commands.add_parser("policy-check")
+    check.add_argument("reference")
+    check.add_argument("directory")
+    check.add_argument("--image-diff", help="ImageDiff.exe path (default: Release build output)")
     arguments = parser.parse_args()
-    handlers = {"capture": capture, "compare": compare, "cross-api": cross_api}
+    handlers = {"capture": capture, "compare": compare, "cross-api": cross_api, "policy-check": policy_check}
     return handlers[arguments.command](arguments)
 
 

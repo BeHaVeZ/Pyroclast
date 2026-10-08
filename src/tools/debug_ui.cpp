@@ -94,8 +94,7 @@ void engine_window(const DiagnosticsSnapshot& snapshot)
         row("Renderer", "%.*s (%.*s)", length(system.renderer), system.renderer.data(), length(system.build), system.build.data());
         row("GPU", "%.*s", length(system.adapter), system.adapter.data());
         row("Resolution", "%d x %d, VSync %s", system.width, system.height, system.vsync ? "on" : "off");
-        row("Scene target", "%.*s, exposure %.2f, smoke %s", length(system.scene_format), system.scene_format.data(), system.exposure,
-            system.half_resolution_smoke ? "half" : "full");
+        row("Scene target", "%.*s, exposure %.2f", length(system.scene_format), system.scene_format.data(), system.exposure);
         ImGui::EndTable();
     }
 
@@ -179,13 +178,20 @@ void engine_window(const DiagnosticsSnapshot& snapshot)
                 row("Off screen", "%u of %u listed", counts.offscreen, counts.smoke + counts.light);
             }
             row("Temporary lights", "%u of %u", load.lights, particle_layout::maximum_lights);
+            if (load.smoke_resolution == "auto")
+            {
+                row("Smoke resolution", "%s (auto: %.0f of %.0f %s, %llu switches)", load.smoke_half ? "half" : "full", load.smoke_load,
+                    load.smoke_limit, load.smoke_count_budget ? "particles" : "screens", static_cast<unsigned long long>(load.smoke_switches));
+            }
+            else row("Smoke resolution", "%.*s", length(load.smoke_resolution), load.smoke_resolution.data());
             ImGui::EndTable();
         }
     }
     ImGui::End();
 }
 
-void showcase_window(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>& commands, float& radius_edit, bool& radius_editing)
+void showcase_window(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>& commands, float& radius_edit, bool& radius_editing,
+    float& budget_edit, bool& budget_editing)
 {
     const auto& showcase = snapshot.showcase;
     const auto& camera = snapshot.camera;
@@ -382,6 +388,27 @@ void showcase_window(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>
         if (ImGui::Checkbox("Measure coverage", &coverage)) commands.push_back({UiCommand::Kind::toggle_coverage});
         ImGui::SameLine();
         ImGui::TextDisabled("(Load rows; scatter cost)");
+        constexpr const char* modes[] = {"Full", "Half", "Auto"};
+        ImGui::TextUnformatted("Smoke");
+        for (std::uint32_t mode = 0; mode < 3; ++mode)
+        {
+            ImGui::SameLine();
+            const bool selected = snapshot.load.smoke_resolution == std::string_view(mode == 0 ? "full" : mode == 1 ? "half" : "auto");
+            if (ImGui::RadioButton(modes[mode], selected) && !selected) commands.push_back({UiCommand::Kind::set_smoke_resolution, mode});
+        }
+        if (snapshot.load.smoke_resolution != "full")
+        {
+            bool half_light = snapshot.load.half_light;
+            if (ImGui::Checkbox("Light at half resolution too", &half_light)) commands.push_back({UiCommand::Kind::toggle_half_light});
+        }
+        if (snapshot.load.smoke_resolution == "auto" && !snapshot.load.smoke_count_budget)
+        {
+            if (!budget_editing) budget_edit = static_cast<float>(snapshot.load.smoke_limit);
+            ImGui::SetNextItemWidth(160);
+            ImGui::SliderFloat("Budget (screens)", &budget_edit, 50, 3000, "%.0f", ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_Logarithmic);
+            budget_editing = ImGui::IsItemActive();
+            if (ImGui::IsItemDeactivatedAfterEdit()) commands.push_back({UiCommand::Kind::set_smoke_budget, 0, {}, budget_edit});
+        }
     }
 
     if (ImGui::CollapsingHeader("Layers and features"))
@@ -436,7 +463,7 @@ ImDrawData* DebugUi::build(const DiagnosticsSnapshot& snapshot, std::vector<UiCo
     {
         crosshair(snapshot);
         engine_window(snapshot);
-        showcase_window(snapshot, commands, radius_edit_, radius_editing_);
+        showcase_window(snapshot, commands, radius_edit_, radius_editing_, budget_edit_, budget_editing_);
     }
     ImGui::Render();
     return visible_ ? ImGui::GetDrawData() : nullptr;

@@ -9,7 +9,7 @@
 param(
     [ValidateSet('Debug', 'Release')][string]$Configuration = 'Debug',
     [ValidateSet('d3d12', 'vulkan')][string]$Renderer = 'd3d12',
-    [ValidateSet('full', 'half')][string]$SmokeResolution = 'full',
+    [ValidateSet('full', 'half', 'auto')][string]$SmokeResolution = 'full',
     [int]$Explosions = 100,
     [string]$OutDir = (Join-Path $PSScriptRoot '..\out\lifecycle'),
     [string]$ExtraArguments = ''

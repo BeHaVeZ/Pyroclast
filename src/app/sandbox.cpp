@@ -97,7 +97,18 @@ void Sandbox::fill_snapshot(DiagnosticsSnapshot& snapshot) const
     load.pool_capacity = ParticleSystem::capacity;
     if (!effects.active().empty()) load.particles = counters;
     load.lights = renderer.lights();
-    load.coverage = scalability.coverage;
+    load.coverage = scalability.coverage || scalability.smoke_resolution == SmokeResolution::automatic;
+    load.smoke_resolution = smoke_resolution_name(scalability.smoke_resolution);
+    load.smoke_half = renderer.half_smoke();
+    load.half_light = scalability.half_light;
+    load.smoke_count_budget = scalability.smoke_budget.count;
+    load.smoke_limit = SmokeResolutionPolicy::limit(scalability.smoke_budget);
+    if (counters)
+    {
+        load.smoke_load = SmokeResolutionPolicy::load(*counters, scalability.smoke_budget,
+            static_cast<double>(snapshot.system.width) * static_cast<double>(snapshot.system.height));
+    }
+    load.smoke_switches = renderer.smoke_policy().switches();
 
     auto& shown = snapshot.showcase;
     shown.preset = showcase.preset;
@@ -258,6 +269,24 @@ void apply(UiCommand command, Sandbox& sandbox)
             sandbox.particles.tick());
         break;
     case Kind::set_bombardment: sandbox.showcase.set_bombardment(command.value, command.scalar, sandbox.particles.tick()); break;
+    case Kind::set_smoke_resolution:
+        if (command.value <= 2)
+        {
+            sandbox.scalability.smoke_resolution = static_cast<SmokeResolution>(command.value);
+            SDL_Log("Smoke resolution: %s.", smoke_resolution_name(sandbox.scalability.smoke_resolution));
+        }
+        break;
+    case Kind::set_smoke_budget:
+        if (std::isfinite(command.scalar) && command.scalar > 0)
+        {
+            sandbox.scalability.smoke_budget = {command.value != 0, command.scalar};
+            SDL_Log("Smoke budget: %s %.0f.", command.value != 0 ? "count" : "coverage", static_cast<double>(command.scalar));
+        }
+        break;
+    case Kind::toggle_half_light:
+        sandbox.scalability.half_light = !sandbox.scalability.half_light;
+        SDL_Log("Half-resolution light: %s.", sandbox.scalability.half_light ? "on" : "off");
+        break;
     case Kind::toggle_coverage:
         sandbox.scalability.coverage = !sandbox.scalability.coverage;
         SDL_Log("Coverage counters: %s.", sandbox.scalability.coverage ? "on" : "off");

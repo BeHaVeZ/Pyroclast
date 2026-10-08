@@ -29,7 +29,6 @@ struct DiagnosticsSnapshot
         bool vsync = true;
         std::string_view scene_format;
         float exposure = 1;
-        bool half_resolution_smoke = false;
     };
     struct Frame
     {
@@ -66,6 +65,13 @@ struct DiagnosticsSnapshot
         std::optional<ParticleCounters> particles;
         std::uint32_t lights = 0;
         bool coverage = false;
+        std::string_view smoke_resolution = "full";
+        bool smoke_half = false;
+        bool half_light = false;
+        bool smoke_count_budget = false;
+        double smoke_limit = 0;
+        double smoke_load = 0;
+        std::uint64_t smoke_switches = 0;
     };
     struct Aim
     {
@@ -149,6 +155,9 @@ struct UiCommand
         set_bombardment,
         toggle_debug_view,
         toggle_coverage,
+        set_smoke_resolution,
+        set_smoke_budget,
+        toggle_half_light,
     };
     Kind kind;
     std::uint32_t value = 0;
@@ -178,5 +187,7 @@ private:
     bool visible_ = true;
     float radius_edit_ = 0;
     bool radius_editing_ = false;
+    float budget_edit_ = 0;
+    bool budget_editing_ = false;
 };
 }

@@ -125,6 +125,11 @@ int main()
         {"half smoke", {"--smoke-resolution=half"}, d3d12, false, {}, false, 1, {}, true},
         {"full smoke", {"--smoke-resolution=full"}, d3d12, false, {}},
         {"invalid smoke resolution", {"--smoke-resolution=quarter"}, d3d12, false, "Expected --smoke-resolution"},
+        {"budget without auto", {"--smoke-budget=coverage:300"}, d3d12, false, "--smoke-budget requires --smoke-resolution=auto"},
+        {"budget of another kind", {"--smoke-resolution=auto", "--smoke-budget=pixels:300"}, d3d12, false, "Expected --smoke-budget"},
+        {"budget not positive", {"--smoke-resolution=auto", "--smoke-budget=count:0"}, d3d12, false, "Expected --smoke-budget"},
+        {"budget twice", {"--smoke-resolution=auto", "--smoke-budget=count:5", "--smoke-budget=count:6"}, d3d12, false, "only once"},
+        {"half light at full resolution", {"--half-light"}, d3d12, false, "--half-light requires"},
         {"duplicate smoke resolution", {"--smoke-resolution=full", "--smoke-resolution=half"}, d3d12, false, "only once"},
         {"profile tick zero", {"--profile-tick=0"}, d3d12, false, {}, false, 1, 0},
         {"profile tick death", {"--profile-tick=480"}, d3d12, false, {}, false, 1, 480},
@@ -184,7 +189,7 @@ int main()
             {test.arguments.begin(), test.arguments.size()});
         const bool passed = test.error_fragment.empty()
             ? result.error.empty() && result.options.renderer == test.renderer &&
-                result.options.show_help == test.show_help && result.options.gpu_timing == test.gpu_timing && result.options.explosions == test.explosions && result.options.profile_tick == test.profile_tick && result.options.half_smoke == test.half_smoke &&
+                result.options.show_help == test.show_help && result.options.gpu_timing == test.gpu_timing && result.options.explosions == test.explosions && result.options.profile_tick == test.profile_tick && (result.options.scalability.smoke_resolution == pyroclast::SmokeResolution::half) == test.half_smoke &&
                 result.options.exit_after == test.exit_after && result.options.capture_path == test.capture_path &&
                 result.options.gpu_validation == test.gpu_validation && result.options.ui == test.ui &&
                 result.options.gpu_regions == test.gpu_regions && result.options.adapter == test.adapter &&
@@ -264,6 +269,21 @@ int main()
         pyroclast::parse_command_line(camera_twice).error.find("only once") == std::string::npos)
     {
         std::fputs("FAIL: --camera errors\n", stderr);
+        ++failures;
+    }
+
+    const char* automatic[] = {"--smoke-resolution=auto"};
+    const char* covered_budget[] = {"--smoke-resolution=auto", "--smoke-budget=coverage:250.5"};
+    const char* counted_budget[] = {"--smoke-budget=count:60000", "--smoke-resolution=auto"};
+    const auto automatic_options = pyroclast::parse_command_line(automatic).options.scalability;
+    const auto covered_options = pyroclast::parse_command_line(covered_budget).options.scalability;
+    const auto counted_options = pyroclast::parse_command_line(counted_budget).options.scalability;
+    if (automatic_options.smoke_resolution != pyroclast::SmokeResolution::automatic || automatic_options.smoke_budget.limit != 0 ||
+        covered_options.smoke_budget.count || covered_options.smoke_budget.limit != 250.5 || !counted_options.smoke_budget.count ||
+        counted_options.smoke_budget.limit != 60000 || pyroclast::parse_command_line({}).options.scalability.smoke_resolution !=
+        pyroclast::SmokeResolution::full)
+    {
+        std::fputs("FAIL: --smoke-resolution=auto and --smoke-budget\n", stderr);
         ++failures;
     }
 

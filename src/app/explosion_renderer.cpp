@@ -7,7 +7,7 @@
 
 namespace pyroclast
 {
-bool ExplosionRenderer::initialize(GraphicsDevice& device, bool half_resolution_smoke, TargetFormat scene_format)
+bool ExplosionRenderer::initialize(GraphicsDevice& device, TargetFormat scene_format)
 {
     scene_ = device.create_render_target({1, {}, scene_format});
     depth_ = device.create_render_target({1, {}, TargetFormat::depth, 0.0f});
@@ -19,10 +19,6 @@ bool ExplosionRenderer::initialize(GraphicsDevice& device, bool half_resolution_
     if (!scene_ || !depth_ || !present_ || !lines_ || !showcase_lines_)
     {
         return false;
-    }
-    if (!half_resolution_smoke)
-    {
-        return true;
     }
     smoke_target_ = device.create_render_target({2, {0, 0, 0, 0}, smoke_format});
     composite_ = device.create_graphics_pipeline(
@@ -36,8 +32,14 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     assert(width > 0 && height > 0);
     effects.start(particles.tick());
     const auto active = effects.active();
+    const auto& scalability = options.scalability;
+    const bool automatic = scalability.smoke_resolution == SmokeResolution::automatic;
+    const double screen_pixels = static_cast<double>(width) * static_cast<double>(height);
+    const bool half = scalability.smoke_resolution == SmokeResolution::half ||
+        (automatic && smoke_policy_.decide(options.counters, scalability.smoke_budget, screen_pixels));
+    const bool half_light = half && scalability.half_light;
     const auto work = particles.plan(elapsed_seconds, static_cast<std::uint32_t>(active.size()),
-        smoke_target_ ? smoke_target_->description().divisor : 0, {options.scalability.coverage});
+        half ? smoke_target_->description().divisor : 0, {scalability.coverage || automatic, half_light});
 
     FrameConstants constants{};
     const float w = static_cast<float>(width);
@@ -110,7 +112,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     std::vector<Pass> passes{{scene_.get(), {}, scene_draws, "Scene", false, depth_.get(), true}};
     std::vector<Draw> over_scene;
     if (show_lines) over_scene.push_back(lines);
-    if (simulate && !smoke_target_)
+    if (simulate && !half)
     {
         over_scene.push_back(work.particles);
         passes.push_back({scene_.get(), {nullptr, depth_.get()}, over_scene, "Particles", true, depth_.get(), false});
@@ -118,8 +120,9 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     else if (simulate)
     {
         over_scene.push_back({*composite_, {}, {}, 3, 1, "Smoke composite"});
-        over_scene.push_back(work.light);
-        passes.push_back({smoke_target_.get(), {nullptr, depth_.get()}, {&work.offscreen_smoke, 1}, "Half-resolution smoke"});
+        if (!half_light) over_scene.push_back(work.light);
+        passes.push_back({smoke_target_.get(), {nullptr, depth_.get()}, {half_light ? &work.offscreen_particles : &work.offscreen_smoke, 1},
+            "Half-resolution smoke"});
         passes.push_back({scene_.get(), {smoke_target_.get(), depth_.get()}, over_scene, "Composite and light", true, depth_.get(), false});
     }
     passes.push_back({nullptr, {scene_.get(), nullptr}, {&present, 1}, "Present"});
@@ -130,6 +133,8 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     if (result == RenderResult::submitted)
     {
         particles.commit(work);
+        if (automatic) smoke_policy_.commit(half);
+        half_smoke_ = half;
     }
     return result;
 }

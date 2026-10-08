@@ -30,8 +30,7 @@ std::string camera_json(const std::array<float, 6>& pose)
     return text;
 }
 
-void FrameBaseline::record(double milliseconds, std::optional<GpuTimings> gpu, std::optional<std::uint32_t> alive,
-    const CoverageStatistics* coverage)
+void FrameBaseline::record(double milliseconds, std::optional<GpuTimings> gpu, std::optional<std::uint32_t> alive)
 {
     if (!enabled_) return;
     if (warmup_ != 0)
@@ -112,14 +111,17 @@ void FrameBaseline::record(double milliseconds, std::optional<GpuTimings> gpu, s
     std::string extra;
     if (!sample.scenario.empty()) extra += ",\"scenario\":" + json_string(sample.scenario);
     if (sample.camera) extra += ",\"camera\":" + camera_json(*sample.camera);
-    if (coverage && coverage->samples() != 0) extra += "," + coverage->json();
+    if (extra_)
+    {
+        if (const auto added = extra_(); !added.empty()) extra += "," + added;
+    }
     std::printf("{\"build\":\"%s\",\"renderer\":%s,\"gpu\":%s,\"explosions\":%u,\"capacity\":%u,\"profile_tick\":%s,"
         "\"vsync\":%s,\"smoke_resolution\":\"%s\",\"view\":%s,\"scene_format\":%s,\"preset\":%s,\"layer_mask\":%u,\"wind\":[%.2f,%.1f,%.2f]%s,"
         "\"width\":1280,\"height\":720,\"warmup_frames\":%zu,\"samples\":%zu,"
         "\"alive\":%s,\"cpu_ms\":{\"average\":%.4f,\"median\":%.4f,\"p99\":%.4f},\"gpu_ms\":%s}\n",
         build_configuration, json_string(sample.renderer).c_str(), json_string(sample.gpu).c_str(),
         sample.explosions, sample.capacity, tick.c_str(), sample.profile_tick ? "false" : "true",
-        sample.half_resolution_smoke ? "half" : "full", json_string(sample.view).c_str(), json_string(sample.scene_format).c_str(),
+        sample.smoke_resolution.c_str(), json_string(sample.view).c_str(), json_string(sample.scene_format).c_str(),
         json_string(sample.preset).c_str(), sample.layer_mask, static_cast<double>(sample.wind.speed),
         static_cast<double>(sample.wind.direction_degrees), static_cast<double>(sample.wind.gustiness), extra.c_str(), warmup_frames,
         samples_.size(), alive_particles.c_str(), cpu.average, cpu.median, cpu.p99, gpu_ms.c_str());

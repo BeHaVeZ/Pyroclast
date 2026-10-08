@@ -130,7 +130,7 @@ public:
         }
     }
     int report(const Sandbox& sandbox, const pyroclast::ApplicationOptions& options, std::string_view gpu_name, int width, int height,
-        bool overlay, const pyroclast::CoverageStatistics& coverage)
+        bool overlay, const std::string& extra)
     {
         const auto statistics = [](std::vector<double>& samples) {
             if (samples.empty()) return std::string("null");
@@ -163,14 +163,14 @@ public:
             regions += entry;
         }
         std::string camera = options.camera ? ",\"camera\":" + pyroclast::camera_json(*options.camera) : std::string();
-        if (coverage.samples() != 0) camera += "," + coverage.json();
+        if (!extra.empty()) camera += "," + extra;
         std::printf("{\"scenario\":\"%.*s\",\"valid\":%s,\"build\":\"%s\",\"renderer\":\"%s\",\"gpu\":%s,\"width\":%d,\"height\":%d,"
             "\"smoke_resolution\":\"%s\",\"scene_format\":\"%s\",\"view\":\"%s\"%s,\"overlay\":%s,\"effect_lines\":%s,\"gpu_regions\":%s,"
             "\"preset\":\"%.*s\",\"layer_mask\":%u,\"wind\":[%.2f,%.1f,%.2f],\"ticks\":%u,\"frames\":%zu,\"effects_started\":%llu,\"effects_dropped\":%llu,\"peak_effects\":%u,"
             "\"particles\":{\"samples\":%zu,\"peak_alive\":%u,\"mean_alive\":%.3f,\"checksum\":\"%016llx\"},\"cpu_ms\":%s,"
             "\"gpu_ms\":{\"samples\":%zu,\"draw\":%s,\"compute\":%s,\"regions\":[%s]}}\n",
             static_cast<int>(scenario_.name.size()), scenario_.name.data(), valid_ ? "true" : "false", pyroclast::build_configuration,
-            pyroclast::renderer_name(options.renderer), gpu.c_str(), width, height, options.half_smoke ? "half" : "full",
+            pyroclast::renderer_name(options.renderer), gpu.c_str(), width, height, pyroclast::smoke_resolution_name(options.scalability.smoke_resolution),
             pyroclast::scene_format_name(options.scene_format), pose_name(options), camera.c_str(), overlay ? "true" : "false",
             sandbox.views.effect_bounds ? "true" : "false", options.gpu_regions ? "true" : "false",
             static_cast<int>(pyroclast::preset_name(options.preset).size()), pyroclast::preset_name(options.preset).data(),
@@ -262,7 +262,8 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
     const bool frozen = scenario && profile_tick;
     const bool unattended = scenario.has_value() || !options.capture_path.empty();
     pyroclast::FrameBaseline baseline({pyroclast::renderer_name(options.renderer), std::string(renderer.adapter_name()),
-        static_cast<std::uint32_t>(sandbox.group.size()), pyroclast::ParticleSystem::capacity, profile_tick, options.half_smoke,
+        static_cast<std::uint32_t>(sandbox.group.size()), pyroclast::ParticleSystem::capacity, profile_tick,
+        pyroclast::smoke_resolution_name(options.scalability.smoke_resolution),
         pose_name(options), options.camera, frozen ? options.scenario : std::string(), pyroclast::scene_format_name(options.scene_format),
         std::string(pyroclast::preset_name(options.preset)), options.layer_mask, options.wind});
     if (scenario && !frozen) baseline.disable();
@@ -278,6 +279,18 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
     std::uint32_t last_steps = 0;
     double showcase_ms = 0;
     pyroclast::CoverageStatistics coverage;
+    const bool automatic = options.scalability.smoke_resolution == pyroclast::SmokeResolution::automatic;
+    const auto scalability_json = [&coverage, &sandbox, automatic]() {
+        std::string text = coverage.json();
+        if (automatic)
+        {
+            const auto& policy = sandbox.renderer.smoke_policy();
+            text += (text.empty() ? "" : ",") + std::string("\"half_frames\":") + std::to_string(policy.half_frames()) +
+                ",\"switches\":" + std::to_string(policy.switches());
+        }
+        return text;
+    };
+    baseline.set_extra(scalability_json);
     std::vector<pyroclast::UiCommand> commands;
     auto previous_time = SDL_GetPerformanceCounter();
     std::uint32_t submitted_frames = 0;
@@ -404,7 +417,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     snapshot.system = {.renderer = pyroclast::renderer_name(options.renderer), .adapter = renderer.adapter_name(),
                         .build = pyroclast::build_configuration, .width = width, .height = height,
                         .vsync = !profile_tick.has_value() && !scenario, .scene_format = pyroclast::scene_format_name(options.scene_format),
-                        .exposure = pyroclast::TestRange::exposure, .half_resolution_smoke = options.half_smoke};
+                        .exposure = pyroclast::TestRange::exposure};
                     snapshot.frame = {.cpu_ms = history.samples(), .cpu_offset = history.offset(), .gpu_ms = gpu_history.samples(),
                         .gpu_offset = gpu_history.offset(), .gpu = renderer.completed_gpu_timings(), .showcase_cpu_ms = showcase_ms};
                     sandbox.fill_snapshot(snapshot);
@@ -426,7 +439,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                 const bool capture = !options.capture_path.empty() &&
                     (options.capture_tick ? demo.tick() + 1 == *options.capture_tick : !demo.has_pending_steps());
                 const auto result = sandbox.renderer.render(renderer, demo, sandbox.effects, sandbox.range, camera, width, height, elapsed,
-                    {capture, overlay, sandbox.views, sandbox.layer_mask, sandbox.wind, sandbox.marks, sandbox.scalability});
+                    {capture, overlay, sandbox.views, sandbox.layer_mask, sandbox.wind, sandbox.marks, sandbox.scalability, sandbox.counters});
                 if (result == pyroclast::RenderResult::failed) return 1;
                 if (!unattended)
                 {
@@ -441,7 +454,8 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                 if (counter_log && result == pyroclast::RenderResult::submitted)
                 {
                     counter_log->add_frame({demo.tick(), last_steps, static_cast<std::uint32_t>(sandbox.effects.active().size()),
-                        sandbox.effects.started() - started_before, sandbox.effects.dropped() - dropped_before, !sandbox.effects.active().empty()});
+                        sandbox.effects.started() - started_before, sandbox.effects.dropped() - dropped_before, !sandbox.effects.active().empty(),
+                        sandbox.renderer.half_smoke()});
                 }
                 const double wall = static_cast<double>(SDL_GetPerformanceCounter()) / static_cast<double>(SDL_GetPerformanceFrequency());
                 tick_rate.add(wall, demo.tick());
@@ -454,7 +468,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                 const auto counters = sandbox.poll_counters(renderer);
                 if (scenario && !frozen && counters) scenario->count(*counters);
                 if (counter_log && counters) counter_log->add_counters(*counters);
-                if (counters && sandbox.scalability.coverage && (!profile_tick || counters->tick == *profile_tick))
+                if (counters && (sandbox.scalability.coverage || automatic) && (!profile_tick || counters->tick == *profile_tick))
                 {
                     coverage.add(counters->smoke_coverage, counters->light_coverage, counters->offscreen,
                         static_cast<double>(width) * static_cast<double>(height));
@@ -472,8 +486,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     }
                     if (!profile_tick || !demo.has_pending_steps())
                         baseline.record(milliseconds, renderer.completed_gpu_timings(), sandbox.effects.active().empty() ?
-                            std::optional<std::uint32_t>(0) : sandbox.counters ? std::optional(sandbox.counters->alive) : std::nullopt,
-                            &coverage);
+                            std::optional<std::uint32_t>(0) : sandbox.counters ? std::optional(sandbox.counters->alive) : std::nullopt);
                     if (capture) return save_capture(renderer, options.capture_path);
                     if (scenario && options.capture_tick && scenario->finished(sandbox))
                     {
@@ -486,7 +499,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                         scenario->record(milliseconds, renderer.completed_gpu_timings(), sandbox);
                         if (scenario->finished(sandbox))
                         {
-                            return scenario->report(sandbox, options, renderer.adapter_name(), width, height, ui != nullptr, coverage);
+                            return scenario->report(sandbox, options, renderer.adapter_name(), width, height, ui != nullptr, scalability_json());
                         }
                     }
                     if (options.exit_after && ++submitted_frames >= *options.exit_after)
@@ -561,7 +574,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
         return 1;
     }
     auto& device = *creation.device;
-    SDL_Log("Smoke resolution: %s; scene target: %s.", options.half_smoke ? "half" : "full",
+    SDL_Log("Smoke resolution: %s; scene target: %s.", pyroclast::smoke_resolution_name(options.scalability.smoke_resolution),
         pyroclast::scene_format_name(options.scene_format));
     const auto scene_format = options.scene_format == pyroclast::SceneFormat::rgba16f ? pyroclast::TargetFormat::rgba16_float :
         options.scene_format == pyroclast::SceneFormat::r11g11b10f ? pyroclast::TargetFormat::r11g11b10_float : pyroclast::TargetFormat::color;
@@ -569,7 +582,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
     if (!sandbox->range.initialize(device, scene_format) ||
         !sandbox->particles.initialize(device, sandbox->range.environment_buffer(), {scene_format, pyroclast::ExplosionRenderer::smoke_format},
             pyroclast::effect_classes()) ||
-        !sandbox->renderer.initialize(device, options.half_smoke, scene_format))
+        !sandbox->renderer.initialize(device, scene_format))
     {
         return 1;
     }
@@ -614,7 +627,8 @@ int run_application(const pyroclast::ApplicationOptions& options)
     SDL_SetWindowTitle(window.get(), title.c_str());
     SDL_Log("Explosion demo ready. %.*s.", static_cast<int>(pyroclast::controls_summary().size()), pyroclast::controls_summary().data());
     std::optional<pyroclast::CounterLog> counter_log;
-    if (!options.counter_log.empty()) counter_log.emplace(options.scalability.coverage);
+    const bool automatic_smoke = options.scalability.smoke_resolution == pyroclast::SmokeResolution::automatic;
+    if (!options.counter_log.empty()) counter_log.emplace(options.scalability.coverage || automatic_smoke, automatic_smoke);
     int exit_code = run_event_loop(window.get(), device, *sandbox, ui.get(), options, std::move(scenario), counter_log ? &*counter_log : nullptr);
     if (counter_log)
     {
@@ -660,7 +674,11 @@ int main(int argc, char** argv)
             "  --explosions=N     Simultaneous explosion group (1, 10, 50, 100; default 1).\n"
             "  --profile-tick=N   Freeze at tick 0-480; enable timestamps and disable VSync. With --scenario: prepare the\n"
             "                     scenario to tick N (1 up to its duration), then freeze and sample it the same way.\n"
-            "  --smoke-resolution=full|half  Select smoke rendering resolution (default full).\n"
+            "  --smoke-resolution=full|half|auto  Smoke at full or half resolution (default full); auto draws it at half\n"
+            "                     resolution while the measured smoke coverage is above a budget.\n"
+            "  --smoke-budget=coverage:S|count:N  With auto: half resolution from S screens of smoke coverage (default 1000),\n"
+            "                     or from N alive smoke particles.\n"
+            "  --half-light       With half or auto: half-resolution frames draw light at half resolution too.\n"
             "  --gpu-timing       Enable GPU timestamp measurements.\n"
             "  --gpu-regions      Also time every dispatch, pass and the overlay (serializes Vulkan GPU work).\n"
             "  --capture=FILE.png Write the first frame drawn at the profile tick, then exit (requires --profile-tick,\n"

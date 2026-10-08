@@ -40,7 +40,8 @@ void CounterLog::add_counters(const ParticleCounters& counters)
 std::string CounterLog::csv() const
 {
     std::string text = "frame,tick,steps,active,started,dropped,counter_tick,alive,smoke,light,debris,draw_ms,compute_ms,cpu_ms";
-    text += coverage_ ? ",offscreen,smoke_bin0,smoke_bin1,smoke_bin2,smoke_bin3,coverage_smoke,coverage_light\n" : "\n";
+    if (coverage_) text += ",offscreen,smoke_bin0,smoke_bin1,smoke_bin2,smoke_bin3,coverage_smoke,coverage_light";
+    text += smoke_resolution_ ? ",half\n" : "\n";
     char line[256];
     for (std::size_t index = 0; index < rows_.size(); ++index)
     {
@@ -73,6 +74,7 @@ std::string CounterLog::csv() const
             text += line;
         }
         else if (coverage_) text += ",,,,,,,";
+        if (smoke_resolution_) text += frame.half ? ",1" : ",0";
         text += '\n';
     }
     return text;

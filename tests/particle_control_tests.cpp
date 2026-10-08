@@ -153,6 +153,10 @@ public:
             present_pass(passes[2]);
         lined_passes = passes.size() == 3 && range_pass(passes[0]) && over_scene(passes[1]) && draws(passes[1], {lines, particles}) &&
             passes[1].draws[0].vertex_count == 32 && present_pass(passes[2]);
+        half_light_passes = passes.size() == 4 && range_pass(passes[0]) && passes[1].target == half_target && !passes[1].depth &&
+            with_depth(passes[1], nullptr) && draws(passes[1], {offscreen}) &&
+            records(passes[1].draws[0], 0, ParticleSystem::capacity, layout::particle_arguments_offset) && passes[1].draws[0].constants[3] == 2 &&
+            over_scene(passes[2]) && with_depth(passes[2], half_target) && draws(passes[2], {composite}) && present_pass(passes[3]);
         half_resolution_passes = passes.size() == 4 && range_pass(passes[0]) &&
             passes[1].target == half_target && !passes[1].depth && with_depth(passes[1], nullptr) && draws(passes[1], {offscreen}) &&
             records(passes[1].draws[0], 0, layout::light_list_first, layout::smoke_arguments_offset) && passes[1].draws[0].constants[3] == 2 &&
@@ -178,6 +182,7 @@ public:
     bool full_resolution_passes = false;
     bool lined_passes = false;
     bool half_resolution_passes = false;
+    bool half_light_passes = false;
     std::size_t dispatches = 0;
     std::uint32_t dispatch_groups = 0;
     pyroclast::Frame::Readback readback;
@@ -283,6 +288,10 @@ int main()
     check(draws(three.particles, device.particles, 0, ParticleSystem::capacity, 1, layout::particle_arguments_offset),
         "every layer is drawn from the whole list");
     const auto layered = system.plan(0, 3, 2);
+    const auto one_list = system.plan(0, 3, 2, {false, true});
+    check(one_list.dispatches[1].constants[2] == 0 && one_list.dispatches[2].constants[1] == 0 &&
+        draws(one_list.offscreen_particles, device.offscreen, 0, ParticleSystem::capacity, 2, layout::particle_arguments_offset),
+        "half-resolution light keeps one list and draws all of it offscreen");
     check(layered.dispatches[1].constants[2] == 1 && layered.dispatches[2].constants[1] == 1 &&
         draws(layered.offscreen_smoke, device.offscreen, 0, layout::light_list_first, 2, layout::smoke_arguments_offset) &&
         draws(layered.light, device.particles, layout::light_list_first, ParticleSystem::capacity, 1,
@@ -365,9 +374,10 @@ int main()
     ExplosionSystem effects(ParticleSystem::effect_slots);
     const auto camera = range.view(RangeView::overview);
     ExplosionRenderer full_resolution;
-    check(full_resolution.initialize(device, false, hdr) && device.scene && device.scene->description().format == hdr && device.depth &&
-        device.depth_cleared_far && !device.half_target && device.present && device.lines,
-        "full resolution creates a scene and a depth target cleared to the far end");
+    check(full_resolution.initialize(device, hdr) && device.scene && device.scene->description().format == hdr && device.depth &&
+        device.depth_cleared_far && device.half_target && device.half_target->description().divisor == 2 && device.composite &&
+        device.present && device.lines,
+        "the renderer creates a scene, a depth target cleared to the far end, and the half-size smoke target and its composite");
     check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::submitted &&
         device.valid_frame && device.range_only && device.dispatches == 0 && !device.readback.source, "without effects only the range is drawn");
     const auto group = group_events(range.terrain(), 10);
@@ -451,7 +461,7 @@ int main()
     ExplosionSystem ordered_effects(ParticleSystem::effect_slots);
     for (const auto& event : group_events(ordered_range.terrain(), 100)) ordered_effects.submit(event);
     ExplosionRenderer ordered;
-    ordered.initialize(ordered_device, false, hdr);
+    ordered.initialize(ordered_device, hdr);
     auto oblique = camera;
     oblique.position = {-70, 30, 20};
     check(ordered.render(ordered_device, ordered_particles, ordered_effects, ordered_range, oblique, 1280, 720, 0, {}) == RenderResult::submitted &&
@@ -476,12 +486,32 @@ int main()
     ExplosionRenderer half_resolution;
     ExplosionSystem half_effects(ParticleSystem::effect_slots);
     half_effects.submit(group[0]);
-    check(half_resolution.initialize(device, true, hdr) && device.half_target && device.half_target->description().divisor == 2 &&
+    check(half_resolution.initialize(device, hdr) && device.half_target && device.half_target->description().divisor == 2 &&
         device.half_target->description().format == ExplosionRenderer::smoke_format && device.composite,
-        "half resolution creates a half-size target and its composite pipeline");
-    check(half_resolution.render(device, rendered, half_effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::submitted &&
-        device.valid_frame && device.half_resolution_passes,
+        "the half-size target holds smoke in its format");
+    ExplosionRenderer::FrameOptions half_options{};
+    half_options.scalability.smoke_resolution = SmokeResolution::half;
+    check(half_resolution.render(device, rendered, half_effects, range, camera, 1280, 720, 1.0 / 60, half_options) == RenderResult::submitted &&
+        device.valid_frame && device.half_resolution_passes && half_resolution.half_smoke(),
         "half resolution draws smoke into the target, then composites it under full-resolution light");
+    check(half_resolution.render(device, rendered, half_effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::submitted &&
+        device.valid_frame && device.full_resolution_passes && !half_resolution.half_smoke(), "the next frame may draw at full resolution");
+    half_options.scalability.half_light = true;
+    check(half_resolution.render(device, rendered, half_effects, range, camera, 1280, 720, 1.0 / 60, half_options) == RenderResult::submitted &&
+        device.valid_frame && device.half_light_passes, "with half-resolution light the target holds every translucent particle");
+    half_options.scalability.half_light = false;
+    ExplosionRenderer::FrameOptions automatic{};
+    automatic.scalability.smoke_resolution = SmokeResolution::automatic;
+    automatic.scalability.smoke_budget = {false, 100};
+    check(half_resolution.render(device, rendered, half_effects, range, camera, 1280, 720, 1.0 / 60, automatic) == RenderResult::submitted &&
+        device.valid_frame && device.full_resolution_passes && device.readback.size == layout::counters_bytes,
+        "automatic without a record draws at full resolution and measures");
+    ParticleCounters heavy_record;
+    heavy_record.smoke_coverage[3] = 100 * 1280 * 720 / layout::coverage_unit_pixels;
+    automatic.counters = heavy_record;
+    check(half_resolution.render(device, rendered, half_effects, range, camera, 1280, 720, 1.0 / 60, automatic) == RenderResult::submitted &&
+        device.valid_frame && device.half_resolution_passes && half_resolution.half_smoke() && half_resolution.smoke_policy().switches() == 1,
+        "automatic switches to half resolution at the budget");
 
     {
         Sandbox sandbox;
@@ -598,6 +628,15 @@ int main()
         apply(command(Kind::toggle_debug_view, 4), sandbox);
         check(one_view && !sandbox.views.effect_bounds && !sandbox.views.collision_boxes && !sandbox.views.spawn_regions &&
             !sandbox.views.wind_arrow, "toggle_debug_view flips only its view and ignores an unknown one");
+        apply(command(Kind::set_smoke_resolution, 2), sandbox);
+        const bool automatic_set = sandbox.scalability.smoke_resolution == SmokeResolution::automatic;
+        apply(command(Kind::set_smoke_resolution, 3), sandbox);
+        apply(command(Kind::set_smoke_budget, 1, 50000), sandbox);
+        const bool counted_budget = sandbox.scalability.smoke_budget.count && sandbox.scalability.smoke_budget.limit == 50000;
+        apply(command(Kind::set_smoke_budget, 0, -1), sandbox);
+        check(automatic_set && sandbox.scalability.smoke_resolution == SmokeResolution::automatic && counted_budget &&
+            sandbox.scalability.smoke_budget.limit == 50000, "set_smoke_resolution and set_smoke_budget take valid values only");
+        apply(command(Kind::set_smoke_resolution, 0), sandbox);
         apply(command(Kind::toggle_coverage), sandbox);
         const bool covering = sandbox.scalability.coverage;
         apply(command(Kind::toggle_coverage), sandbox);

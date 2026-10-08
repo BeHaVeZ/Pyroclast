@@ -87,7 +87,7 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_e
     drawing.read[1] = alive_.get();
     drawing.read[2] = classes_.get();
     const auto groups = std::max(active_effects * groups_per_slab, 1u);
-    const bool layered = offscreen_divisor != 0;
+    const bool layered = offscreen_divisor != 0 && !listing.offscreen_light;
     constexpr auto light_first = particle_layout::light_list_first;
     const DrawConstants parameters{steps, active_effects, capacity, tick_};
     const std::uint32_t flags = listing.measure ? particle_layout::listing_measure : 0u;
@@ -97,6 +97,7 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_e
     const DrawConstants both_layers{capacity, 0, capacity, 1};
     const DrawConstants smoke_layer{capacity, 0, light_first, std::max(offscreen_divisor, 1u)};
     const DrawConstants light_layer{capacity, light_first, capacity, 1};
+    const DrawConstants every_layer{capacity, 0, capacity, std::max(offscreen_divisor, 1u)};
     const DrawConstants debris_list{capacity, particle_layout::debris_list_first, capacity};
     return {
         {{{*compute_, simulation, parameters, {groups, 1, 1}, "Particle simulation"},
@@ -105,6 +106,7 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_e
         {*graphics_, drawing, both_layers, 0, 0, "Particles", arguments_.get(), particle_layout::particle_arguments_offset},
         {*offscreen_graphics_, drawing, smoke_layer, 0, 0, "Smoke", arguments_.get(), particle_layout::smoke_arguments_offset},
         {*graphics_, drawing, light_layer, 0, 0, "Light", arguments_.get(), particle_layout::light_arguments_offset},
+        {*offscreen_graphics_, drawing, every_layer, 0, 0, "Smoke and light", arguments_.get(), particle_layout::particle_arguments_offset},
         {*debris_graphics_, drawing, debris_list, 0, 0, "Debris", arguments_.get(), particle_layout::debris_arguments_offset},
         {arguments_.get(), particle_layout::counters_offset, listing.measure ? particle_layout::counters_bytes : particle_layout::counters_basic_bytes},
         steps, active_effects};
