@@ -42,7 +42,35 @@ struct ApplicationOptions
     WindSettings wind;
     std::string counter_log;
     ScalabilitySettings scalability;
+    std::string benchmark;
 };
+
+struct BenchmarkWorkload
+{
+    std::string_view name;
+    std::string_view scenario;
+    ExplosionPreset preset;
+    RangeView view;
+};
+inline constexpr std::array<BenchmarkWorkload, 7> benchmark_workloads{{
+    {"single", "single", ExplosionPreset::small_he, RangeView::overview},
+    {"simultaneous-10", "grid-10", ExplosionPreset::small_he, RangeView::overview},
+    {"simultaneous-50", "grid-50", ExplosionPreset::small_he, RangeView::overview},
+    {"simultaneous-100", "grid-100", ExplosionPreset::small_he, RangeView::overview},
+    {"sustained-barrage", "barrage", ExplosionPreset::artillery_he, RangeView::overview},
+    {"smoke-field", "grid-100", ExplosionPreset::heavy, RangeView::ground},
+    {"accumulation", "accumulation", ExplosionPreset::artillery_he, RangeView::overview}}};
+inline constexpr std::string_view benchmark_names =
+    "single, simultaneous-10, simultaneous-50, simultaneous-100, sustained-barrage, smoke-field, accumulation";
+inline constexpr std::uint32_t benchmark_warmup_frames = 120;
+constexpr const BenchmarkWorkload* benchmark_workload(std::string_view name)
+{
+    for (const auto& workload : benchmark_workloads)
+    {
+        if (workload.name == name) return &workload;
+    }
+    return nullptr;
+}
 
 inline constexpr std::uint32_t maximum_profile_tick = 480;
 

@@ -1,9 +1,12 @@
 #include "app/command_line.hpp"
 #include "graphics/adapter_name.hpp"
+#include "simulation/explosion_scenarios.hpp"
 
 #include <cmath>
 #include <cstdio>
 #include <initializer_list>
+#include <span>
+#include <string>
 #include <string_view>
 
 namespace
@@ -356,6 +359,52 @@ int main()
         std::string_view(pyroclast::renderer_name(vulkan)) != "vulkan")
     {
         std::fputs("FAIL: renderer names\n", stderr);
+        ++failures;
+    }
+
+    bool tables = true;
+    for (const auto& workload : pyroclast::benchmark_workloads)
+    {
+        const std::string flag = "--benchmark=" + std::string(workload.name);
+        const char* arguments[] = {flag.c_str()};
+        const auto parsed = pyroclast::parse_command_line(arguments);
+        tables &= parsed.error.empty() && parsed.options.benchmark == workload.name && parsed.options.scenario == workload.scenario &&
+            parsed.options.preset == workload.preset && parsed.options.view == workload.view && pyroclast::is_scenario_name(workload.scenario) &&
+            pyroclast::benchmark_workload(workload.name) == &workload && pyroclast::benchmark_names.find(workload.name) != std::string_view::npos;
+    }
+    if (!tables || pyroclast::benchmark_workload("storm") || pyroclast::benchmark_workload(""))
+    {
+        std::fputs("FAIL: benchmark names map to their script, preset and pose\n", stderr);
+        ++failures;
+    }
+    const auto benchmark_error = [](std::initializer_list<const char*> arguments) {
+        return pyroclast::parse_command_line(std::span(arguments.begin(), arguments.size())).error;
+    };
+    for (const char* refused : {"--scenario=single", "--explosions=10", "--preset=heavy", "--view=ground", "--camera=0,1,2,3,4,5",
+        "--profile-tick=10", "--exit-after=10", "--ui=on", "--debug-views=all", "--effect-lines"})
+    {
+        if (benchmark_error({"--benchmark=single", refused}).find("cannot be combined with") == std::string::npos)
+        {
+            std::fprintf(stderr, "FAIL: --benchmark refuses %s\n", refused);
+            ++failures;
+        }
+    }
+    for (const char* accepted : {"--renderer=vulkan", "--adapter=uhd", "--smoke-resolution=half", "--scene-format=rgba8",
+        "--disable=debris", "--wind=1,2,0", "--coverage", "--gpu-regions", "--gpu-timing", "--counter-log=a.csv", "--gpu-validation",
+        "--ui=off", "--effect-order=cloud", "--slot-policy=evict-oldest", "--smoke-lod=16"})
+    {
+        if (!benchmark_error({"--benchmark=smoke-field", accepted}).empty())
+        {
+            std::fprintf(stderr, "FAIL: --benchmark accepts %s\n", accepted);
+            ++failures;
+        }
+    }
+    if (benchmark_error({"--benchmark=single", "--capture=a.png", "--capture-tick=5"}) != "" ||
+        benchmark_error({"--benchmark=storm"}).find("Expected --benchmark=single, simultaneous-10") == std::string::npos ||
+        benchmark_error({"--benchmark=single", "--benchmark=single"}).find("only once") == std::string::npos ||
+        benchmark_error({"--benchmark=accumulation", "--smoke-resolution=auto", "--half-light"}) != "")
+    {
+        std::fputs("FAIL: --benchmark captures, unknown and repeated names\n", stderr);
         ++failures;
     }
 

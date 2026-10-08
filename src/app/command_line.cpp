@@ -246,6 +246,21 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
                 return result;
             }
         }
+        else if (option.starts_with("--benchmark="))
+        {
+            if (!result.options.benchmark.empty())
+            {
+                result.error = "Specify --benchmark only once.";
+                return result;
+            }
+            const auto value = option.substr(std::string_view("--benchmark=").size());
+            if (!benchmark_workload(value))
+            {
+                result.error = "Expected --benchmark=" + or_list(benchmark_names) + ".";
+                return result;
+            }
+            result.options.benchmark = std::string(value);
+        }
         else if (option.starts_with("--scenario="))
         {
             if (scenario_specified)
@@ -533,6 +548,23 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
         }
     }
 
+    if (const auto workload = benchmark_workload(result.options.benchmark))
+    {
+        const char* conflict = scenario_specified ? "--scenario" : explosions_specified ? "--explosions" : preset_specified ? "--preset" :
+            view_specified ? "--view" : result.options.camera ? "--camera" : profile_specified ? "--profile-tick" :
+            result.options.exit_after ? "--exit-after" : result.options.ui.value_or(false) ? "--ui=on" :
+            debug_views_specified ? "--debug-views" : result.options.effect_lines ? "--effect-lines" : nullptr;
+        if (conflict)
+        {
+            result.error = "--benchmark=NAME fixes the script, preset and pose and runs to its end; it cannot be combined with " +
+                std::string(conflict) + ".";
+            return result;
+        }
+        result.options.scenario = std::string(workload->scenario);
+        result.options.preset = workload->preset;
+        result.options.view = workload->view;
+        scenario_specified = true;
+    }
     if (capture_specified && !result.options.profile_tick && !(scenario_specified && result.options.capture_tick))
     {
         result.error = "--capture requires --profile-tick, or --scenario with --capture-tick, so the captured state is reproducible.";

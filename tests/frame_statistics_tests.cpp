@@ -107,9 +107,9 @@ int main()
     log.add_frame({1, 1, 0, 0, 0, false});
     log.set_cpu_ms(0.5);
     log.add_frame({2, 1, 3, 3, 1, true});
-    log.add_timing(0.25, 0.01);
+    log.add_timing({0.01, 0.25});
     log.add_frame({3, 1, 3, 0, 0, true});
-    log.add_timing(0.5, 0.02);
+    log.add_timing({0.02, 0.5});
     pyroclast::ParticleCounters record;
     record.tick = 2;
     record.alive = 70;
@@ -159,12 +159,61 @@ int main()
     }
     record.tick = 7;
     log.add_counters(record);
-    log.add_timing(1, 1);
-    log.add_timing(1, 1);
+    log.add_timing({1, 1});
+    log.add_timing({1, 1});
     if (log.mismatches() != 2)
     {
         std::fprintf(stderr, "FAIL: counter log mismatches (got %zu)\n", log.mismatches());
         ++failures;
+    }
+
+    {
+        using pyroclast::FramePhase;
+        static const char first_label[] = "Scene";
+        static const char second_label[] = "Scene";
+        pyroclast::CounterLog bench(false, false, false, false, true);
+        bench.reserve(8);
+        bench.add_frame({0, 0, 0, 0, 0, false, false, 0, FramePhase::warmup, 0.0, 0.25, {0.1, 0.05}, {0, 2, 4}});
+        bench.set_cpu_ms(0.5);
+        bench.add_frame({1, 1, 1, 1, 0, true, false, 0, FramePhase::measured, 4.0, 1.0, {0.2, 0.25}, {3, 3, 6}});
+        bench.set_cpu_ms(2.0);
+        pyroclast::GpuTimings warm{0.01, 0.4};
+        warm.frame_ms = 0.45;
+        warm.regions[0] = {second_label, 0.3};
+        warm.region_count = 1;
+        bench.add_timing(warm);
+        bench.add_frame({2, 1, 1, 0, 0, true, false, 0, FramePhase::measured, 10.0, 1.5, {0.4, 0.75}, {3, 4, 7}});
+        bench.set_cpu_ms(3.0);
+        pyroclast::GpuTimings measured{0.02, 2.0};
+        measured.frame_ms = 2.5;
+        measured.regions[0] = {first_label, 1.75};
+        measured.region_count = 1;
+        bench.add_timing(measured);
+        pyroclast::ParticleCounters first;
+        first.tick = 1;
+        first.alive = 50;
+        first.smoke = 30;
+        first.light = 10;
+        bench.add_counters(first);
+        const auto text = bench.csv();
+        const auto summary = bench.summary();
+        const bool csv_ok = text.find(",cpu_ms,phase,frame_ms,submit_ms,wait_ms,present_ms,gpu_frame_ms,dispatches,passes,draws,region:Scene\n") !=
+                std::string::npos &&
+            text.find("0.5000,warmup,4.000000,0.250000,0.100000,0.050000,0.450000,0,2,4,0.300000\n") != std::string::npos &&
+            text.find("2.0000,measured,6.000000,1.000000,0.200000,0.250000,2.500000,3,3,6,1.750000\n") != std::string::npos &&
+            text.find("3.0000,measured,,1.500000,0.400000,0.750000,,3,4,7,\n") != std::string::npos;
+        const bool summary_ok = summary.frames == 2 && summary.cpu && summary.cpu->average == 2.5 && summary.frame &&
+            summary.frame->max == 6.0 && summary.gpu_samples == 1 && summary.draw && summary.draw->average == 2.0 && summary.gpu_frame &&
+            summary.gpu_frame->average == 2.5 && summary.counter_records == 1 && summary.peak_alive == 50 &&
+            summary.checksum == pyroclast::counter_checksum(pyroclast::checksum_basis, first) && summary.peak_active == 1 &&
+            summary.work_min.draws == 6 && summary.work_max.draws == 7 && summary.work_max.passes == 4 && summary.regions.size() == 1 &&
+            summary.regions[0].samples == 1 && summary.regions[0].statistics.average == 1.75 && !summary.visible && !summary.offscreen &&
+            summary.wait && summary.wait->max == 0.4 && summary.present && summary.present->average == 0.5 && bench.mismatches() == 0;
+        if (!csv_ok || !summary_ok)
+        {
+            std::fprintf(stderr, "FAIL: benchmark counter log (csv %d, summary %d)\n%s", csv_ok, summary_ok, text.c_str());
+            ++failures;
+        }
     }
 
     pyroclast::CoverageStatistics coverage;
