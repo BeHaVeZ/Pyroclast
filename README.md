@@ -11,7 +11,8 @@ free-fly camera) on D3D12 and Vulkan, with a Dear ImGui engineering overlay. Exp
 by clicks or scripts, built from seven presets of layered effects (flash, fireball, sparks, blast smoke,
 plume, ground dust, debris, temporary lights) that respond to the surface they hit, and the GPU decides
 which particles are alive and how many to draw. Smoke rides gusty wind, rolls into mushroom caps and is lit
-as volume. Environment interaction, showcase and benchmark modes follow.
+as volume. Walls, a hut, crates, vehicles, barriers and rocks on the range stop sparks, debris, dust and
+smoke, and turn the wind. Showcase and benchmark modes follow.
 
 ## Core question
 
@@ -57,6 +58,25 @@ This project is an independent technical exploration.
 It is not affiliated with Bohemia Interactive, Arma, Enfusion, or Blastcore, and does not use proprietary engine source code.
 
 ## Current milestone
+
+**M17 - Test range and environmental interaction** (complete)
+
+- The range has props: blast walls, a hut with a door and a roof, a crate stack, a truck, jersey barriers and
+  rocks in a yard north of the startup groups, a tank, a burnt car, barriers and a rock around the edges. They
+  are built in code (no assets) from 36 upright boxes, drawn as one mesh with a material per prop, and grounded
+  with contact shadows and a dark hut interior.
+- Particles meet them like the ground: sparks and debris bounce off walls (swept, so nothing tunnels through a
+  thin wall), debris comes to rest on tops, fire and smoke slide along faces, ground dust is held back by the
+  barriers and stays on tops, and the wind and the explosions' vortex rings turn aside and up over walls.
+- Clicks land on props too, with the prop's material deciding the response (wood throws dark clods and brown
+  dust). The CPU raycast and the GPU read the same packed data, so they see the same boxes.
+- `--scenario=range` fires seven presets among the props; scenario frames can be captured by tick
+  (`--capture-tick`), so collision has an image baseline and a D3D12/Vulkan comparison (identical run to run,
+  within one level across APIs).
+- Measured (RTX 4090): drawing the props costs nothing measurable; collision and deflection add nothing
+  measurable on D3D12 and up to 1.5 µs (6%) on Vulkan to the simulation of 100 effects, and 2.2-2.5 µs where
+  every explosion is among props. Against M16 the larger simulation kernel costs D3D12 0.5-3.4 µs (3-9%) even
+  where no particle meets a prop. `--disable=props` (or `collision`, `deflection`) switches them off.
 
 **M16 - Smoke model and lighting** (complete)
 
@@ -270,13 +290,15 @@ windows pause rendering and wait for events.
 
 Controls:
 
-- **Left click:** an explosion of the selected preset where the cursor points on the terrain, responding
-  to the surface there (they add up; slots that are still busy drop new events, counted in the overlay).
+- **Left click:** an explosion of the selected preset where the cursor points on the terrain or a prop,
+  responding to the surface there (a prop's material: concrete, rock and metal like concrete, wood like dirt;
+  they add up; slots that are still busy drop new events, counted in the overlay).
   The overlay selects the preset and shows or hides each layer and the lights.
 - **Space:** trigger/restart the selected deterministic explosion group, including while paused; it
   replaces every effect.
 - **R:** clear every effect; retain the pause setting.
-- **L:** show or hide each effect's origin, surface normal and nominal reach as lines.
+- **L:** show or hide each effect's origin, surface normal and nominal reach, and the props' collision
+  boxes, as lines.
 - **P:** pause or resume simulation.
 - **N:** advance one 1/60-second step while paused.
 - **W/A/S/D:** fly forward, left, back, right; **Q/E:** down, up; hold **Shift** to fly four times
@@ -312,6 +334,7 @@ Scripted scenarios replace the group and the interactive clock; each run ends wi
 .\out\build\windows-x64\Release\Pyroclast.exe --scenario=barrage
 .\out\build\windows-x64\Release\Pyroclast.exe --renderer=vulkan --scenario=grid-100 --smoke-resolution=half
 .\out\build\windows-x64\Release\Pyroclast.exe --scenario=presets
+.\out\build\windows-x64\Release\Pyroclast.exe --scenario=range --view=range
 ```
 
 Presets, layers, smoke features and the wind apply to groups, profiles and scenarios:
@@ -320,7 +343,11 @@ Presets, layers, smoke features and the wind apply to groups, profiles and scena
 .\out\build\windows-x64\Release\Pyroclast.exe --preset=artillery-he --explosions=10
 .\out\build\windows-x64\Release\Pyroclast.exe --preset=stress-test --explosions=100 --profile-tick=45 --disable=debris,lights
 .\out\build\windows-x64\Release\Pyroclast.exe --preset=heavy --wind=8,45,0.6 --disable=shading
+.\out\build\windows-x64\Release\Pyroclast.exe --scenario=range --view=yard --disable=deflection
 ```
+
+`--view=range` and `--view=yard` look at the props in the north yard; `--disable=props` removes them (no
+drawing, clicks or collision), `--disable=collision` keeps them drawn while particles pass through.
 
 Renderer selection happens at startup and defaults to D3D12:
 
@@ -350,7 +377,7 @@ In Visual Studio, open this repository with **File > Open > Folder**, select the
 right-click the executable in CMake Targets View and select **Add Debug
 Configuration**. Set `args` in the generated `launch.vs.json`, for example
 `"args": ["--renderer=vulkan"]`. Keep the generated target and executable fields.
-The local `.vs/` settings are ignored by Git. Run the `command_line`, `particle_controls`, `draw_validation`, `frame_statistics`, `image_compare`, `math` and `terrain` tests from
+The local `.vs/` settings are ignored by Git. Run the `command_line`, `particle_controls`, `draw_validation`, `frame_statistics`, `image_compare`, `math`, `terrain`, `environment`, `explosion_system` and `explosion_presets` tests from
 **Test > Test Explorer**, or run the CTest commands above in Developer PowerShell.
 
 For Vulkan Debug with a copy-only SDK, also add an `env` property to that launch
@@ -393,10 +420,11 @@ code includes. `shaders/explosion.hlsli` shares layer classification and determi
 The particle workload is three dispatches (the simulation over the active effects' slabs in 64-thread
 groups, 40 per effect; a one-group scan; a scatter over the same groups) and one indirect draw of six
 vertices per alive particle (two draws in half-resolution mode, smoke and light); with no active effect
-there is none of it; the range adds the terrain (393,216 vertices), the sky and the tonemap pass to the
-backbuffer. Each backend orders the previous frame's draws before the next update, and compute writes
+there is none of it; the range adds the props (1,764 vertices), the terrain (393,216 vertices), the sky and
+the tonemap pass to the backbuffer. Each backend orders the previous frame's draws before the next update, and compute writes
 before the draws read them, as data or as draw arguments. No per-frame descriptor allocation or particle
-upload is needed; the only readback is a 16-byte counter record per frame.
+upload is needed; the only readback is a 32-byte counter record per frame. The terrain heights and the
+props' boxes and grid are one buffer, uploaded once and read by the simulation, the terrain and the props.
 
 Debug disables shader optimization and includes debug information; Release uses
 `-O3`. SPIR-V targets the Vulkan 1.1 environment (unchanged when the API moved to 1.3, so the
@@ -462,8 +490,9 @@ memory; M11 measured plain device-local memory as equally fast on the RTX 4090.)
 
 ### Validation and measurement tools
 
-`--capture=FILE.png` (requires `--profile-tick`) writes the first frame drawn at the profile tick,
-copied on the GPU before Present, then exits. `--exit-after=N` ends any run after N submitted
+`--capture=FILE.png` (requires `--profile-tick`, or `--scenario` with `--capture-tick=N`) writes the first
+frame drawn at the profile tick, or the scenario frame that draws tick N, copied on the GPU before Present,
+then exits. `--exit-after=N` ends any run after N submitted
 frames. The tools in `tools/` build on these:
 
 ```powershell
@@ -472,9 +501,14 @@ python tools/captures.py capture --config Debug --out out/baselines/mine
 python tools/captures.py capture --config Debug --out out/baselines/mine --views ground,hill,aerial --ticks 60,180
 python tools/captures.py compare out/baselines/mine out/baselines/theirs   # exact by default
 python tools/captures.py cross-api out/baselines/mine                      # max 2 levels, 99.9% within 1
+# Scenario frames by tick, and flags added to every launch without changing file names
+python tools/captures.py capture --config Debug --out out/baselines/mine --scenarios range --views range,yard
+python tools/captures.py capture --config Debug --out out/props-off --args=--disable=props
 # Interleaved A/B timing of two builds (directories containing Pyroclast.exe), on frozen states or scenarios
 python tools/ab.py --a C:/baseline/out/build/windows-x64/Release --b out/build/windows-x64/Release --runs 5
 python tools/ab.py --a C:/baseline/out/build/windows-x64/Release --b out/build/windows-x64/Release --matrix scenarios
+# One build under two settings, on a named scenario
+python tools/ab.py --a out/build/windows-x64/Release --b out/build/windows-x64/Release --scenarios range --a-args=--disable=collision
 # Interactive lifecycle under native validation: controls, 30 resizes, minimize/restore, minimized start
 powershell -File tools/lifecycle.ps1 -Configuration Debug -Renderer vulkan -SmokeResolution half
 ```
