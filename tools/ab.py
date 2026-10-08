@@ -3,8 +3,8 @@
   python tools/ab.py --a <dir-with-Pyroclast.exe> --b <dir> [--runs 5] [--matrix default|quick|scenarios]
                      [--cases 100@6,1@6,range@120 [--smoke full,half]] [--renderers d3d12,vulkan] [--csv out/ab/latest.csv]
                      [--a-args="--flag=value ..."] [--b-args="..."] [--scenarios single,range]
-                     [--a-smoke=auto] [--b-smoke=half] [--checksums any|same] [--regions] [--tails]
-                     [--jsonl out/ab/latest.jsonl] [--counter-logs out/ab/counters]
+                     [--benchmarks single,smoke-field] [--a-smoke=auto] [--b-smoke=half] [--checksums any|same]
+                     [--regions] [--tails] [--cpu] [--jsonl out/ab/latest.jsonl] [--counter-logs out/ab/counters]
   python tools/ab.py --measure --a <dir> [the same options without --b, --b-args and --b-smoke]
 
 --cases replaces the matrix with fixed-state cases <explosions>@<tick> on every renderer and smoke
@@ -15,6 +15,11 @@ and is measured like a fixed state.
 --scenarios runs the scripts named instead of a matrix, on every renderer and smoke resolution given
 (--smoke, default full), e.g. a script the A build does not know, when both sides are one build under two
 settings.
+
+--benchmarks runs the named benchmarks (--benchmark=NAME: a fixed script, preset and pose after 120 warm-up
+frames) as scripted cases, on every renderer and smoke resolution given (--smoke). Their workload is
+benchmark:NAME, which is what the CSV's scenario column and the case labels show. They combine with
+--scenarios (both lists run, scenarios first) but not with --cases.
 
 --a-args and --b-args append flags to every launch of that side, so one build can be compared
 under two settings (pass the same directory to --a and --b), e.g. a format or a feature toggle.
@@ -28,6 +33,9 @@ median of the runs with the min-max range.
 
 --regions adds a metric region:<label> per GPU region (its average ms); the launches need --gpu-regions
 in --a-args/--b-args. --tails adds gpu_draw_p99, gpu_draw_max, cpu_max (scenarios only) and cpu_p99.
+--cpu adds cpu_frame_median, cpu_frame_p99, cpu_frame_worst_1_percent (the loop period, frame_ms),
+cpu_submit_median, cpu_wait_median and cpu_present_median (the render call, and the blocking inside it on the
+frame slot and in the present call), from the records that have them (benchmark records).
 
 --checksums same also requires A and B to agree: a scenario's live-particle checksum, a fixed state's
 alive count (which must then also agree between a build's runs). The default, any, checks only that
@@ -58,7 +66,11 @@ absolute deviation ignores a single outlying run, so one slow run cannot hide a 
 Raw per-run values are written to the CSV after every launch. Newer records' keys follow the original
 columns (half_frames, switches, effects_evicted, coverage_smoke = the average smoke coverage, offscreen,
 scalability = the record's object of non-default M19 options as compact JSON; blank when absent), then
-smoke_arg, then the --tails and --regions metrics.
+smoke_arg, then the --tails, --cpu and --regions metrics.
+
+launch() is shared with tools/bench/run.py: launch(command, scenario, attempts=3, timeout=600, log=None) retries
+an invalidated sample up to `attempts` times, gives each attempt `timeout` seconds, and writes the last
+attempt's stderr and stdout to `log` when one is given.
 """
 import argparse
 import collections
@@ -83,6 +95,10 @@ MATRICES = {
 METRICS = ("gpu_draw", "gpu_compute", "cpu_median")
 SCENARIO_METRICS = ("gpu_draw", "gpu_draw_p95", "gpu_compute", "cpu_median")
 TAIL_METRICS = ("gpu_draw_p99", "gpu_draw_max", "cpu_p99", "cpu_max")
+CPU_METRICS = (("cpu_frame_median", "frame_ms", "median"), ("cpu_frame_p99", "frame_ms", "p99"),
+               ("cpu_frame_worst_1_percent", "frame_ms", "worst_1_percent"), ("cpu_submit_median", "submit_ms", "median"),
+               ("cpu_wait_median", "wait_ms", "median"), ("cpu_present_median", "present_ms", "median"))
+BENCHMARK_PREFIX = "benchmark:"
 FIELDS = ["renderer", "smoke", "explosions", "tick", "scenario", "run", "build", "args", "scene_format", "status",
           *METRICS, "gpu_draw_p95", "checksum"]
 # Appended after the original columns so older readers keep working.
@@ -113,7 +129,9 @@ def case_name(case):
 def command_line(directory, case, extra, smoke="", counter_log=None):
     renderer, case_smoke, workload, tick = case
     command = [str(Path(directory) / "Pyroclast.exe"), f"--renderer={renderer}", f"--smoke-resolution={smoke or case_smoke}"]
-    if is_scenario(case):
+    if is_scenario(case) and workload.startswith(BENCHMARK_PREFIX):
+        command += [f"--benchmark={workload[len(BENCHMARK_PREFIX):]}", *extra]
+    elif is_scenario(case):
         command += [f"--scenario={workload}", *extra]
     else:
         source = f"--scenario={workload}" if isinstance(workload, str) else f"--explosions={workload}"
@@ -146,20 +164,42 @@ def record_values(record, scenario):
                       checksum=(record.get("particles") or {}).get("checksum", ""))
     else:
         values.update(gpu_draw=gpu["draw"], gpu_compute=gpu["compute"], alive=record.get("alive"))
+    for metric, key, statistic in CPU_METRICS:
+        if isinstance(record.get(key), dict):
+            values[metric] = record[key].get(statistic)
     for region in gpu.get("regions") or []:
         key = f"region:{region['label']}"
         values[key] = values.get(key, 0.0) + region["ms"]
     return {key: value for key, value in values.items() if value is not None}
 
 
-def launch(command, scenario, attempts=3):
-    """Returns ("ok", values, record) or ("failed: reason", None, the last record or None)."""
+def output_text(output):
+    """A subprocess stream as text: None, str, or the bytes a timeout leaves behind."""
+    if isinstance(output, bytes):
+        return output.decode("utf-8", errors="replace")
+    return output or ""
+
+
+def write_log(log, stderr, stdout):
+    """The launch's log: its stderr (Pyroclast's log lines), then its stdout (the JSON record)."""
+    if log:
+        stderr = output_text(stderr)
+        separator = "\n" if stderr and not stderr.endswith("\n") else ""
+        Path(log).write_text(stderr + separator + output_text(stdout), encoding="utf-8")
+
+
+def launch(command, scenario, attempts=3, timeout=600, log=None):
+    """Returns ("ok", values, record) or ("failed: reason", None, the last record or None). An invalidated sample is
+    retried up to `attempts` times; each attempt may take `timeout` seconds. With `log`, the last attempt's stderr
+    and stdout are written to that file."""
     record = None
     for attempt in range(attempts):
         try:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=600)
-        except subprocess.TimeoutExpired:
+            result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired as expired:
+            write_log(log, f"{output_text(expired.stderr)}Timed out after {timeout} s.\n", expired.stdout)
             return "failed: timeout", None, None
+        write_log(log, result.stderr, result.stdout)
         records = [line for line in result.stdout.splitlines() if line.startswith("{")]
         record = json.loads(records[-1]) if records else {}
         invalidated = scenario and record.get("valid") is False
@@ -193,12 +233,14 @@ def checksum_problems(samples, scenario, mode):
     return problems
 
 
-def case_metrics(samples, scenario, tails, regions):
-    """The base metrics, then with --tails and --regions those that any run recorded, in the order first seen."""
+def case_metrics(samples, scenario, tails, regions, cpu=False):
+    """The base metrics, then with --tails, --cpu and --regions those that any run recorded, in the order first seen."""
     recorded = dict.fromkeys(key for runs in samples.values() for sample in runs for key in sample)
     metrics = list(SCENARIO_METRICS if scenario else METRICS)
     if tails:
         metrics += [metric for metric in TAIL_METRICS if metric in recorded]
+    if cpu:
+        metrics += [metric for metric, _, _ in CPU_METRICS if metric in recorded]
     if regions:
         metrics += [key for key in recorded if key.startswith("region:")]
     return metrics
@@ -214,7 +256,7 @@ def report(case, samples, arguments):
     problems = checksum_problems(samples, is_scenario(case), arguments.checksums)
     for problem in problems:
         print(f"{label:24} {problem}", flush=True)
-    metrics = case_metrics(samples, is_scenario(case), arguments.tails, arguments.regions)
+    metrics = case_metrics(samples, is_scenario(case), arguments.tails, arguments.regions, arguments.cpu)
     width = max(11, *map(len, metrics))
     for metric in metrics:
         values = {build: [sample[metric] for sample in runs if metric in sample] for build, runs in samples.items()}
@@ -250,8 +292,10 @@ def main():
     parser.add_argument("--matrix", default="default", choices=sorted(MATRICES))
     parser.add_argument("--cases", default="",
                         help="fixed-state cases <explosions>@<tick> or frozen scripts <scenario>@<tick>, comma-separated, instead of the matrix")
-    parser.add_argument("--smoke", default="full", help="smoke resolutions for --cases and --scenarios, comma-separated")
+    parser.add_argument("--smoke", default="full", help="smoke resolutions for --cases, --scenarios and --benchmarks, comma-separated")
     parser.add_argument("--scenarios", default="", help="scripted runs (--scenario), comma-separated, instead of the matrix")
+    parser.add_argument("--benchmarks", default="",
+                        help="benchmarks (--benchmark), comma-separated, instead of the matrix; combine with --scenarios, not --cases")
     parser.add_argument("--renderers", default="d3d12,vulkan", help="comma-separated subset of the matrix to run")
     parser.add_argument("--csv", default="out/ab/latest.csv")
     parser.add_argument("--a-args", default="", help="extra flags for every A launch")
@@ -262,11 +306,15 @@ def main():
                         help="same: A and B must also agree (scenario checksum, fixed-state alive count)")
     parser.add_argument("--regions", action="store_true", help="add a region:<label> metric per GPU region (launch with --gpu-regions)")
     parser.add_argument("--tails", action="store_true", help="add gpu_draw_p99, gpu_draw_max, cpu_p99 and cpu_max where records have them")
+    parser.add_argument("--cpu", action="store_true",
+                        help="add the loop period's median, p99 and worst 1%% and the submit, wait and present medians where records have them")
     parser.add_argument("--jsonl", default="", help="append one JSON line per launch (case, run, build, args, status, record)")
     parser.add_argument("--counter-logs", default="", help="directory for one --counter-log CSV per launch")
     arguments = parser.parse_args()
     if arguments.cases and arguments.scenarios:
         parser.error("--cases and --scenarios each replace the matrix; give one")
+    if arguments.cases and arguments.benchmarks:
+        parser.error("--cases and --benchmarks each replace the matrix; --benchmarks combines with --scenarios only")
     if arguments.measure and (arguments.b or arguments.b_args or arguments.b_smoke):
         parser.error("--measure times the --a build alone; --b, --b-args and --b-smoke do not apply")
     if not arguments.measure and not arguments.b:
@@ -290,9 +338,11 @@ def main():
     if pairs:
         matrix = [(renderer, smoke, workload, tick) for renderer in ("d3d12", "vulkan")
                   for smoke in arguments.smoke.split(",") for workload, tick in pairs]
-    if arguments.scenarios:
-        matrix = [(renderer, smoke, scenario, None) for renderer in ("d3d12", "vulkan")
-                  for smoke in arguments.smoke.split(",") for scenario in arguments.scenarios.split(",")]
+    scripted = [name for name in arguments.scenarios.split(",") if name]
+    scripted += [BENCHMARK_PREFIX + name for name in arguments.benchmarks.split(",") if name]
+    if scripted:
+        matrix = [(renderer, smoke, workload, None) for renderer in ("d3d12", "vulkan")
+                  for smoke in arguments.smoke.split(",") for workload in scripted]
     cases = list(dict.fromkeys(case for case in matrix if case[0] in renderers))
     if arguments.measure:
         order = [(case, run, "A") for run in range(arguments.runs) for case in (cases if run % 2 == 0 else cases[::-1])]
@@ -310,6 +360,7 @@ def main():
     if logs:
         logs.mkdir(parents=True, exist_ok=True)
     fields = FIELDS + NEW_FIELDS + (list(TAIL_METRICS) if arguments.tails else [])
+    fields += [metric for metric, _, _ in CPU_METRICS] if arguments.cpu else []
     rows = []
     write_csv(output, rows, fields)
     samples = {case: {build: [] for build in builds} for case in cases}
