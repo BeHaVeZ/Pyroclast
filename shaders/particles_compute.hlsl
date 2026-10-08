@@ -62,8 +62,7 @@ bool simulate(uint slot, uint local, uint record)
     uint generation = particles.Load(address + particle_generation_offset);
     float spin = asfloat(particles.Load(address + particle_spin_offset));
     uint mask = frame.light_state.y;
-    bool shown = mask_enabled(mask, props_mask_bit);
-    bool props = shown && mask_enabled(mask, collision_mask_bit);
+    bool props = mask_enabled(mask, props_mask_bit) && mask_enabled(mask, collision_mask_bit);
     bool deflect = props && layer.drag > 0 && mask_enabled(mask, deflection_mask_bit);
     bool ring = layer.spawn == spawn_ring;
     if (generation != state.y)
@@ -71,7 +70,7 @@ bool simulate(uint slot, uint local, uint record)
         generation = state.y;
         float3 origin = frame.effect_origins[slot].xyz;
         float3 normal = frame.effect_normals[slot].xyz;
-        if (ring && shown && normal.y < 0.7)
+        if (ring && props && normal.y < 0.7)
         {
             normal = float3(0, 1, 0);
             origin = float3(origin.x, terrain_height(environment, origin.xz) + 0.5, origin.z);
