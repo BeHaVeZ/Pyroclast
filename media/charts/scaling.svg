@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 448" width="1040" height="448" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" role="img">
+<title>Scaling with simultaneous effects</title>
+<desc>Variant default. single and simultaneous-10/50/100 (small-he, overview); median across runs with the runs' min-max.</desc>
+<rect x="0" y="0" width="1040" height="448" fill="#fcfcfb"/>
+<text x="24" y="32" font-size="17" font-weight="600" fill="#0b0b0b">Scaling with simultaneous effects</text>
+<text x="24" y="52" font-size="12" fill="#52514e">Variant default. single and simultaneous-10/50/100 (small-he, overview); median across runs with the runs' min-max.</text>
+<line x1="24.0" y1="76.0" x2="42.0" y2="76.0" stroke="#2a78d6" stroke-width="3"/>
+<text x="48.0" y="80.0" font-size="12" fill="#0b0b0b" text-anchor="start">D3D12</text>
+<line x1="112.0" y1="76.0" x2="130.0" y2="76.0" stroke="#eb6834" stroke-width="3"/>
+<text x="136.0" y="80.0" font-size="12" fill="#0b0b0b" text-anchor="start">Vulkan</text>
+<line x1="217.0" y1="69.0" x2="217.0" y2="81.0" stroke="#52514e" stroke-width="1.5"/>
+<text x="232.0" y="80.0" font-size="12" fill="#52514e" text-anchor="start">min-max across runs</text>
+<text x="24.0" y="104.0" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600">GPU frame average (ms)</text>
+<line x1="84.0" y1="378.0" x2="484.0" y2="378.0" stroke="#c3c2b7" stroke-width="1"/>
+<text x="76.0" y="382.0" font-size="10" fill="#898781" text-anchor="end">0</text>
+<line x1="84.0" y1="313.0" x2="484.0" y2="313.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="76.0" y="317.0" font-size="10" fill="#898781" text-anchor="end">0.5</text>
+<line x1="84.0" y1="248.0" x2="484.0" y2="248.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="76.0" y="252.0" font-size="10" fill="#898781" text-anchor="end">1.0</text>
+<line x1="84.0" y1="183.0" x2="484.0" y2="183.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="76.0" y="187.0" font-size="10" fill="#898781" text-anchor="end">1.5</text>
+<line x1="84.0" y1="118.0" x2="484.0" y2="118.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="76.0" y="122.0" font-size="10" fill="#898781" text-anchor="end">2.0</text>
+<text x="104.0" y="394.0" font-size="10" fill="#898781" text-anchor="middle">1</text>
+<text x="284.0" y="394.0" font-size="10" fill="#898781" text-anchor="middle">10</text>
+<text x="409.8" y="394.0" font-size="10" fill="#898781" text-anchor="middle">50</text>
+<text x="464.0" y="394.0" font-size="10" fill="#898781" text-anchor="middle">100</text>
+<text x="284.0" y="416.0" font-size="11" fill="#52514e" text-anchor="middle">Simultaneous effects (log scale)</text>
+<polyline points="104.0,370.7 284.0,356.7 409.8,294.8 464.0,173.2" fill="none" stroke="#2a78d6" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<line x1="104.0" y1="370.8" x2="104.0" y2="370.7" stroke="#2a78d6" stroke-width="1"/>
+<line x1="284.0" y1="357.9" x2="284.0" y2="356.5" stroke="#2a78d6" stroke-width="1"/>
+<line x1="409.8" y1="294.9" x2="409.8" y2="294.7" stroke="#2a78d6" stroke-width="1"/>
+<line x1="464.0" y1="175.1" x2="464.0" y2="172.3" stroke="#2a78d6" stroke-width="1"/>
+<circle cx="104.0" cy="370.7" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>D3D12, 1 effect(s), GPU frame average (ms): 0.056 ms (runs 0.056-0.056 ms)</title></circle>
+<circle cx="284.0" cy="356.7" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>D3D12, 10 effect(s), GPU frame average (ms): 0.164 ms (runs 0.154-0.165 ms)</title></circle>
+<circle cx="409.8" cy="294.8" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>D3D12, 50 effect(s), GPU frame average (ms): 0.640 ms (runs 0.639-0.641 ms)</title></circle>
+<circle cx="464.0" cy="173.2" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>D3D12, 100 effect(s), GPU frame average (ms): 1.575 ms (runs 1.561-1.582 ms)</title></circle>
+<polyline points="104.0,370.8 284.0,358.0 409.8,294.1 464.0,165.1" fill="none" stroke="#eb6834" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<line x1="104.0" y1="371.2" x2="104.0" y2="370.8" stroke="#eb6834" stroke-width="1"/>
+<line x1="284.0" y1="358.1" x2="284.0" y2="358.0" stroke="#eb6834" stroke-width="1"/>
+<line x1="409.8" y1="294.5" x2="409.8" y2="293.8" stroke="#eb6834" stroke-width="1"/>
+<line x1="464.0" y1="165.4" x2="464.0" y2="159.2" stroke="#eb6834" stroke-width="1"/>
+<circle cx="104.0" cy="370.8" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>Vulkan, 1 effect(s), GPU frame average (ms): 0.055 ms (runs 0.052-0.056 ms)</title></circle>
+<circle cx="284.0" cy="358.0" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>Vulkan, 10 effect(s), GPU frame average (ms): 0.154 ms (runs 0.153-0.154 ms)</title></circle>
+<circle cx="409.8" cy="294.1" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>Vulkan, 50 effect(s), GPU frame average (ms): 0.645 ms (runs 0.643-0.648 ms)</title></circle>
+<circle cx="464.0" cy="165.1" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>Vulkan, 100 effect(s), GPU frame average (ms): 1.638 ms (runs 1.635-1.683 ms)</title></circle>
+<text x="524.0" y="104.0" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600">CPU frame median (ms)</text>
+<line x1="584.0" y1="378.0" x2="984.0" y2="378.0" stroke="#c3c2b7" stroke-width="1"/>
+<text x="576.0" y="382.0" font-size="10" fill="#898781" text-anchor="end">0</text>
+<line x1="584.0" y1="326.0" x2="984.0" y2="326.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="576.0" y="330.0" font-size="10" fill="#898781" text-anchor="end">0.5</text>
+<line x1="584.0" y1="274.0" x2="984.0" y2="274.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="576.0" y="278.0" font-size="10" fill="#898781" text-anchor="end">1.0</text>
+<line x1="584.0" y1="222.0" x2="984.0" y2="222.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="576.0" y="226.0" font-size="10" fill="#898781" text-anchor="end">1.5</text>
+<line x1="584.0" y1="170.0" x2="984.0" y2="170.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="576.0" y="174.0" font-size="10" fill="#898781" text-anchor="end">2.0</text>
+<line x1="584.0" y1="118.0" x2="984.0" y2="118.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="576.0" y="122.0" font-size="10" fill="#898781" text-anchor="end">2.5</text>
+<text x="604.0" y="394.0" font-size="10" fill="#898781" text-anchor="middle">1</text>
+<text x="784.0" y="394.0" font-size="10" fill="#898781" text-anchor="middle">10</text>
+<text x="909.8" y="394.0" font-size="10" fill="#898781" text-anchor="middle">50</text>
+<text x="964.0" y="394.0" font-size="10" fill="#898781" text-anchor="middle">100</text>
+<text x="784.0" y="416.0" font-size="11" fill="#52514e" text-anchor="middle">Simultaneous effects (log scale)</text>
+<polyline points="604.0,365.2 784.0,353.4 909.8,292.6 964.0,176.3" fill="none" stroke="#2a78d6" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<line x1="604.0" y1="365.4" x2="604.0" y2="365.0" stroke="#2a78d6" stroke-width="1"/>
+<line x1="784.0" y1="354.3" x2="784.0" y2="352.0" stroke="#2a78d6" stroke-width="1"/>
+<line x1="909.8" y1="295.3" x2="909.8" y2="291.2" stroke="#2a78d6" stroke-width="1"/>
+<line x1="964.0" y1="178.0" x2="964.0" y2="169.4" stroke="#2a78d6" stroke-width="1"/>
+<circle cx="604.0" cy="365.2" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>D3D12, 1 effect(s), CPU frame median (ms): 0.123 ms (runs 0.121-0.125 ms)</title></circle>
+<circle cx="784.0" cy="353.4" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>D3D12, 10 effect(s), CPU frame median (ms): 0.237 ms (runs 0.228-0.250 ms)</title></circle>
+<circle cx="909.8" cy="292.6" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>D3D12, 50 effect(s), CPU frame median (ms): 0.821 ms (runs 0.795-0.835 ms)</title></circle>
+<circle cx="964.0" cy="176.3" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>D3D12, 100 effect(s), CPU frame median (ms): 1.940 ms (runs 1.923-2.006 ms)</title></circle>
+<polyline points="604.0,368.8 784.0,357.2 909.8,289.0 964.0,170.5" fill="none" stroke="#eb6834" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<line x1="604.0" y1="369.2" x2="604.0" y2="368.0" stroke="#eb6834" stroke-width="1"/>
+<line x1="784.0" y1="357.6" x2="784.0" y2="357.0" stroke="#eb6834" stroke-width="1"/>
+<line x1="909.8" y1="291.4" x2="909.8" y2="285.1" stroke="#eb6834" stroke-width="1"/>
+<line x1="964.0" y1="174.7" x2="964.0" y2="154.1" stroke="#eb6834" stroke-width="1"/>
+<circle cx="604.0" cy="368.8" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>Vulkan, 1 effect(s), CPU frame median (ms): 0.089 ms (runs 0.085-0.096 ms)</title></circle>
+<circle cx="784.0" cy="357.2" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>Vulkan, 10 effect(s), CPU frame median (ms): 0.200 ms (runs 0.196-0.202 ms)</title></circle>
+<circle cx="909.8" cy="289.0" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>Vulkan, 50 effect(s), CPU frame median (ms): 0.856 ms (runs 0.833-0.893 ms)</title></circle>
+<circle cx="964.0" cy="170.5" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>Vulkan, 100 effect(s), CPU frame median (ms): 1.995 ms (runs 1.955-2.153 ms)</title></circle>
+</svg>

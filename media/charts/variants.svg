@@ -1,0 +1,138 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 454" width="1100" height="454" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" role="img">
+<title>Variants against default</title>
+<desc>Relative difference of the medians across runs. A faded bar is neutral: within max(1%, 3 x the larger relative MAD).</desc>
+<rect x="0" y="0" width="1100" height="454" fill="#fcfcfb"/>
+<text x="24" y="32" font-size="17" font-weight="600" fill="#0b0b0b">Variants against default</text>
+<text x="24" y="52" font-size="12" fill="#52514e">Relative difference of the medians across runs. A faded bar is neutral: within max(1%, 3 x the larger relative MAD).</text>
+<line x1="24.0" y1="76.0" x2="42.0" y2="76.0" stroke="#2a78d6" stroke-width="3"/>
+<text x="48.0" y="80.0" font-size="12" fill="#0b0b0b" text-anchor="start">D3D12</text>
+<line x1="112.0" y1="76.0" x2="130.0" y2="76.0" stroke="#eb6834" stroke-width="3"/>
+<text x="136.0" y="80.0" font-size="12" fill="#0b0b0b" text-anchor="start">Vulkan</text>
+<rect x="208.0" y="70.0" width="18.0" height="10.0" fill="#898781" fill-opacity="0.35"/>
+<text x="232.0" y="80.0" font-size="12" fill="#52514e" text-anchor="start">neutral</text>
+<text x="24.0" y="118.0" font-size="13" fill="#0b0b0b" text-anchor="start" font-weight="600">recommended against default</text>
+<text x="174.0" y="142.0" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600">GPU frame avg</text>
+<line x1="174.0" y1="152.0" x2="174.0" y2="404.0" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="236.5" y1="152.0" x2="236.5" y2="404.0" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="299.0" y1="152.0" x2="299.0" y2="404.0" stroke="#c3c2b7" stroke-width="1"/>
+<line x1="361.5" y1="152.0" x2="361.5" y2="404.0" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="424.0" y1="152.0" x2="424.0" y2="404.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="174.0" y="418.0" font-size="10" fill="#898781" text-anchor="middle">-100%</text>
+<text x="236.5" y="418.0" font-size="10" fill="#898781" text-anchor="middle">-50%</text>
+<text x="299.0" y="418.0" font-size="10" fill="#898781" text-anchor="middle">0%</text>
+<text x="361.5" y="418.0" font-size="10" fill="#898781" text-anchor="middle">50%</text>
+<text x="424.0" y="418.0" font-size="10" fill="#898781" text-anchor="middle">100%</text>
+<path d="M299.0,159.0H295.6A4.0,4.0 0 0 0 291.6,163.0V165.0A4.0,4.0 0 0 0 295.6,169.0H299.0Z" fill="#2a78d6"><title>single, D3D12, GPU frame avg: -5.89% (CHANGED)</title></path>
+<text x="287.6" y="168.0" font-size="9" fill="#898781" text-anchor="end">-5.9%</text>
+<path d="M299.0,171.0H296.8A4.0,4.0 0 0 0 292.8,175.0V177.0A4.0,4.0 0 0 0 296.8,181.0H299.0Z" fill="#eb6834"><title>single, Vulkan, GPU frame avg: -5.00% (CHANGED)</title></path>
+<text x="288.8" y="180.0" font-size="9" fill="#898781" text-anchor="end">-5.0%</text>
+<path d="M299.0,195.0H266.2A4.0,4.0 0 0 0 262.2,199.0V201.0A4.0,4.0 0 0 0 266.2,205.0H299.0Z" fill="#2a78d6"><title>simultaneous-10, D3D12, GPU frame avg: -29.47% (CHANGED)</title></path>
+<text x="258.2" y="204.0" font-size="9" fill="#898781" text-anchor="end">-29.5%</text>
+<path d="M299.0,207.0H271.4A4.0,4.0 0 0 0 267.4,211.0V213.0A4.0,4.0 0 0 0 271.4,217.0H299.0Z" fill="#eb6834"><title>simultaneous-10, Vulkan, GPU frame avg: -25.27% (CHANGED)</title></path>
+<text x="263.4" y="216.0" font-size="9" fill="#898781" text-anchor="end">-25.3%</text>
+<path d="M299.0,231.0H258.9A4.0,4.0 0 0 0 254.9,235.0V237.0A4.0,4.0 0 0 0 258.9,241.0H299.0Z" fill="#2a78d6"><title>simultaneous-50, D3D12, GPU frame avg: -35.27% (CHANGED)</title></path>
+<text x="250.9" y="240.0" font-size="9" fill="#898781" text-anchor="end">-35.3%</text>
+<path d="M299.0,243.0H258.8A4.0,4.0 0 0 0 254.8,247.0V249.0A4.0,4.0 0 0 0 258.8,253.0H299.0Z" fill="#eb6834"><title>simultaneous-50, Vulkan, GPU frame avg: -35.39% (CHANGED)</title></path>
+<text x="250.8" y="252.0" font-size="9" fill="#898781" text-anchor="end">-35.4%</text>
+<path d="M299.0,267.0H252.7A4.0,4.0 0 0 0 248.7,271.0V273.0A4.0,4.0 0 0 0 252.7,277.0H299.0Z" fill="#2a78d6"><title>simultaneous-100, D3D12, GPU frame avg: -40.24% (CHANGED)</title></path>
+<text x="244.7" y="276.0" font-size="9" fill="#898781" text-anchor="end">-40.2%</text>
+<path d="M299.0,279.0H252.4A4.0,4.0 0 0 0 248.4,283.0V285.0A4.0,4.0 0 0 0 252.4,289.0H299.0Z" fill="#eb6834"><title>simultaneous-100, Vulkan, GPU frame avg: -40.51% (CHANGED)</title></path>
+<text x="244.4" y="288.0" font-size="9" fill="#898781" text-anchor="end">-40.5%</text>
+<path d="M299.0,303.0H247.6A4.0,4.0 0 0 0 243.6,307.0V309.0A4.0,4.0 0 0 0 247.6,313.0H299.0Z" fill="#2a78d6"><title>sustained-barrage, D3D12, GPU frame avg: -44.35% (CHANGED)</title></path>
+<text x="239.6" y="312.0" font-size="9" fill="#898781" text-anchor="end">-44.3%</text>
+<path d="M299.0,315.0H245.6A4.0,4.0 0 0 0 241.6,319.0V321.0A4.0,4.0 0 0 0 245.6,325.0H299.0Z" fill="#eb6834"><title>sustained-barrage, Vulkan, GPU frame avg: -45.92% (CHANGED)</title></path>
+<text x="237.6" y="324.0" font-size="9" fill="#898781" text-anchor="end">-45.9%</text>
+<path d="M299.0,339.0H197.7A4.0,4.0 0 0 0 193.7,343.0V345.0A4.0,4.0 0 0 0 197.7,349.0H299.0Z" fill="#2a78d6"><title>smoke-field, D3D12, GPU frame avg: -84.20% (CHANGED)</title></path>
+<text x="189.7" y="348.0" font-size="9" fill="#898781" text-anchor="end">-84.2%</text>
+<path d="M299.0,351.0H198.0A4.0,4.0 0 0 0 194.0,355.0V357.0A4.0,4.0 0 0 0 198.0,361.0H299.0Z" fill="#eb6834"><title>smoke-field, Vulkan, GPU frame avg: -84.01% (CHANGED)</title></path>
+<text x="190.0" y="360.0" font-size="9" fill="#898781" text-anchor="end">-84.0%</text>
+<path d="M299.0,375.0H240.2A4.0,4.0 0 0 0 236.2,379.0V381.0A4.0,4.0 0 0 0 240.2,385.0H299.0Z" fill="#2a78d6"><title>accumulation, D3D12, GPU frame avg: -50.25% (CHANGED)</title></path>
+<text x="232.2" y="384.0" font-size="9" fill="#898781" text-anchor="end">-50.2%</text>
+<path d="M299.0,387.0H240.7A4.0,4.0 0 0 0 236.7,391.0V393.0A4.0,4.0 0 0 0 240.7,397.0H299.0Z" fill="#eb6834"><title>accumulation, Vulkan, GPU frame avg: -49.84% (CHANGED)</title></path>
+<text x="232.7" y="396.0" font-size="9" fill="#898781" text-anchor="end">-49.8%</text>
+<text x="480.0" y="142.0" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600">GPU frame p95</text>
+<line x1="480.0" y1="152.0" x2="480.0" y2="404.0" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="542.5" y1="152.0" x2="542.5" y2="404.0" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="605.0" y1="152.0" x2="605.0" y2="404.0" stroke="#c3c2b7" stroke-width="1"/>
+<line x1="667.5" y1="152.0" x2="667.5" y2="404.0" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="730.0" y1="152.0" x2="730.0" y2="404.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="480.0" y="418.0" font-size="10" fill="#898781" text-anchor="middle">-100%</text>
+<text x="542.5" y="418.0" font-size="10" fill="#898781" text-anchor="middle">-50%</text>
+<text x="605.0" y="418.0" font-size="10" fill="#898781" text-anchor="middle">0%</text>
+<text x="667.5" y="418.0" font-size="10" fill="#898781" text-anchor="middle">50%</text>
+<text x="730.0" y="418.0" font-size="10" fill="#898781" text-anchor="middle">100%</text>
+<path d="M605.0,159.0H592.9A4.0,4.0 0 0 0 588.9,163.0V165.0A4.0,4.0 0 0 0 592.9,169.0H605.0Z" fill="#2a78d6"><title>single, D3D12, GPU frame p95: -12.90% (CHANGED)</title></path>
+<text x="584.9" y="168.0" font-size="9" fill="#898781" text-anchor="end">-12.9%</text>
+<path d="M605.0,171.0H594.0A4.0,4.0 0 0 0 590.0,175.0V177.0A4.0,4.0 0 0 0 594.0,181.0H605.0Z" fill="#eb6834"><title>single, Vulkan, GPU frame p95: -12.01% (CHANGED)</title></path>
+<text x="586.0" y="180.0" font-size="9" fill="#898781" text-anchor="end">-12.0%</text>
+<path d="M605.0,195.0H557.4A4.0,4.0 0 0 0 553.4,199.0V201.0A4.0,4.0 0 0 0 557.4,205.0H605.0Z" fill="#2a78d6"><title>simultaneous-10, D3D12, GPU frame p95: -41.28% (CHANGED)</title></path>
+<text x="549.4" y="204.0" font-size="9" fill="#898781" text-anchor="end">-41.3%</text>
+<path d="M605.0,207.0H560.7A4.0,4.0 0 0 0 556.7,211.0V213.0A4.0,4.0 0 0 0 560.7,217.0H605.0Z" fill="#eb6834"><title>simultaneous-10, Vulkan, GPU frame p95: -38.62% (CHANGED)</title></path>
+<text x="552.7" y="216.0" font-size="9" fill="#898781" text-anchor="end">-38.6%</text>
+<path d="M605.0,231.0H551.4A4.0,4.0 0 0 0 547.4,235.0V237.0A4.0,4.0 0 0 0 551.4,241.0H605.0Z" fill="#2a78d6"><title>simultaneous-50, D3D12, GPU frame p95: -46.09% (CHANGED)</title></path>
+<text x="543.4" y="240.0" font-size="9" fill="#898781" text-anchor="end">-46.1%</text>
+<path d="M605.0,243.0H550.5A4.0,4.0 0 0 0 546.5,247.0V249.0A4.0,4.0 0 0 0 550.5,253.0H605.0Z" fill="#eb6834"><title>simultaneous-50, Vulkan, GPU frame p95: -46.77% (CHANGED)</title></path>
+<text x="542.5" y="252.0" font-size="9" fill="#898781" text-anchor="end">-46.8%</text>
+<path d="M605.0,267.0H549.8A4.0,4.0 0 0 0 545.8,271.0V273.0A4.0,4.0 0 0 0 549.8,277.0H605.0Z" fill="#2a78d6"><title>simultaneous-100, D3D12, GPU frame p95: -47.33% (CHANGED)</title></path>
+<text x="541.8" y="276.0" font-size="9" fill="#898781" text-anchor="end">-47.3%</text>
+<path d="M605.0,279.0H552.7A4.0,4.0 0 0 0 548.7,283.0V285.0A4.0,4.0 0 0 0 552.7,289.0H605.0Z" fill="#eb6834"><title>simultaneous-100, Vulkan, GPU frame p95: -45.02% (CHANGED)</title></path>
+<text x="544.7" y="288.0" font-size="9" fill="#898781" text-anchor="end">-45.0%</text>
+<path d="M605.0,303.0H545.6A4.0,4.0 0 0 0 541.6,307.0V309.0A4.0,4.0 0 0 0 545.6,313.0H605.0Z" fill="#2a78d6"><title>sustained-barrage, D3D12, GPU frame p95: -50.73% (CHANGED)</title></path>
+<text x="537.6" y="312.0" font-size="9" fill="#898781" text-anchor="end">-50.7%</text>
+<path d="M605.0,315.0H545.1A4.0,4.0 0 0 0 541.1,319.0V321.0A4.0,4.0 0 0 0 545.1,325.0H605.0Z" fill="#eb6834"><title>sustained-barrage, Vulkan, GPU frame p95: -51.13% (CHANGED)</title></path>
+<text x="537.1" y="324.0" font-size="9" fill="#898781" text-anchor="end">-51.1%</text>
+<path d="M605.0,339.0H501.5A4.0,4.0 0 0 0 497.5,343.0V345.0A4.0,4.0 0 0 0 501.5,349.0H605.0Z" fill="#2a78d6"><title>smoke-field, D3D12, GPU frame p95: -85.97% (CHANGED)</title></path>
+<text x="493.5" y="348.0" font-size="9" fill="#898781" text-anchor="end">-86.0%</text>
+<path d="M605.0,351.0H501.3A4.0,4.0 0 0 0 497.3,355.0V357.0A4.0,4.0 0 0 0 501.3,361.0H605.0Z" fill="#eb6834"><title>smoke-field, Vulkan, GPU frame p95: -86.14% (CHANGED)</title></path>
+<text x="493.3" y="360.0" font-size="9" fill="#898781" text-anchor="end">-86.1%</text>
+<path d="M605.0,375.0H552.0A4.0,4.0 0 0 0 548.0,379.0V381.0A4.0,4.0 0 0 0 552.0,385.0H605.0Z" fill="#2a78d6"><title>accumulation, D3D12, GPU frame p95: -45.63% (CHANGED)</title></path>
+<text x="544.0" y="384.0" font-size="9" fill="#898781" text-anchor="end">-45.6%</text>
+<path d="M605.0,387.0H552.2A4.0,4.0 0 0 0 548.2,391.0V393.0A4.0,4.0 0 0 0 552.2,397.0H605.0Z" fill="#eb6834"><title>accumulation, Vulkan, GPU frame p95: -45.44% (CHANGED)</title></path>
+<text x="544.2" y="396.0" font-size="9" fill="#898781" text-anchor="end">-45.4%</text>
+<text x="786.0" y="142.0" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600">CPU frame median</text>
+<line x1="786.0" y1="152.0" x2="786.0" y2="404.0" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="848.5" y1="152.0" x2="848.5" y2="404.0" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="911.0" y1="152.0" x2="911.0" y2="404.0" stroke="#c3c2b7" stroke-width="1"/>
+<line x1="973.5" y1="152.0" x2="973.5" y2="404.0" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="1036.0" y1="152.0" x2="1036.0" y2="404.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="786.0" y="418.0" font-size="10" fill="#898781" text-anchor="middle">-100%</text>
+<text x="848.5" y="418.0" font-size="10" fill="#898781" text-anchor="middle">-50%</text>
+<text x="911.0" y="418.0" font-size="10" fill="#898781" text-anchor="middle">0%</text>
+<text x="973.5" y="418.0" font-size="10" fill="#898781" text-anchor="middle">50%</text>
+<text x="1036.0" y="418.0" font-size="10" fill="#898781" text-anchor="middle">100%</text>
+<path d="M911.0,159.0H910.1A4.0,4.0 0 0 0 906.1,163.0V165.0A4.0,4.0 0 0 0 910.1,169.0H911.0Z" fill="#2a78d6"><title>single, D3D12, CPU frame median: -3.90% (CHANGED)</title></path>
+<text x="902.1" y="168.0" font-size="9" fill="#898781" text-anchor="end">-3.9%</text>
+<path d="M911.0,171.0H911.0A3.5,3.5 0 0 0 907.5,174.5V177.5A3.5,3.5 0 0 0 911.0,181.0H911.0Z" fill="#eb6834" fill-opacity="0.35"><title>single, Vulkan, CPU frame median: -2.82% (neutral)</title></path>
+<text x="903.5" y="180.0" font-size="9" fill="#898781" text-anchor="end">-2.8%</text>
+<path d="M911.0,195.0H889.9A4.0,4.0 0 0 0 885.9,199.0V201.0A4.0,4.0 0 0 0 889.9,205.0H911.0Z" fill="#2a78d6"><title>simultaneous-10, D3D12, CPU frame median: -20.04% (CHANGED)</title></path>
+<text x="881.9" y="204.0" font-size="9" fill="#898781" text-anchor="end">-20.0%</text>
+<path d="M911.0,207.0H886.4A4.0,4.0 0 0 0 882.4,211.0V213.0A4.0,4.0 0 0 0 886.4,217.0H911.0Z" fill="#eb6834"><title>simultaneous-10, Vulkan, CPU frame median: -22.86% (CHANGED)</title></path>
+<text x="878.4" y="216.0" font-size="9" fill="#898781" text-anchor="end">-22.9%</text>
+<path d="M911.0,231.0H873.9A4.0,4.0 0 0 0 869.9,235.0V237.0A4.0,4.0 0 0 0 873.9,241.0H911.0Z" fill="#2a78d6"><title>simultaneous-50, D3D12, CPU frame median: -32.85% (CHANGED)</title></path>
+<text x="865.9" y="240.0" font-size="9" fill="#898781" text-anchor="end">-32.8%</text>
+<path d="M911.0,243.0H869.3A4.0,4.0 0 0 0 865.3,247.0V249.0A4.0,4.0 0 0 0 869.3,253.0H911.0Z" fill="#eb6834"><title>simultaneous-50, Vulkan, CPU frame median: -36.58% (CHANGED)</title></path>
+<text x="861.3" y="252.0" font-size="9" fill="#898781" text-anchor="end">-36.6%</text>
+<path d="M911.0,267.0H867.8A4.0,4.0 0 0 0 863.8,271.0V273.0A4.0,4.0 0 0 0 867.8,277.0H911.0Z" fill="#2a78d6"><title>simultaneous-100, D3D12, CPU frame median: -37.79% (CHANGED)</title></path>
+<text x="859.8" y="276.0" font-size="9" fill="#898781" text-anchor="end">-37.8%</text>
+<path d="M911.0,279.0H869.2A4.0,4.0 0 0 0 865.2,283.0V285.0A4.0,4.0 0 0 0 869.2,289.0H911.0Z" fill="#eb6834"><title>simultaneous-100, Vulkan, CPU frame median: -36.61% (CHANGED)</title></path>
+<text x="861.2" y="288.0" font-size="9" fill="#898781" text-anchor="end">-36.6%</text>
+<path d="M911.0,303.0H861.2A4.0,4.0 0 0 0 857.2,307.0V309.0A4.0,4.0 0 0 0 861.2,313.0H911.0Z" fill="#2a78d6"><title>sustained-barrage, D3D12, CPU frame median: -43.07% (CHANGED)</title></path>
+<text x="853.2" y="312.0" font-size="9" fill="#898781" text-anchor="end">-43.1%</text>
+<path d="M911.0,315.0H860.1A4.0,4.0 0 0 0 856.1,319.0V321.0A4.0,4.0 0 0 0 860.1,325.0H911.0Z" fill="#eb6834"><title>sustained-barrage, Vulkan, CPU frame median: -43.88% (CHANGED)</title></path>
+<text x="852.1" y="324.0" font-size="9" fill="#898781" text-anchor="end">-43.9%</text>
+<path d="M911.0,339.0H817.2A4.0,4.0 0 0 0 813.2,343.0V345.0A4.0,4.0 0 0 0 817.2,349.0H911.0Z" fill="#2a78d6"><title>smoke-field, D3D12, CPU frame median: -78.22% (CHANGED)</title></path>
+<text x="809.2" y="348.0" font-size="9" fill="#898781" text-anchor="end">-78.2%</text>
+<path d="M911.0,351.0H818.0A4.0,4.0 0 0 0 814.0,355.0V357.0A4.0,4.0 0 0 0 818.0,361.0H911.0Z" fill="#eb6834"><title>smoke-field, Vulkan, CPU frame median: -77.57% (CHANGED)</title></path>
+<text x="810.0" y="360.0" font-size="9" fill="#898781" text-anchor="end">-77.6%</text>
+<path d="M911.0,375.0H859.2A4.0,4.0 0 0 0 855.2,379.0V381.0A4.0,4.0 0 0 0 859.2,385.0H911.0Z" fill="#2a78d6"><title>accumulation, D3D12, CPU frame median: -44.65% (CHANGED)</title></path>
+<text x="851.2" y="384.0" font-size="9" fill="#898781" text-anchor="end">-44.7%</text>
+<path d="M911.0,387.0H857.6A4.0,4.0 0 0 0 853.6,391.0V393.0A4.0,4.0 0 0 0 857.6,397.0H911.0Z" fill="#eb6834"><title>accumulation, Vulkan, CPU frame median: -45.93% (CHANGED)</title></path>
+<text x="849.6" y="396.0" font-size="9" fill="#898781" text-anchor="end">-45.9%</text>
+<text x="162.0" y="174.0" font-size="11" fill="#0b0b0b" text-anchor="end">single</text>
+<text x="162.0" y="210.0" font-size="11" fill="#0b0b0b" text-anchor="end">simultaneous-10</text>
+<text x="162.0" y="246.0" font-size="11" fill="#0b0b0b" text-anchor="end">simultaneous-50</text>
+<text x="162.0" y="282.0" font-size="11" fill="#0b0b0b" text-anchor="end">simultaneous-100</text>
+<text x="162.0" y="318.0" font-size="11" fill="#0b0b0b" text-anchor="end">sustained-barrage</text>
+<text x="162.0" y="354.0" font-size="11" fill="#0b0b0b" text-anchor="end">smoke-field</text>
+<text x="162.0" y="390.0" font-size="11" fill="#0b0b0b" text-anchor="end">accumulation</text>
+</svg>

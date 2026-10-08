@@ -1,0 +1,165 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1134 432" width="1134" height="432" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" role="img">
+<title>CPU frame breakdown</title>
+<desc>Variant default. Medians across runs of the per-run medians. Record = submit - wait - present; compare wait + present across APIs, not each part.</desc>
+<rect x="0" y="0" width="1134" height="432" fill="#fcfcfb"/>
+<text x="24" y="32" font-size="17" font-weight="600" fill="#0b0b0b">CPU frame breakdown</text>
+<text x="24" y="52" font-size="12" fill="#52514e">Variant default. Medians across runs of the per-run medians. Record = submit - wait - present; compare wait + present across APIs, not each part.</text>
+<line x1="24.0" y1="76.0" x2="42.0" y2="76.0" stroke="#2a78d6" stroke-width="3"/>
+<text x="48.0" y="80.0" font-size="12" fill="#0b0b0b" text-anchor="start">D3D12</text>
+<line x1="112.0" y1="76.0" x2="130.0" y2="76.0" stroke="#eb6834" stroke-width="3"/>
+<text x="136.0" y="80.0" font-size="12" fill="#0b0b0b" text-anchor="start">Vulkan</text>
+<text x="174.0" y="116.0" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600">Record (ms)</text>
+<line x1="174.0" y1="126.0" x2="174.0" y2="378.0" stroke="#c3c2b7" stroke-width="1"/>
+<line x1="244.0" y1="126.0" x2="244.0" y2="378.0" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="314.0" y1="126.0" x2="314.0" y2="378.0" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="384.0" y1="126.0" x2="384.0" y2="378.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="174.0" y="392.0" font-size="10" fill="#898781" text-anchor="middle">0</text>
+<text x="244.0" y="392.0" font-size="10" fill="#898781" text-anchor="middle">0.1</text>
+<text x="314.0" y="392.0" font-size="10" fill="#898781" text-anchor="middle">0.2</text>
+<text x="384.0" y="392.0" font-size="10" fill="#898781" text-anchor="middle">0.3</text>
+<path d="M174.0,133.0H191.3A4.0,4.0 0 0 1 195.3,137.0V139.0A4.0,4.0 0 0 1 191.3,143.0H174.0Z" fill="#2a78d6"><title>single, D3D12, Record: 0.030 ms (median)</title></path>
+<text x="199.3" y="142.0" font-size="9" fill="#898781" text-anchor="start">0.030</text>
+<path d="M174.0,145.0H187.8A4.0,4.0 0 0 1 191.8,149.0V151.0A4.0,4.0 0 0 1 187.8,155.0H174.0Z" fill="#eb6834"><title>single, Vulkan, Record: 0.025 ms (median)</title></path>
+<text x="195.8" y="154.0" font-size="9" fill="#898781" text-anchor="start">0.025</text>
+<path d="M174.0,169.0H195.7A4.0,4.0 0 0 1 199.7,173.0V175.0A4.0,4.0 0 0 1 195.7,179.0H174.0Z" fill="#2a78d6"><title>simultaneous-10, D3D12, Record: 0.037 ms (median)</title></path>
+<text x="203.7" y="178.0" font-size="9" fill="#898781" text-anchor="start">0.037</text>
+<path d="M174.0,181.0H193.3A4.0,4.0 0 0 1 197.3,185.0V187.0A4.0,4.0 0 0 1 193.3,191.0H174.0Z" fill="#eb6834"><title>simultaneous-10, Vulkan, Record: 0.033 ms (median)</title></path>
+<text x="201.3" y="190.0" font-size="9" fill="#898781" text-anchor="start">0.033</text>
+<path d="M174.0,205.0H228.7A4.0,4.0 0 0 1 232.7,209.0V211.0A4.0,4.0 0 0 1 228.7,215.0H174.0Z" fill="#2a78d6"><title>simultaneous-50, D3D12, Record: 0.084 ms (median)</title></path>
+<text x="236.7" y="214.0" font-size="9" fill="#898781" text-anchor="start">0.084</text>
+<path d="M174.0,217.0H207.4A4.0,4.0 0 0 1 211.4,221.0V223.0A4.0,4.0 0 0 1 207.4,227.0H174.0Z" fill="#eb6834"><title>simultaneous-50, Vulkan, Record: 0.053 ms (median)</title></path>
+<text x="215.4" y="226.0" font-size="9" fill="#898781" text-anchor="start">0.053</text>
+<path d="M174.0,241.0H257.5A4.0,4.0 0 0 1 261.5,245.0V247.0A4.0,4.0 0 0 1 257.5,251.0H174.0Z" fill="#2a78d6"><title>simultaneous-100, D3D12, Record: 0.125 ms (median)</title></path>
+<text x="265.5" y="250.0" font-size="9" fill="#898781" text-anchor="start">0.125</text>
+<path d="M174.0,253.0H230.0A4.0,4.0 0 0 1 234.0,257.0V259.0A4.0,4.0 0 0 1 230.0,263.0H174.0Z" fill="#eb6834"><title>simultaneous-100, Vulkan, Record: 0.086 ms (median)</title></path>
+<text x="238.0" y="262.0" font-size="9" fill="#898781" text-anchor="start">0.086</text>
+<path d="M174.0,277.0H243.1A4.0,4.0 0 0 1 247.1,281.0V283.0A4.0,4.0 0 0 1 243.1,287.0H174.0Z" fill="#2a78d6"><title>sustained-barrage, D3D12, Record: 0.104 ms (median)</title></path>
+<text x="251.1" y="286.0" font-size="9" fill="#898781" text-anchor="start">0.104</text>
+<path d="M174.0,289.0H217.3A4.0,4.0 0 0 1 221.3,293.0V295.0A4.0,4.0 0 0 1 217.3,299.0H174.0Z" fill="#eb6834"><title>sustained-barrage, Vulkan, Record: 0.068 ms (median)</title></path>
+<text x="225.3" y="298.0" font-size="9" fill="#898781" text-anchor="start">0.068</text>
+<path d="M174.0,313.0H375.3A4.0,4.0 0 0 1 379.3,317.0V319.0A4.0,4.0 0 0 1 375.3,323.0H174.0Z" fill="#2a78d6"><title>smoke-field, D3D12, Record: 0.293 ms (median)</title></path>
+<text x="383.3" y="322.0" font-size="9" fill="#898781" text-anchor="start">0.293</text>
+<path d="M174.0,325.0H289.1A4.0,4.0 0 0 1 293.1,329.0V331.0A4.0,4.0 0 0 1 289.1,335.0H174.0Z" fill="#eb6834"><title>smoke-field, Vulkan, Record: 0.170 ms (median)</title></path>
+<text x="297.1" y="334.0" font-size="9" fill="#898781" text-anchor="start">0.170</text>
+<path d="M174.0,349.0H322.1A4.0,4.0 0 0 1 326.1,353.0V355.0A4.0,4.0 0 0 1 322.1,359.0H174.0Z" fill="#2a78d6"><title>accumulation, D3D12, Record: 0.217 ms (median)</title></path>
+<text x="330.1" y="358.0" font-size="9" fill="#898781" text-anchor="start">0.217</text>
+<path d="M174.0,361.0H260.7A4.0,4.0 0 0 1 264.7,365.0V367.0A4.0,4.0 0 0 1 260.7,371.0H174.0Z" fill="#eb6834"><title>accumulation, Vulkan, Record: 0.130 ms (median)</title></path>
+<text x="268.7" y="370.0" font-size="9" fill="#898781" text-anchor="start">0.130</text>
+<text x="412.0" y="116.0" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600">Wait (ms)</text>
+<line x1="412.0" y1="126.0" x2="412.0" y2="378.0" stroke="#c3c2b7" stroke-width="1"/>
+<line x1="482.0" y1="126.0" x2="482.0" y2="378.0" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="552.0" y1="126.0" x2="552.0" y2="378.0" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="622.0" y1="126.0" x2="622.0" y2="378.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="412.0" y="392.0" font-size="10" fill="#898781" text-anchor="middle">0</text>
+<text x="482.0" y="392.0" font-size="10" fill="#898781" text-anchor="middle">5</text>
+<text x="552.0" y="392.0" font-size="10" fill="#898781" text-anchor="middle">10</text>
+<text x="622.0" y="392.0" font-size="10" fill="#898781" text-anchor="middle">15</text>
+<path d="M412.0,133.0H412.0A0.9,0.9 0 0 1 412.9,133.9V142.1A0.9,0.9 0 0 1 412.0,143.0H412.0Z" fill="#2a78d6"><title>single, D3D12, Wait: 0.064 ms (median)</title></path>
+<text x="416.9" y="142.0" font-size="9" fill="#898781" text-anchor="start">0.064</text>
+<path d="M412.0,145.0h0.3v10.0h-0.3Z" fill="#eb6834"><title>single, Vulkan, Wait: 0.021 ms (median)</title></path>
+<text x="416.3" y="154.0" font-size="9" fill="#898781" text-anchor="start">0.021</text>
+<path d="M412.0,169.0H412.0A2.2,2.2 0 0 1 414.2,171.2V176.8A2.2,2.2 0 0 1 412.0,179.0H412.0Z" fill="#2a78d6"><title>simultaneous-10, D3D12, Wait: 0.155 ms (median)</title></path>
+<text x="418.2" y="178.0" font-size="9" fill="#898781" text-anchor="start">0.155</text>
+<path d="M412.0,181.0H412.0A1.5,1.5 0 0 1 413.5,182.5V189.5A1.5,1.5 0 0 1 412.0,191.0H412.0Z" fill="#eb6834"><title>simultaneous-10, Vulkan, Wait: 0.108 ms (median)</title></path>
+<text x="417.5" y="190.0" font-size="9" fill="#898781" text-anchor="start">0.108</text>
+<path d="M412.0,205.0H417.5A4.0,4.0 0 0 1 421.5,209.0V211.0A4.0,4.0 0 0 1 417.5,215.0H412.0Z" fill="#2a78d6"><title>simultaneous-50, D3D12, Wait: 0.679 ms (median)</title></path>
+<text x="425.5" y="214.0" font-size="9" fill="#898781" text-anchor="start">0.679</text>
+<path d="M412.0,217.0H418.2A4.0,4.0 0 0 1 422.2,221.0V223.0A4.0,4.0 0 0 1 418.2,227.0H412.0Z" fill="#eb6834"><title>simultaneous-50, Vulkan, Wait: 0.731 ms (median)</title></path>
+<text x="426.2" y="226.0" font-size="9" fill="#898781" text-anchor="start">0.731</text>
+<path d="M412.0,241.0H431.7A4.0,4.0 0 0 1 435.7,245.0V247.0A4.0,4.0 0 0 1 431.7,251.0H412.0Z" fill="#2a78d6"><title>simultaneous-100, D3D12, Wait: 1.691 ms (median)</title></path>
+<text x="439.7" y="250.0" font-size="9" fill="#898781" text-anchor="start">1.691</text>
+<path d="M412.0,253.0H431.8A4.0,4.0 0 0 1 435.8,257.0V259.0A4.0,4.0 0 0 1 431.8,263.0H412.0Z" fill="#eb6834"><title>simultaneous-100, Vulkan, Wait: 1.700 ms (median)</title></path>
+<text x="439.8" y="262.0" font-size="9" fill="#898781" text-anchor="start">1.700</text>
+<path d="M412.0,277.0H423.8A4.0,4.0 0 0 1 427.8,281.0V283.0A4.0,4.0 0 0 1 423.8,287.0H412.0Z" fill="#2a78d6"><title>sustained-barrage, D3D12, Wait: 1.126 ms (median)</title></path>
+<text x="431.8" y="286.0" font-size="9" fill="#898781" text-anchor="start">1.126</text>
+<path d="M412.0,289.0H423.6A4.0,4.0 0 0 1 427.6,293.0V295.0A4.0,4.0 0 0 1 423.6,299.0H412.0Z" fill="#eb6834"><title>sustained-barrage, Vulkan, Wait: 1.117 ms (median)</title></path>
+<text x="431.6" y="298.0" font-size="9" fill="#898781" text-anchor="start">1.117</text>
+<path d="M412.0,313.0H544.8A4.0,4.0 0 0 1 548.8,317.0V319.0A4.0,4.0 0 0 1 544.8,323.0H412.0Z" fill="#2a78d6"><title>smoke-field, D3D12, Wait: 9.771 ms (median)</title></path>
+<text x="552.8" y="322.0" font-size="9" fill="#898781" text-anchor="start">9.771</text>
+<path d="M412.0,325.0H552.1A4.0,4.0 0 0 1 556.1,329.0V331.0A4.0,4.0 0 0 1 552.1,335.0H412.0Z" fill="#eb6834"><title>smoke-field, Vulkan, Wait: 10.296 ms (median)</title></path>
+<text x="560.1" y="334.0" font-size="9" fill="#898781" text-anchor="start">10.296</text>
+<path d="M412.0,349.0H465.8A4.0,4.0 0 0 1 469.8,353.0V355.0A4.0,4.0 0 0 1 465.8,359.0H412.0Z" fill="#2a78d6"><title>accumulation, D3D12, Wait: 4.127 ms (median)</title></path>
+<text x="473.8" y="358.0" font-size="9" fill="#898781" text-anchor="start">4.127</text>
+<path d="M412.0,361.0H467.5A4.0,4.0 0 0 1 471.5,365.0V367.0A4.0,4.0 0 0 1 467.5,371.0H412.0Z" fill="#eb6834"><title>accumulation, Vulkan, Wait: 4.251 ms (median)</title></path>
+<text x="475.5" y="370.0" font-size="9" fill="#898781" text-anchor="start">4.251</text>
+<text x="650.0" y="116.0" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600">Present call (ms)</text>
+<line x1="650.0" y1="126.0" x2="650.0" y2="378.0" stroke="#c3c2b7" stroke-width="1"/>
+<line x1="755.0" y1="126.0" x2="755.0" y2="378.0" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="860.0" y1="126.0" x2="860.0" y2="378.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="650.0" y="392.0" font-size="10" fill="#898781" text-anchor="middle">0</text>
+<text x="755.0" y="392.0" font-size="10" fill="#898781" text-anchor="middle">0.1</text>
+<text x="860.0" y="392.0" font-size="10" fill="#898781" text-anchor="middle">0.2</text>
+<path d="M650.0,133.0H672.7A4.0,4.0 0 0 1 676.7,137.0V139.0A4.0,4.0 0 0 1 672.7,143.0H650.0Z" fill="#2a78d6"><title>single, D3D12, Present call: 0.025 ms (median)</title></path>
+<text x="680.7" y="142.0" font-size="9" fill="#898781" text-anchor="start">0.025</text>
+<path d="M650.0,145.0H686.3A4.0,4.0 0 0 1 690.3,149.0V151.0A4.0,4.0 0 0 1 686.3,155.0H650.0Z" fill="#eb6834"><title>single, Vulkan, Present call: 0.038 ms (median)</title></path>
+<text x="694.3" y="154.0" font-size="9" fill="#898781" text-anchor="start">0.038</text>
+<path d="M650.0,169.0H676.1A4.0,4.0 0 0 1 680.1,173.0V175.0A4.0,4.0 0 0 1 676.1,179.0H650.0Z" fill="#2a78d6"><title>simultaneous-10, D3D12, Present call: 0.029 ms (median)</title></path>
+<text x="684.1" y="178.0" font-size="9" fill="#898781" text-anchor="start">0.029</text>
+<path d="M650.0,181.0H694.5A4.0,4.0 0 0 1 698.5,185.0V187.0A4.0,4.0 0 0 1 694.5,191.0H650.0Z" fill="#eb6834"><title>simultaneous-10, Vulkan, Present call: 0.046 ms (median)</title></path>
+<text x="702.5" y="190.0" font-size="9" fill="#898781" text-anchor="start">0.046</text>
+<path d="M650.0,205.0H698.8A4.0,4.0 0 0 1 702.8,209.0V211.0A4.0,4.0 0 0 1 698.8,215.0H650.0Z" fill="#2a78d6"><title>simultaneous-50, D3D12, Present call: 0.050 ms (median)</title></path>
+<text x="706.8" y="214.0" font-size="9" fill="#898781" text-anchor="start">0.050</text>
+<path d="M650.0,217.0H708.5A4.0,4.0 0 0 1 712.5,221.0V223.0A4.0,4.0 0 0 1 708.5,227.0H650.0Z" fill="#eb6834"><title>simultaneous-50, Vulkan, Present call: 0.059 ms (median)</title></path>
+<text x="716.5" y="226.0" font-size="9" fill="#898781" text-anchor="start">0.059</text>
+<path d="M650.0,241.0H714.0A4.0,4.0 0 0 1 718.0,245.0V247.0A4.0,4.0 0 0 1 714.0,251.0H650.0Z" fill="#2a78d6"><title>simultaneous-100, D3D12, Present call: 0.065 ms (median)</title></path>
+<text x="722.0" y="250.0" font-size="9" fill="#898781" text-anchor="start">0.065</text>
+<path d="M650.0,253.0H741.6A4.0,4.0 0 0 1 745.6,257.0V259.0A4.0,4.0 0 0 1 741.6,263.0H650.0Z" fill="#eb6834"><title>simultaneous-100, Vulkan, Present call: 0.091 ms (median)</title></path>
+<text x="749.6" y="262.0" font-size="9" fill="#898781" text-anchor="start">0.091</text>
+<path d="M650.0,277.0H706.9A4.0,4.0 0 0 1 710.9,281.0V283.0A4.0,4.0 0 0 1 706.9,287.0H650.0Z" fill="#2a78d6"><title>sustained-barrage, D3D12, Present call: 0.058 ms (median)</title></path>
+<text x="714.9" y="286.0" font-size="9" fill="#898781" text-anchor="start">0.058</text>
+<path d="M650.0,289.0H718.0A4.0,4.0 0 0 1 722.0,293.0V295.0A4.0,4.0 0 0 1 718.0,299.0H650.0Z" fill="#eb6834"><title>sustained-barrage, Vulkan, Present call: 0.069 ms (median)</title></path>
+<text x="726.0" y="298.0" font-size="9" fill="#898781" text-anchor="start">0.069</text>
+<path d="M650.0,313.0H816.0A4.0,4.0 0 0 1 820.0,317.0V319.0A4.0,4.0 0 0 1 816.0,323.0H650.0Z" fill="#2a78d6"><title>smoke-field, D3D12, Present call: 0.162 ms (median)</title></path>
+<text x="824.0" y="322.0" font-size="9" fill="#898781" text-anchor="start">0.162</text>
+<path d="M650.0,325.0H827.0A4.0,4.0 0 0 1 831.0,329.0V331.0A4.0,4.0 0 0 1 827.0,335.0H650.0Z" fill="#eb6834"><title>smoke-field, Vulkan, Present call: 0.172 ms (median)</title></path>
+<text x="835.0" y="334.0" font-size="9" fill="#898781" text-anchor="start">0.172</text>
+<path d="M650.0,349.0H765.0A4.0,4.0 0 0 1 769.0,353.0V355.0A4.0,4.0 0 0 1 765.0,359.0H650.0Z" fill="#2a78d6"><title>accumulation, D3D12, Present call: 0.113 ms (median)</title></path>
+<text x="773.0" y="358.0" font-size="9" fill="#898781" text-anchor="start">0.113</text>
+<path d="M650.0,361.0H759.7A4.0,4.0 0 0 1 763.7,365.0V367.0A4.0,4.0 0 0 1 759.7,371.0H650.0Z" fill="#eb6834"><title>accumulation, Vulkan, Present call: 0.108 ms (median)</title></path>
+<text x="767.7" y="370.0" font-size="9" fill="#898781" text-anchor="start">0.108</text>
+<text x="888.0" y="116.0" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600">Wait + present (ms)</text>
+<line x1="888.0" y1="126.0" x2="888.0" y2="378.0" stroke="#c3c2b7" stroke-width="1"/>
+<line x1="958.0" y1="126.0" x2="958.0" y2="378.0" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="1028.0" y1="126.0" x2="1028.0" y2="378.0" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="1098.0" y1="126.0" x2="1098.0" y2="378.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="888.0" y="392.0" font-size="10" fill="#898781" text-anchor="middle">0</text>
+<text x="958.0" y="392.0" font-size="10" fill="#898781" text-anchor="middle">5</text>
+<text x="1028.0" y="392.0" font-size="10" fill="#898781" text-anchor="middle">10</text>
+<text x="1098.0" y="392.0" font-size="10" fill="#898781" text-anchor="middle">15</text>
+<path d="M888.0,133.0H888.0A1.3,1.3 0 0 1 889.3,134.3V141.7A1.3,1.3 0 0 1 888.0,143.0H888.0Z" fill="#2a78d6"><title>single, D3D12, Wait + present: 0.090 ms (median)</title></path>
+<text x="893.3" y="142.0" font-size="9" fill="#898781" text-anchor="start">0.090</text>
+<path d="M888.0,145.0H888.0A0.8,0.8 0 0 1 888.8,145.8V154.2A0.8,0.8 0 0 1 888.0,155.0H888.0Z" fill="#eb6834"><title>single, Vulkan, Wait + present: 0.061 ms (median)</title></path>
+<text x="892.8" y="154.0" font-size="9" fill="#898781" text-anchor="start">0.061</text>
+<path d="M888.0,169.0H888.0A2.7,2.7 0 0 1 890.7,171.7V176.3A2.7,2.7 0 0 1 888.0,179.0H888.0Z" fill="#2a78d6"><title>simultaneous-10, D3D12, Wait + present: 0.191 ms (median)</title></path>
+<text x="894.7" y="178.0" font-size="9" fill="#898781" text-anchor="start">0.191</text>
+<path d="M888.0,181.0H888.0A2.3,2.3 0 0 1 890.3,183.3V188.7A2.3,2.3 0 0 1 888.0,191.0H888.0Z" fill="#eb6834"><title>simultaneous-10, Vulkan, Wait + present: 0.164 ms (median)</title></path>
+<text x="894.3" y="190.0" font-size="9" fill="#898781" text-anchor="start">0.164</text>
+<path d="M888.0,205.0H894.3A4.0,4.0 0 0 1 898.3,209.0V211.0A4.0,4.0 0 0 1 894.3,215.0H888.0Z" fill="#2a78d6"><title>simultaneous-50, D3D12, Wait + present: 0.736 ms (median)</title></path>
+<text x="902.3" y="214.0" font-size="9" fill="#898781" text-anchor="start">0.736</text>
+<path d="M888.0,217.0H895.2A4.0,4.0 0 0 1 899.2,221.0V223.0A4.0,4.0 0 0 1 895.2,227.0H888.0Z" fill="#eb6834"><title>simultaneous-50, Vulkan, Wait + present: 0.797 ms (median)</title></path>
+<text x="903.2" y="226.0" font-size="9" fill="#898781" text-anchor="start">0.797</text>
+<path d="M888.0,241.0H909.0A4.0,4.0 0 0 1 913.0,245.0V247.0A4.0,4.0 0 0 1 909.0,251.0H888.0Z" fill="#2a78d6"><title>simultaneous-100, D3D12, Wait + present: 1.783 ms (median)</title></path>
+<text x="917.0" y="250.0" font-size="9" fill="#898781" text-anchor="start">1.783</text>
+<path d="M888.0,253.0H910.1A4.0,4.0 0 0 1 914.1,257.0V259.0A4.0,4.0 0 0 1 910.1,263.0H888.0Z" fill="#eb6834"><title>simultaneous-100, Vulkan, Wait + present: 1.862 ms (median)</title></path>
+<text x="918.1" y="262.0" font-size="9" fill="#898781" text-anchor="start">1.862</text>
+<path d="M888.0,277.0H900.9A4.0,4.0 0 0 1 904.9,281.0V283.0A4.0,4.0 0 0 1 900.9,287.0H888.0Z" fill="#2a78d6"><title>sustained-barrage, D3D12, Wait + present: 1.209 ms (median)</title></path>
+<text x="908.9" y="286.0" font-size="9" fill="#898781" text-anchor="start">1.209</text>
+<path d="M888.0,289.0H901.2A4.0,4.0 0 0 1 905.2,293.0V295.0A4.0,4.0 0 0 1 901.2,299.0H888.0Z" fill="#eb6834"><title>sustained-barrage, Vulkan, Wait + present: 1.226 ms (median)</title></path>
+<text x="909.2" y="298.0" font-size="9" fill="#898781" text-anchor="start">1.226</text>
+<path d="M888.0,313.0H1026.9A4.0,4.0 0 0 1 1030.9,317.0V319.0A4.0,4.0 0 0 1 1026.9,323.0H888.0Z" fill="#2a78d6"><title>smoke-field, D3D12, Wait + present: 10.205 ms (median)</title></path>
+<text x="1034.9" y="322.0" font-size="9" fill="#898781" text-anchor="start">10.205</text>
+<path d="M888.0,325.0H1031.5A4.0,4.0 0 0 1 1035.5,329.0V331.0A4.0,4.0 0 0 1 1031.5,335.0H888.0Z" fill="#eb6834"><title>smoke-field, Vulkan, Wait + present: 10.535 ms (median)</title></path>
+<text x="1039.5" y="334.0" font-size="9" fill="#898781" text-anchor="start">10.535</text>
+<path d="M888.0,349.0H945.5A4.0,4.0 0 0 1 949.5,353.0V355.0A4.0,4.0 0 0 1 945.5,359.0H888.0Z" fill="#2a78d6"><title>accumulation, D3D12, Wait + present: 4.391 ms (median)</title></path>
+<text x="953.5" y="358.0" font-size="9" fill="#898781" text-anchor="start">4.391</text>
+<path d="M888.0,361.0H947.9A4.0,4.0 0 0 1 951.9,365.0V367.0A4.0,4.0 0 0 1 947.9,371.0H888.0Z" fill="#eb6834"><title>accumulation, Vulkan, Wait + present: 4.564 ms (median)</title></path>
+<text x="955.9" y="370.0" font-size="9" fill="#898781" text-anchor="start">4.564</text>
+<text x="162.0" y="148.0" font-size="11" fill="#0b0b0b" text-anchor="end">single</text>
+<text x="162.0" y="184.0" font-size="11" fill="#0b0b0b" text-anchor="end">simultaneous-10</text>
+<text x="162.0" y="220.0" font-size="11" fill="#0b0b0b" text-anchor="end">simultaneous-50</text>
+<text x="162.0" y="256.0" font-size="11" fill="#0b0b0b" text-anchor="end">simultaneous-100</text>
+<text x="162.0" y="292.0" font-size="11" fill="#0b0b0b" text-anchor="end">sustained-barrage</text>
+<text x="162.0" y="328.0" font-size="11" fill="#0b0b0b" text-anchor="end">smoke-field</text>
+<text x="162.0" y="364.0" font-size="11" fill="#0b0b0b" text-anchor="end">accumulation</text>
+<text x="174.0" y="416.0" font-size="10" fill="#898781" text-anchor="start">Milliseconds; each panel has its own scale.</text>
+</svg>

@@ -1,0 +1,304 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 790" width="1060" height="790" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" role="img">
+<title>CPU frame (loop period): per-run statistics</title>
+<desc>Variant default. Each point is the median across runs of the per-run statistic (ms); the whisker spans the runs' min-max.</desc>
+<rect x="0" y="0" width="1060" height="790" fill="#fcfcfb"/>
+<text x="24" y="32" font-size="17" font-weight="600" fill="#0b0b0b">CPU frame (loop period): per-run statistics</text>
+<text x="24" y="52" font-size="12" fill="#52514e">Variant default. Each point is the median across runs of the per-run statistic (ms); the whisker spans the runs' min-max.</text>
+<line x1="24.0" y1="76.0" x2="42.0" y2="76.0" stroke="#2a78d6" stroke-width="3"/>
+<text x="48.0" y="80.0" font-size="12" fill="#0b0b0b" text-anchor="start">D3D12</text>
+<line x1="112.0" y1="76.0" x2="130.0" y2="76.0" stroke="#eb6834" stroke-width="3"/>
+<text x="136.0" y="80.0" font-size="12" fill="#0b0b0b" text-anchor="start">Vulkan</text>
+<line x1="217.0" y1="69.0" x2="217.0" y2="81.0" stroke="#52514e" stroke-width="1.5"/>
+<text x="232.0" y="80.0" font-size="12" fill="#52514e" text-anchor="start">min-max across runs</text>
+<text x="24.0" y="118.0" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600">single (ms)</text>
+<line x1="76.0" y1="284.0" x2="344.0" y2="284.0" stroke="#c3c2b7" stroke-width="1"/>
+<text x="68.0" y="288.0" font-size="10" fill="#898781" text-anchor="end">0</text>
+<line x1="76.0" y1="234.0" x2="344.0" y2="234.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="68.0" y="238.0" font-size="10" fill="#898781" text-anchor="end">5</text>
+<line x1="76.0" y1="184.0" x2="344.0" y2="184.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="68.0" y="188.0" font-size="10" fill="#898781" text-anchor="end">10</text>
+<line x1="76.0" y1="134.0" x2="344.0" y2="134.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="68.0" y="138.0" font-size="10" fill="#898781" text-anchor="end">15</text>
+<text x="98.3" y="300.0" font-size="10" fill="#898781" text-anchor="middle">avg</text>
+<text x="143.0" y="300.0" font-size="10" fill="#898781" text-anchor="middle">median</text>
+<text x="187.7" y="300.0" font-size="10" fill="#898781" text-anchor="middle">p95</text>
+<text x="232.3" y="300.0" font-size="10" fill="#898781" text-anchor="middle">p99</text>
+<text x="277.0" y="300.0" font-size="10" fill="#898781" text-anchor="middle">worst 1%</text>
+<text x="321.7" y="300.0" font-size="10" fill="#898781" text-anchor="middle">max</text>
+<polyline points="93.3,281.6 138.0,282.8 182.7,279.3 227.3,265.7 272.0,203.7 316.7,176.2" fill="none" stroke="#2a78d6" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<line x1="93.3" y1="282.4" x2="93.3" y2="281.2" stroke="#2a78d6" stroke-width="1"/>
+<line x1="138.0" y1="282.8" x2="138.0" y2="282.7" stroke="#2a78d6" stroke-width="1"/>
+<line x1="182.7" y1="280.4" x2="182.7" y2="278.6" stroke="#2a78d6" stroke-width="1"/>
+<line x1="227.3" y1="277.3" x2="227.3" y2="215.0" stroke="#2a78d6" stroke-width="1"/>
+<line x1="272.0" y1="269.1" x2="272.0" y2="190.1" stroke="#2a78d6" stroke-width="1"/>
+<line x1="316.7" y1="262.6" x2="316.7" y2="171.9" stroke="#2a78d6" stroke-width="1"/>
+<circle cx="93.3" cy="281.6" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>single, D3D12, avg: 0.243 ms (runs 0.156-0.281 ms)</title></circle>
+<circle cx="138.0" cy="282.8" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>single, D3D12, median: 0.123 ms (runs 0.121-0.125 ms)</title></circle>
+<circle cx="182.7" cy="279.3" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>single, D3D12, p95: 0.470 ms (runs 0.360-0.540 ms)</title></circle>
+<circle cx="227.3" cy="265.7" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>single, D3D12, p99: 1.829 ms (runs 0.668-6.900 ms)</title></circle>
+<circle cx="272.0" cy="203.7" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>single, D3D12, worst 1%: 8.028 ms (runs 1.487-9.386 ms)</title></circle>
+<circle cx="316.7" cy="176.2" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>single, D3D12, max: 10.775 ms (runs 2.138-11.213 ms)</title></circle>
+<polyline points="103.3,282.7 148.0,283.1 192.7,279.1 237.3,277.1 282.0,276.7 326.7,275.9" fill="none" stroke="#eb6834" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<line x1="103.3" y1="282.8" x2="103.3" y2="282.4" stroke="#eb6834" stroke-width="1"/>
+<line x1="148.0" y1="283.2" x2="148.0" y2="283.0" stroke="#eb6834" stroke-width="1"/>
+<line x1="192.7" y1="279.1" x2="192.7" y2="278.8" stroke="#eb6834" stroke-width="1"/>
+<line x1="237.3" y1="277.6" x2="237.3" y2="277.0" stroke="#eb6834" stroke-width="1"/>
+<line x1="282.0" y1="277.2" x2="282.0" y2="270.9" stroke="#eb6834" stroke-width="1"/>
+<line x1="326.7" y1="276.9" x2="326.7" y2="261.1" stroke="#eb6834" stroke-width="1"/>
+<circle cx="103.3" cy="282.7" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>single, Vulkan, avg: 0.126 ms (runs 0.124-0.157 ms)</title></circle>
+<circle cx="148.0" cy="283.1" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>single, Vulkan, median: 0.089 ms (runs 0.085-0.096 ms)</title></circle>
+<circle cx="192.7" cy="279.1" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>single, Vulkan, p95: 0.492 ms (runs 0.485-0.524 ms)</title></circle>
+<circle cx="237.3" cy="277.1" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>single, Vulkan, p99: 0.688 ms (runs 0.639-0.702 ms)</title></circle>
+<circle cx="282.0" cy="276.7" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>single, Vulkan, worst 1%: 0.735 ms (runs 0.680-1.305 ms)</title></circle>
+<circle cx="326.7" cy="275.9" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>single, Vulkan, max: 0.814 ms (runs 0.713-2.285 ms)</title></circle>
+<text x="364.0" y="118.0" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600">simultaneous-10 (ms)</text>
+<line x1="416.0" y1="284.0" x2="684.0" y2="284.0" stroke="#c3c2b7" stroke-width="1"/>
+<text x="408.0" y="288.0" font-size="10" fill="#898781" text-anchor="end">0</text>
+<line x1="416.0" y1="234.0" x2="684.0" y2="234.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="408.0" y="238.0" font-size="10" fill="#898781" text-anchor="end">5</text>
+<line x1="416.0" y1="184.0" x2="684.0" y2="184.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="408.0" y="188.0" font-size="10" fill="#898781" text-anchor="end">10</text>
+<line x1="416.0" y1="134.0" x2="684.0" y2="134.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="408.0" y="138.0" font-size="10" fill="#898781" text-anchor="end">15</text>
+<text x="438.3" y="300.0" font-size="10" fill="#898781" text-anchor="middle">avg</text>
+<text x="483.0" y="300.0" font-size="10" fill="#898781" text-anchor="middle">median</text>
+<text x="527.7" y="300.0" font-size="10" fill="#898781" text-anchor="middle">p95</text>
+<text x="572.3" y="300.0" font-size="10" fill="#898781" text-anchor="middle">p99</text>
+<text x="617.0" y="300.0" font-size="10" fill="#898781" text-anchor="middle">worst 1%</text>
+<text x="661.7" y="300.0" font-size="10" fill="#898781" text-anchor="middle">max</text>
+<polyline points="433.3,280.9 478.0,281.6 522.7,277.4 567.3,270.6 612.0,235.2 656.7,198.3" fill="none" stroke="#2a78d6" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<line x1="433.3" y1="281.0" x2="433.3" y2="280.1" stroke="#2a78d6" stroke-width="1"/>
+<line x1="478.0" y1="281.7" x2="478.0" y2="281.5" stroke="#2a78d6" stroke-width="1"/>
+<line x1="522.7" y1="277.7" x2="522.7" y2="276.8" stroke="#2a78d6" stroke-width="1"/>
+<line x1="567.3" y1="272.2" x2="567.3" y2="196.5" stroke="#2a78d6" stroke-width="1"/>
+<line x1="612.0" y1="266.0" x2="612.0" y2="175.1" stroke="#2a78d6" stroke-width="1"/>
+<line x1="656.7" y1="260.1" x2="656.7" y2="146.5" stroke="#2a78d6" stroke-width="1"/>
+<circle cx="433.3" cy="280.9" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-10, D3D12, avg: 0.314 ms (runs 0.299-0.394 ms)</title></circle>
+<circle cx="478.0" cy="281.6" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-10, D3D12, median: 0.237 ms (runs 0.228-0.250 ms)</title></circle>
+<circle cx="522.7" cy="277.4" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-10, D3D12, p95: 0.657 ms (runs 0.629-0.717 ms)</title></circle>
+<circle cx="567.3" cy="270.6" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-10, D3D12, p99: 1.341 ms (runs 1.178-8.748 ms)</title></circle>
+<circle cx="612.0" cy="235.2" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-10, D3D12, worst 1%: 4.878 ms (runs 1.795-10.885 ms)</title></circle>
+<circle cx="656.7" cy="198.3" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-10, D3D12, max: 8.568 ms (runs 2.388-13.753 ms)</title></circle>
+<polyline points="443.3,281.5 488.0,282.0 532.7,276.9 577.3,275.0 622.0,273.9 666.7,272.6" fill="none" stroke="#eb6834" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<line x1="443.3" y1="281.5" x2="443.3" y2="281.2" stroke="#eb6834" stroke-width="1"/>
+<line x1="488.0" y1="282.0" x2="488.0" y2="282.0" stroke="#eb6834" stroke-width="1"/>
+<line x1="532.7" y1="277.0" x2="532.7" y2="276.8" stroke="#eb6834" stroke-width="1"/>
+<line x1="577.3" y1="275.6" x2="577.3" y2="274.5" stroke="#eb6834" stroke-width="1"/>
+<line x1="622.0" y1="275.1" x2="622.0" y2="265.9" stroke="#eb6834" stroke-width="1"/>
+<line x1="666.7" y1="273.9" x2="666.7" y2="256.7" stroke="#eb6834" stroke-width="1"/>
+<circle cx="443.3" cy="281.5" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-10, Vulkan, avg: 0.250 ms (runs 0.249-0.278 ms)</title></circle>
+<circle cx="488.0" cy="282.0" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-10, Vulkan, median: 0.200 ms (runs 0.196-0.202 ms)</title></circle>
+<circle cx="532.7" cy="276.9" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-10, Vulkan, p95: 0.707 ms (runs 0.700-0.718 ms)</title></circle>
+<circle cx="577.3" cy="275.0" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-10, Vulkan, p99: 0.904 ms (runs 0.836-0.954 ms)</title></circle>
+<circle cx="622.0" cy="273.9" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-10, Vulkan, worst 1%: 1.010 ms (runs 0.894-1.809 ms)</title></circle>
+<circle cx="666.7" cy="272.6" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-10, Vulkan, max: 1.136 ms (runs 1.012-2.728 ms)</title></circle>
+<text x="704.0" y="118.0" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600">simultaneous-50 (ms)</text>
+<line x1="756.0" y1="284.0" x2="1024.0" y2="284.0" stroke="#c3c2b7" stroke-width="1"/>
+<text x="748.0" y="288.0" font-size="10" fill="#898781" text-anchor="end">0</text>
+<line x1="756.0" y1="234.0" x2="1024.0" y2="234.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="748.0" y="238.0" font-size="10" fill="#898781" text-anchor="end">5</text>
+<line x1="756.0" y1="184.0" x2="1024.0" y2="184.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="748.0" y="188.0" font-size="10" fill="#898781" text-anchor="end">10</text>
+<line x1="756.0" y1="134.0" x2="1024.0" y2="134.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="748.0" y="138.0" font-size="10" fill="#898781" text-anchor="end">15</text>
+<text x="778.3" y="300.0" font-size="10" fill="#898781" text-anchor="middle">avg</text>
+<text x="823.0" y="300.0" font-size="10" fill="#898781" text-anchor="middle">median</text>
+<text x="867.7" y="300.0" font-size="10" fill="#898781" text-anchor="middle">p95</text>
+<text x="912.3" y="300.0" font-size="10" fill="#898781" text-anchor="middle">p99</text>
+<text x="957.0" y="300.0" font-size="10" fill="#898781" text-anchor="middle">worst 1%</text>
+<text x="1001.7" y="300.0" font-size="10" fill="#898781" text-anchor="middle">max</text>
+<polyline points="773.3,274.9 818.0,275.8 862.7,268.7 907.3,219.3 952.0,194.3 996.7,167.4" fill="none" stroke="#2a78d6" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<line x1="773.3" y1="275.4" x2="773.3" y2="273.8" stroke="#2a78d6" stroke-width="1"/>
+<line x1="818.0" y1="276.1" x2="818.0" y2="275.7" stroke="#2a78d6" stroke-width="1"/>
+<line x1="862.7" y1="269.0" x2="862.7" y2="267.0" stroke="#2a78d6" stroke-width="1"/>
+<line x1="907.3" y1="262.3" x2="907.3" y2="199.3" stroke="#2a78d6" stroke-width="1"/>
+<line x1="952.0" y1="234.8" x2="952.0" y2="166.2" stroke="#2a78d6" stroke-width="1"/>
+<line x1="996.7" y1="177.0" x2="996.7" y2="152.9" stroke="#2a78d6" stroke-width="1"/>
+<circle cx="773.3" cy="274.9" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-50, D3D12, avg: 0.915 ms (runs 0.860-1.022 ms)</title></circle>
+<circle cx="818.0" cy="275.8" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-50, D3D12, median: 0.821 ms (runs 0.795-0.835 ms)</title></circle>
+<circle cx="862.7" cy="268.7" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-50, D3D12, p95: 1.525 ms (runs 1.502-1.698 ms)</title></circle>
+<circle cx="907.3" cy="219.3" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-50, D3D12, p99: 6.467 ms (runs 2.166-8.472 ms)</title></circle>
+<circle cx="952.0" cy="194.3" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-50, D3D12, worst 1%: 8.969 ms (runs 4.924-11.778 ms)</title></circle>
+<circle cx="996.7" cy="167.4" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-50, D3D12, max: 11.661 ms (runs 10.697-13.111 ms)</title></circle>
+<polyline points="783.3,275.3 828.0,275.4 872.7,268.5 917.3,265.5 962.0,264.2 1006.7,261.7" fill="none" stroke="#eb6834" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<line x1="783.3" y1="275.3" x2="783.3" y2="275.0" stroke="#eb6834" stroke-width="1"/>
+<line x1="828.0" y1="275.7" x2="828.0" y2="275.1" stroke="#eb6834" stroke-width="1"/>
+<line x1="872.7" y1="268.9" x2="872.7" y2="267.9" stroke="#eb6834" stroke-width="1"/>
+<line x1="917.3" y1="266.4" x2="917.3" y2="265.3" stroke="#eb6834" stroke-width="1"/>
+<line x1="962.0" y1="264.4" x2="962.0" y2="261.9" stroke="#eb6834" stroke-width="1"/>
+<line x1="1006.7" y1="262.7" x2="1006.7" y2="256.1" stroke="#eb6834" stroke-width="1"/>
+<circle cx="783.3" cy="275.3" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-50, Vulkan, avg: 0.874 ms (runs 0.867-0.902 ms)</title></circle>
+<circle cx="828.0" cy="275.4" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-50, Vulkan, median: 0.856 ms (runs 0.833-0.893 ms)</title></circle>
+<circle cx="872.7" cy="268.5" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-50, Vulkan, p95: 1.553 ms (runs 1.507-1.609 ms)</title></circle>
+<circle cx="917.3" cy="265.5" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-50, Vulkan, p99: 1.845 ms (runs 1.761-1.869 ms)</title></circle>
+<circle cx="962.0" cy="264.2" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-50, Vulkan, worst 1%: 1.980 ms (runs 1.960-2.209 ms)</title></circle>
+<circle cx="1006.7" cy="261.7" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-50, Vulkan, max: 2.231 ms (runs 2.128-2.790 ms)</title></circle>
+<text x="24.0" y="348.0" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600">simultaneous-100 (ms)</text>
+<line x1="76.0" y1="514.0" x2="344.0" y2="514.0" stroke="#c3c2b7" stroke-width="1"/>
+<text x="68.0" y="518.0" font-size="10" fill="#898781" text-anchor="end">0</text>
+<line x1="76.0" y1="464.0" x2="344.0" y2="464.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="68.0" y="468.0" font-size="10" fill="#898781" text-anchor="end">5</text>
+<line x1="76.0" y1="414.0" x2="344.0" y2="414.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="68.0" y="418.0" font-size="10" fill="#898781" text-anchor="end">10</text>
+<line x1="76.0" y1="364.0" x2="344.0" y2="364.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="68.0" y="368.0" font-size="10" fill="#898781" text-anchor="end">15</text>
+<text x="98.3" y="530.0" font-size="10" fill="#898781" text-anchor="middle">avg</text>
+<text x="143.0" y="530.0" font-size="10" fill="#898781" text-anchor="middle">median</text>
+<text x="187.7" y="530.0" font-size="10" fill="#898781" text-anchor="middle">p95</text>
+<text x="232.3" y="530.0" font-size="10" fill="#898781" text-anchor="middle">p99</text>
+<text x="277.0" y="530.0" font-size="10" fill="#898781" text-anchor="middle">worst 1%</text>
+<text x="321.7" y="530.0" font-size="10" fill="#898781" text-anchor="middle">max</text>
+<polyline points="93.3,494.5 138.0,494.6 182.7,481.1 227.3,442.1 272.0,434.2 316.7,400.0" fill="none" stroke="#2a78d6" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<line x1="93.3" y1="494.6" x2="93.3" y2="492.7" stroke="#2a78d6" stroke-width="1"/>
+<line x1="138.0" y1="494.8" x2="138.0" y2="493.9" stroke="#2a78d6" stroke-width="1"/>
+<line x1="182.7" y1="482.1" x2="182.7" y2="475.4" stroke="#2a78d6" stroke-width="1"/>
+<line x1="227.3" y1="475.0" x2="227.3" y2="395.9" stroke="#2a78d6" stroke-width="1"/>
+<line x1="272.0" y1="446.1" x2="272.0" y2="390.0" stroke="#2a78d6" stroke-width="1"/>
+<line x1="316.7" y1="430.9" x2="316.7" y2="375.0" stroke="#2a78d6" stroke-width="1"/>
+<circle cx="93.3" cy="494.5" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-100, D3D12, avg: 1.954 ms (runs 1.936-2.131 ms)</title></circle>
+<circle cx="138.0" cy="494.6" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-100, D3D12, median: 1.940 ms (runs 1.923-2.006 ms)</title></circle>
+<circle cx="182.7" cy="481.1" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-100, D3D12, p95: 3.290 ms (runs 3.193-3.859 ms)</title></circle>
+<circle cx="227.3" cy="442.1" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-100, D3D12, p99: 7.188 ms (runs 3.899-11.809 ms)</title></circle>
+<circle cx="272.0" cy="434.2" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-100, D3D12, worst 1%: 7.982 ms (runs 6.785-12.403 ms)</title></circle>
+<circle cx="316.7" cy="400.0" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-100, D3D12, max: 11.400 ms (runs 8.308-13.897 ms)</title></circle>
+<polyline points="103.3,494.9 148.0,494.0 192.7,482.7 237.3,477.8 282.0,474.2 326.7,470.4" fill="none" stroke="#eb6834" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<line x1="103.3" y1="495.1" x2="103.3" y2="493.6" stroke="#eb6834" stroke-width="1"/>
+<line x1="148.0" y1="494.5" x2="148.0" y2="492.5" stroke="#eb6834" stroke-width="1"/>
+<line x1="192.7" y1="482.8" x2="192.7" y2="480.0" stroke="#eb6834" stroke-width="1"/>
+<line x1="237.3" y1="479.1" x2="237.3" y2="474.3" stroke="#eb6834" stroke-width="1"/>
+<line x1="282.0" y1="477.3" x2="282.0" y2="472.0" stroke="#eb6834" stroke-width="1"/>
+<line x1="326.7" y1="475.9" x2="326.7" y2="469.0" stroke="#eb6834" stroke-width="1"/>
+<circle cx="103.3" cy="494.9" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-100, Vulkan, avg: 1.907 ms (runs 1.894-2.040 ms)</title></circle>
+<circle cx="148.0" cy="494.0" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-100, Vulkan, median: 1.995 ms (runs 1.955-2.153 ms)</title></circle>
+<circle cx="192.7" cy="482.7" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-100, Vulkan, p95: 3.129 ms (runs 3.116-3.401 ms)</title></circle>
+<circle cx="237.3" cy="477.8" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-100, Vulkan, p99: 3.622 ms (runs 3.489-3.973 ms)</title></circle>
+<circle cx="282.0" cy="474.2" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-100, Vulkan, worst 1%: 3.983 ms (runs 3.672-4.205 ms)</title></circle>
+<circle cx="326.7" cy="470.4" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>simultaneous-100, Vulkan, max: 4.359 ms (runs 3.806-4.503 ms)</title></circle>
+<text x="364.0" y="348.0" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600">sustained-barrage (ms)</text>
+<line x1="416.0" y1="514.0" x2="684.0" y2="514.0" stroke="#c3c2b7" stroke-width="1"/>
+<text x="408.0" y="518.0" font-size="10" fill="#898781" text-anchor="end">0</text>
+<line x1="416.0" y1="464.0" x2="684.0" y2="464.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="408.0" y="468.0" font-size="10" fill="#898781" text-anchor="end">5</text>
+<line x1="416.0" y1="414.0" x2="684.0" y2="414.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="408.0" y="418.0" font-size="10" fill="#898781" text-anchor="end">10</text>
+<line x1="416.0" y1="364.0" x2="684.0" y2="364.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="408.0" y="368.0" font-size="10" fill="#898781" text-anchor="end">15</text>
+<text x="438.3" y="530.0" font-size="10" fill="#898781" text-anchor="middle">avg</text>
+<text x="483.0" y="530.0" font-size="10" fill="#898781" text-anchor="middle">median</text>
+<text x="527.7" y="530.0" font-size="10" fill="#898781" text-anchor="middle">p95</text>
+<text x="572.3" y="530.0" font-size="10" fill="#898781" text-anchor="middle">p99</text>
+<text x="617.0" y="530.0" font-size="10" fill="#898781" text-anchor="middle">worst 1%</text>
+<text x="661.7" y="530.0" font-size="10" fill="#898781" text-anchor="middle">max</text>
+<polyline points="433.3,502.1 478.0,500.6 522.7,494.3 567.3,490.7 612.0,460.5 656.7,389.8" fill="none" stroke="#2a78d6" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<line x1="433.3" y1="502.2" x2="433.3" y2="501.9" stroke="#2a78d6" stroke-width="1"/>
+<line x1="478.0" y1="500.7" x2="478.0" y2="500.5" stroke="#2a78d6" stroke-width="1"/>
+<line x1="522.7" y1="494.5" x2="522.7" y2="493.5" stroke="#2a78d6" stroke-width="1"/>
+<line x1="567.3" y1="492.0" x2="567.3" y2="487.3" stroke="#2a78d6" stroke-width="1"/>
+<line x1="612.0" y1="462.3" x2="612.0" y2="454.5" stroke="#2a78d6" stroke-width="1"/>
+<line x1="656.7" y1="406.7" x2="656.7" y2="379.5" stroke="#2a78d6" stroke-width="1"/>
+<circle cx="433.3" cy="502.1" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>sustained-barrage, D3D12, avg: 1.186 ms (runs 1.179-1.209 ms)</title></circle>
+<circle cx="478.0" cy="500.6" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>sustained-barrage, D3D12, median: 1.341 ms (runs 1.331-1.348 ms)</title></circle>
+<circle cx="522.7" cy="494.3" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>sustained-barrage, D3D12, p95: 1.965 ms (runs 1.949-2.053 ms)</title></circle>
+<circle cx="567.3" cy="490.7" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>sustained-barrage, D3D12, p99: 2.333 ms (runs 2.202-2.667 ms)</title></circle>
+<circle cx="612.0" cy="460.5" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>sustained-barrage, D3D12, worst 1%: 5.349 ms (runs 5.169-5.953 ms)</title></circle>
+<circle cx="656.7" cy="389.8" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>sustained-barrage, D3D12, max: 12.420 ms (runs 10.729-13.451 ms)</title></circle>
+<polyline points="443.3,502.7 488.0,500.8 532.7,493.8 577.3,491.5 622.0,489.4 666.7,483.6" fill="none" stroke="#eb6834" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<line x1="443.3" y1="502.7" x2="443.3" y2="502.2" stroke="#eb6834" stroke-width="1"/>
+<line x1="488.0" y1="501.1" x2="488.0" y2="500.4" stroke="#eb6834" stroke-width="1"/>
+<line x1="532.7" y1="494.4" x2="532.7" y2="493.3" stroke="#eb6834" stroke-width="1"/>
+<line x1="577.3" y1="492.4" x2="577.3" y2="490.4" stroke="#eb6834" stroke-width="1"/>
+<line x1="622.0" y1="490.6" x2="622.0" y2="487.4" stroke="#eb6834" stroke-width="1"/>
+<line x1="666.7" y1="485.9" x2="666.7" y2="476.0" stroke="#eb6834" stroke-width="1"/>
+<circle cx="443.3" cy="502.7" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>sustained-barrage, Vulkan, avg: 1.133 ms (runs 1.131-1.180 ms)</title></circle>
+<circle cx="488.0" cy="500.8" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>sustained-barrage, Vulkan, median: 1.317 ms (runs 1.295-1.357 ms)</title></circle>
+<circle cx="532.7" cy="493.8" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>sustained-barrage, Vulkan, p95: 2.021 ms (runs 1.957-2.074 ms)</title></circle>
+<circle cx="577.3" cy="491.5" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>sustained-barrage, Vulkan, p99: 2.253 ms (runs 2.164-2.362 ms)</title></circle>
+<circle cx="622.0" cy="489.4" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>sustained-barrage, Vulkan, worst 1%: 2.463 ms (runs 2.339-2.655 ms)</title></circle>
+<circle cx="666.7" cy="483.6" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>sustained-barrage, Vulkan, max: 3.040 ms (runs 2.809-3.797 ms)</title></circle>
+<text x="704.0" y="348.0" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600">smoke-field (ms)</text>
+<line x1="756.0" y1="514.0" x2="1024.0" y2="514.0" stroke="#c3c2b7" stroke-width="1"/>
+<text x="748.0" y="518.0" font-size="10" fill="#898781" text-anchor="end">0</text>
+<line x1="756.0" y1="476.5" x2="1024.0" y2="476.5" stroke="#e1e0d9" stroke-width="1"/>
+<text x="748.0" y="480.5" font-size="10" fill="#898781" text-anchor="end">10</text>
+<line x1="756.0" y1="439.0" x2="1024.0" y2="439.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="748.0" y="443.0" font-size="10" fill="#898781" text-anchor="end">20</text>
+<line x1="756.0" y1="401.5" x2="1024.0" y2="401.5" stroke="#e1e0d9" stroke-width="1"/>
+<text x="748.0" y="405.5" font-size="10" fill="#898781" text-anchor="end">30</text>
+<line x1="756.0" y1="364.0" x2="1024.0" y2="364.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="748.0" y="368.0" font-size="10" fill="#898781" text-anchor="end">40</text>
+<text x="778.3" y="530.0" font-size="10" fill="#898781" text-anchor="middle">avg</text>
+<text x="823.0" y="530.0" font-size="10" fill="#898781" text-anchor="middle">median</text>
+<text x="867.7" y="530.0" font-size="10" fill="#898781" text-anchor="middle">p95</text>
+<text x="912.3" y="530.0" font-size="10" fill="#898781" text-anchor="middle">p99</text>
+<text x="957.0" y="530.0" font-size="10" fill="#898781" text-anchor="middle">worst 1%</text>
+<text x="1001.7" y="530.0" font-size="10" fill="#898781" text-anchor="middle">max</text>
+<polyline points="773.3,467.4 818.0,473.0 862.7,410.6 907.3,405.9 952.0,402.7 996.7,395.1" fill="none" stroke="#2a78d6" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<line x1="773.3" y1="467.6" x2="773.3" y2="466.8" stroke="#2a78d6" stroke-width="1"/>
+<line x1="818.0" y1="473.5" x2="818.0" y2="472.4" stroke="#2a78d6" stroke-width="1"/>
+<line x1="862.7" y1="411.7" x2="862.7" y2="409.0" stroke="#2a78d6" stroke-width="1"/>
+<line x1="907.3" y1="407.1" x2="907.3" y2="401.5" stroke="#2a78d6" stroke-width="1"/>
+<line x1="952.0" y1="403.9" x2="952.0" y2="399.1" stroke="#2a78d6" stroke-width="1"/>
+<line x1="996.7" y1="398.0" x2="996.7" y2="392.6" stroke="#2a78d6" stroke-width="1"/>
+<circle cx="773.3" cy="467.4" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>smoke-field, D3D12, avg: 12.420 ms (runs 12.364-12.586 ms)</title></circle>
+<circle cx="818.0" cy="473.0" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>smoke-field, D3D12, median: 10.922 ms (runs 10.798-11.106 ms)</title></circle>
+<circle cx="862.7" cy="410.6" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>smoke-field, D3D12, p95: 27.577 ms (runs 27.284-28.004 ms)</title></circle>
+<circle cx="907.3" cy="405.9" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>smoke-field, D3D12, p99: 28.831 ms (runs 28.503-29.995 ms)</title></circle>
+<circle cx="952.0" cy="402.7" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>smoke-field, D3D12, worst 1%: 29.678 ms (runs 29.368-30.638 ms)</title></circle>
+<circle cx="996.7" cy="395.1" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>smoke-field, D3D12, max: 31.711 ms (runs 30.946-32.361 ms)</title></circle>
+<polyline points="783.3,467.0 828.0,473.5 872.7,409.0 917.3,401.7 962.0,399.1 1006.7,394.8" fill="none" stroke="#eb6834" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<line x1="783.3" y1="467.1" x2="783.3" y2="464.9" stroke="#eb6834" stroke-width="1"/>
+<line x1="828.0" y1="474.0" x2="828.0" y2="472.2" stroke="#eb6834" stroke-width="1"/>
+<line x1="872.7" y1="409.2" x2="872.7" y2="401.7" stroke="#eb6834" stroke-width="1"/>
+<line x1="917.3" y1="403.0" x2="917.3" y2="396.3" stroke="#eb6834" stroke-width="1"/>
+<line x1="962.0" y1="399.7" x2="962.0" y2="395.1" stroke="#eb6834" stroke-width="1"/>
+<line x1="1006.7" y1="396.2" x2="1006.7" y2="391.8" stroke="#eb6834" stroke-width="1"/>
+<circle cx="783.3" cy="467.0" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>smoke-field, Vulkan, avg: 12.527 ms (runs 12.515-13.085 ms)</title></circle>
+<circle cx="828.0" cy="473.5" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>smoke-field, Vulkan, median: 10.811 ms (runs 10.657-11.148 ms)</title></circle>
+<circle cx="872.7" cy="409.0" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>smoke-field, Vulkan, p95: 28.013 ms (runs 27.955-29.936 ms)</title></circle>
+<circle cx="917.3" cy="401.7" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>smoke-field, Vulkan, p99: 29.937 ms (runs 29.611-31.380 ms)</title></circle>
+<circle cx="962.0" cy="399.1" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>smoke-field, Vulkan, worst 1%: 30.634 ms (runs 30.471-31.712 ms)</title></circle>
+<circle cx="1006.7" cy="394.8" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>smoke-field, Vulkan, max: 31.797 ms (runs 31.421-32.597 ms)</title></circle>
+<text x="24.0" y="578.0" font-size="12" fill="#0b0b0b" text-anchor="start" font-weight="600">accumulation (ms)</text>
+<line x1="76.0" y1="744.0" x2="344.0" y2="744.0" stroke="#c3c2b7" stroke-width="1"/>
+<text x="68.0" y="748.0" font-size="10" fill="#898781" text-anchor="end">0</text>
+<line x1="76.0" y1="706.5" x2="344.0" y2="706.5" stroke="#e1e0d9" stroke-width="1"/>
+<text x="68.0" y="710.5" font-size="10" fill="#898781" text-anchor="end">5</text>
+<line x1="76.0" y1="669.0" x2="344.0" y2="669.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="68.0" y="673.0" font-size="10" fill="#898781" text-anchor="end">10</text>
+<line x1="76.0" y1="631.5" x2="344.0" y2="631.5" stroke="#e1e0d9" stroke-width="1"/>
+<text x="68.0" y="635.5" font-size="10" fill="#898781" text-anchor="end">15</text>
+<line x1="76.0" y1="594.0" x2="344.0" y2="594.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="68.0" y="598.0" font-size="10" fill="#898781" text-anchor="end">20</text>
+<text x="98.3" y="760.0" font-size="10" fill="#898781" text-anchor="middle">avg</text>
+<text x="143.0" y="760.0" font-size="10" fill="#898781" text-anchor="middle">median</text>
+<text x="187.7" y="760.0" font-size="10" fill="#898781" text-anchor="middle">p95</text>
+<text x="232.3" y="760.0" font-size="10" fill="#898781" text-anchor="middle">p99</text>
+<text x="277.0" y="760.0" font-size="10" fill="#898781" text-anchor="middle">worst 1%</text>
+<text x="321.7" y="760.0" font-size="10" fill="#898781" text-anchor="middle">max</text>
+<polyline points="93.3,712.5 138.0,708.2 182.7,698.4 227.3,685.4 272.0,663.9 316.7,619.3" fill="none" stroke="#2a78d6" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<line x1="93.3" y1="712.8" x2="93.3" y2="712.0" stroke="#2a78d6" stroke-width="1"/>
+<line x1="138.0" y1="708.3" x2="138.0" y2="707.8" stroke="#2a78d6" stroke-width="1"/>
+<line x1="182.7" y1="699.5" x2="182.7" y2="697.6" stroke="#2a78d6" stroke-width="1"/>
+<line x1="227.3" y1="689.8" x2="227.3" y2="680.4" stroke="#2a78d6" stroke-width="1"/>
+<line x1="272.0" y1="666.9" x2="272.0" y2="655.6" stroke="#2a78d6" stroke-width="1"/>
+<line x1="316.7" y1="639.4" x2="316.7" y2="597.1" stroke="#2a78d6" stroke-width="1"/>
+<circle cx="93.3" cy="712.5" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>accumulation, D3D12, avg: 4.206 ms (runs 4.166-4.265 ms)</title></circle>
+<circle cx="138.0" cy="708.2" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>accumulation, D3D12, median: 4.767 ms (runs 4.764-4.828 ms)</title></circle>
+<circle cx="182.7" cy="698.4" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>accumulation, D3D12, p95: 6.085 ms (runs 5.927-6.189 ms)</title></circle>
+<circle cx="227.3" cy="685.4" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>accumulation, D3D12, p99: 7.816 ms (runs 7.227-8.480 ms)</title></circle>
+<circle cx="272.0" cy="663.9" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>accumulation, D3D12, worst 1%: 10.678 ms (runs 10.285-11.783 ms)</title></circle>
+<circle cx="316.7" cy="619.3" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>accumulation, D3D12, max: 16.628 ms (runs 13.947-19.590 ms)</title></circle>
+<polyline points="103.3,713.3 148.0,708.0 192.7,701.2 237.3,697.4 282.0,694.2 326.7,687.9" fill="none" stroke="#eb6834" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<line x1="103.3" y1="713.4" x2="103.3" y2="712.4" stroke="#eb6834" stroke-width="1"/>
+<line x1="148.0" y1="708.1" x2="148.0" y2="706.7" stroke="#eb6834" stroke-width="1"/>
+<line x1="192.7" y1="701.5" x2="192.7" y2="700.6" stroke="#eb6834" stroke-width="1"/>
+<line x1="237.3" y1="697.7" x2="237.3" y2="696.7" stroke="#eb6834" stroke-width="1"/>
+<line x1="282.0" y1="695.4" x2="282.0" y2="693.9" stroke="#eb6834" stroke-width="1"/>
+<line x1="326.7" y1="689.9" x2="326.7" y2="680.4" stroke="#eb6834" stroke-width="1"/>
+<circle cx="103.3" cy="713.3" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>accumulation, Vulkan, avg: 4.096 ms (runs 4.076-4.213 ms)</title></circle>
+<circle cx="148.0" cy="708.0" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>accumulation, Vulkan, median: 4.802 ms (runs 4.782-4.971 ms)</title></circle>
+<circle cx="192.7" cy="701.2" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>accumulation, Vulkan, p95: 5.700 ms (runs 5.666-5.793 ms)</title></circle>
+<circle cx="237.3" cy="697.4" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>accumulation, Vulkan, p99: 6.208 ms (runs 6.177-6.308 ms)</title></circle>
+<circle cx="282.0" cy="694.2" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>accumulation, Vulkan, worst 1%: 6.634 ms (runs 6.475-6.684 ms)</title></circle>
+<circle cx="326.7" cy="687.9" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>accumulation, Vulkan, max: 7.476 ms (runs 7.213-8.479 ms)</title></circle>
+</svg>
