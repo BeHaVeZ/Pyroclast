@@ -340,7 +340,8 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
             return 1;
         }
         if (options.capture_path.empty()) return 0;
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Exited before the capture at tick %u was drawn.", *options.profile_tick);
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Exited before the capture at tick %u was drawn.",
+            options.capture_tick ? *options.capture_tick : *options.profile_tick);
         return 1;
     };
     while (true)
@@ -461,7 +462,8 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     if (!unattended) for (const auto command : commands) apply(command, sandbox);
                 }
                 if (scenario) scenario->submit_due(sandbox);
-                const bool capture = !options.capture_path.empty() && !demo.has_pending_steps();
+                const bool capture = !options.capture_path.empty() &&
+                    (options.capture_tick ? demo.tick() + 1 == *options.capture_tick : !demo.has_pending_steps());
                 const auto result = sandbox.renderer.render(renderer, demo, sandbox.effects, sandbox.range, camera, width, height, elapsed,
                     {capture, overlay, sandbox.debug_lines, sandbox.layer_mask, sandbox.wind});
                 if (result == pyroclast::RenderResult::failed) return 1;
@@ -481,6 +483,12 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                         baseline.record(milliseconds, renderer.completed_gpu_timings(), sandbox.effects.active().empty() ?
                             std::optional<std::uint32_t>(0) : sandbox.counters ? std::optional(sandbox.counters->alive) : std::nullopt);
                     if (capture) return save_capture(renderer, options.capture_path);
+                    if (scenario && options.capture_tick && scenario->finished(sandbox))
+                    {
+                        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Scenario %s ended before tick %u.", options.scenario.c_str(),
+                            *options.capture_tick);
+                        return 1;
+                    }
                     if (scenario)
                     {
                         scenario->record(milliseconds, renderer.completed_gpu_timings(), sandbox);
@@ -583,7 +591,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
     std::optional<ScenarioRun> scenario;
     if (!options.scenario.empty())
     {
-        auto script = pyroclast::make_scenario(options.scenario, sandbox->range.terrain(), options.preset);
+        auto script = pyroclast::make_scenario(options.scenario, sandbox->range.environment(), options.preset);
         if (!script) return 1;
         SDL_Log("Scenario %s: %zu events over %u ticks, one tick per frame; VSync off; timestamps on.", options.scenario.c_str(),
             script->events.size(), script->duration_ticks);
@@ -628,7 +636,7 @@ int main(int argc, char** argv)
             "Usage: Pyroclast.exe [--renderer=d3d12|vulkan] [--explosions=1|10|50|100] [--gpu-timing] [--gpu-regions] [--profile-tick=N]\n"
             "                     [--smoke-resolution=full|half] [--ui=on|off] [--gpu-validation]\n"
             "                     [--capture=FILE.png] [--exit-after=N] [--view=overview|ground|hill|aerial|range]\n"
-            "                     [--scene-format=rgba16f|r11g11b10f|rgba8] [--scenario=NAME] [--effect-lines] [--help]\n"
+            "                     [--scene-format=rgba16f|r11g11b10f|rgba8] [--scenario=NAME] [--capture-tick=N] [--effect-lines] [--help]\n"
             "  --renderer=d3d12   Request Direct3D 12 (default).\n"
             "  --renderer=vulkan  Request Vulkan.\n"
             "  --explosions=N     Simultaneous explosion group (1, 10, 50, 100; default 1).\n"
@@ -636,13 +644,16 @@ int main(int argc, char** argv)
             "  --smoke-resolution=full|half  Select smoke rendering resolution (default full).\n"
             "  --gpu-timing       Enable GPU timestamp measurements.\n"
             "  --gpu-regions      Also time every dispatch, pass and the overlay (serializes Vulkan GPU work).\n"
-            "  --capture=FILE.png Write the first frame drawn at the profile tick, then exit (requires --profile-tick).\n"
+            "  --capture=FILE.png Write the first frame drawn at the profile tick, then exit (requires --profile-tick,\n"
+            "                     or --scenario with --capture-tick).\n"
+            "  --capture-tick=N   With --scenario and --capture: capture the frame that draws tick N, then exit.\n"
             "  --exit-after=N     Exit after N submitted frames.\n"
             "  --view=NAME        Start the camera at a named pose: overview (default), ground, hill, aerial or range\n"
             "                     (the north yard's props).\n"
             "  --scene-format=F   Scene target: rgba16f (default), r11g11b10f, or rgba8 (a cost reference; bands).\n"
             "  --scenario=NAME    Scripted run, one tick per frame, then a JSON summary: single, grid-10, grid-50,\n"
-            "                     grid-100, barrage (80 impacts walking across the range) or presets (all seven in a row).\n"
+            "                     grid-100, barrage (80 impacts walking across the range), presets (all seven in a row)\n"
+            "                     or range (seven presets among the north yard's props).\n"
             "  --preset=NAME      small-impact, small-he (default), artillery-he, heavy, fuel-fire, dust-blast or stress-test,\n"
             "                     for the startup group, profiles, scenarios and the first click.\n"
             "  --disable=LIST     Hide layers, the lights, smoke features or the props: comma-separated dust, smoke, plume,\n"

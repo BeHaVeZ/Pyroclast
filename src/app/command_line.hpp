@@ -28,6 +28,7 @@ struct ApplicationOptions
     std::optional<std::uint32_t> profile_tick;
     std::optional<std::uint32_t> exit_after;
     std::string capture_path;
+    std::optional<std::uint32_t> capture_tick;
     RangeView view = RangeView::overview;
     SceneFormat scene_format = SceneFormat::rgba16f;
     std::string scenario;

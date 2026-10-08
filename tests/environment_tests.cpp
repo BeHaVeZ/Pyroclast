@@ -364,13 +364,13 @@ int main()
     }
     for (const auto name : {"single", "grid-10", "grid-50", "grid-100", "barrage", "presets"})
     {
-        for (const auto& scripted : make_scenario(name, environment.terrain())->events) measure(scripted.event);
+        for (const auto& scripted : make_scenario(name, environment)->events) measure(scripted.event);
     }
     std::printf("nearest scripted explosion %.2f m from a prop\n", nearest);
     check(nearest >= clearance, "scripted and startup explosions keep 6 m from every prop");
 
     const auto scenario_fingerprint = [&environment](const char* name) {
-        const auto scenario = make_scenario(name, environment.terrain(), ExplosionPreset::artillery_he);
+        const auto scenario = make_scenario(name, environment, ExplosionPreset::artillery_he);
         std::vector<ExplosionEvent> events;
         std::vector<std::uint32_t> ticks;
         for (const auto& scripted : scenario->events)
@@ -386,6 +386,42 @@ int main()
         "the scripted event lists are M16's");
     check(fingerprint(group_events(environment.terrain(), 100), {}) == 0x9810dcdfc42fd365ull,
         "the startup group is M16's");
+
+    const auto range = make_scenario("range", environment, ExplosionPreset::heavy);
+    const auto range_again = make_scenario("range", environment, ExplosionPreset::small_he);
+    struct Expected
+    {
+        ExplosionPreset preset;
+        SurfaceType surface;
+        float3 normal;
+        float3 surface_point;
+    };
+    const Expected expected[] = {
+        {ExplosionPreset::artillery_he, SurfaceType::dirt, {0, 1, 0}, {-14, 0, -48.5f}},
+        {ExplosionPreset::small_impact, SurfaceType::concrete, {0, 0, 1}, {-11, 1.5f, -53.8f}},
+        {ExplosionPreset::small_he, SurfaceType::dirt, {0, 1, 0}, {-2, 2.4f, -50}},
+        {ExplosionPreset::heavy, SurfaceType::dirt, {0, 1, 0}, {8, 0, -45.5f}},
+        {ExplosionPreset::small_he, SurfaceType::concrete, {0, 1, 0}, {9.5f, 2.85f, -55}},
+        {ExplosionPreset::dust_blast, SurfaceType::dirt, {0, 1, 0}, {-31.4f, 0, -45.7f}},
+        {ExplosionPreset::fuel_fire, SurfaceType::dirt, {0, 1, 0}, {26.35f, 0, -47.93f}},
+    };
+    bool aimed = range && range->events.size() == std::size(expected) && range_again &&
+        range_again->events.size() == range->events.size();
+    std::uint32_t longest = 0;
+    for (std::uint32_t index = 0; aimed && index < range->events.size(); ++index)
+    {
+        const auto& scripted = range->events[index];
+        const auto& event = scripted.event;
+        const auto& want = expected[index];
+        const auto target = want.surface_point + want.normal * 0.5f;
+        aimed = scripted.tick == 0 && event.seed == 3000 + index && event.preset == want.preset && event.surface == want.surface &&
+            approx(event.normal.x, want.normal.x) && approx(event.normal.y, want.normal.y) && approx(event.normal.z, want.normal.z) &&
+            approx(event.position.x, target.x) && approx(event.position.y, target.y) && approx(event.position.z, target.z) &&
+            !environment.inside(event.position) && std::memcmp(&event, &range_again->events[index].event, sizeof(event)) == 0;
+        longest = std::max(longest, effect_ticks(event.preset, event.surface));
+    }
+    check(aimed, "range: seven presets aimed at their surfaces, whatever the preset option");
+    check(range && range->duration_ticks == longest && is_scenario_name("range"), "range runs until its longest effect ends");
 
     const auto down = [](float x, float z) { return Ray{{x, 20, z}, {0, -1, 0}}; };
     constexpr float infinity = std::numeric_limits<float>::infinity();

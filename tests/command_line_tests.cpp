@@ -55,7 +55,7 @@ int main()
         {"invalid scene format", {"--scene-format=rgba32f"}, d3d12, false, "Expected --scene-format"},
         {"barrage scenario", {"--scenario=barrage"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {},
             pyroclast::SceneFormat::rgba16f, "barrage"},
-        {"invalid scenario", {"--scenario=storm"}, d3d12, false, "Expected --scenario=single, grid-10, grid-50, grid-100, barrage or presets"},
+        {"invalid scenario", {"--scenario=storm"}, d3d12, false, "Expected --scenario=single, grid-10, grid-50, grid-100, barrage, presets or range"},
         {"presets scenario", {"--scenario=presets"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {}, {}, "presets"},
         {"preset", {"--preset=fuel-fire"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {}, {}, {}, false,
             pyroclast::ExplosionPreset::fuel_fire},
@@ -153,7 +153,17 @@ int main()
         {"duplicate renderer", {"--renderer=d3d12", "--renderer=d3d12"}, d3d12, false, "only once"},
         {"conflicting renderers", {"--renderer=d3d12", "--renderer=vulkan"}, d3d12, false, "only once"},
         {"help does not hide invalid options", {"--help", "--unknown"}, d3d12, false, "Unknown argument '--unknown'"},
-        {"invalid options before help", {"--unknown", "--help"}, d3d12, false, "Unknown argument '--unknown'"}
+        {"invalid options before help", {"--unknown", "--help"}, d3d12, false, "Unknown argument '--unknown'"},
+        {"range scenario", {"--scenario=range"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {},
+            pyroclast::SceneFormat::rgba16f, "range"},
+        {"capture tick without a scenario", {"--profile-tick=10", "--capture=a.png", "--capture-tick=5"}, d3d12, false,
+            "--capture-tick requires --scenario and --capture"},
+        {"capture tick without a capture", {"--scenario=range", "--capture-tick=5"}, d3d12, false,
+            "--capture-tick requires --scenario and --capture"},
+        {"scenario capture without a tick", {"--scenario=range", "--capture=a.png"}, d3d12, false, "--capture requires --profile-tick"},
+        {"capture tick zero", {"--scenario=range", "--capture=a.png", "--capture-tick=0"}, d3d12, false, "Expected --capture-tick"},
+        {"capture tick too late", {"--scenario=range", "--capture=a.png", "--capture-tick=100001"}, d3d12, false, "Expected --capture-tick"},
+        {"capture tick duplicate", {"--scenario=range", "--capture=a.png", "--capture-tick=5", "--capture-tick=6"}, d3d12, false, "only once"}
     };
 
     int failures = 0;
@@ -178,6 +188,20 @@ int main()
             std::fprintf(stderr, "FAIL: %s (error: %s)\n", test.name, result.error.c_str());
             ++failures;
         }
+    }
+
+    const char* scenario_capture[] = {"--scenario=range", "--capture=r.png", "--capture-tick=45"};
+    const auto captured = pyroclast::parse_command_line(scenario_capture);
+    if (!captured.error.empty() || captured.options.capture_tick != 45u || captured.options.capture_path != "r.png" ||
+        captured.options.scenario != "range" || captured.options.profile_tick)
+    {
+        std::fprintf(stderr, "FAIL: a scenario capture at a tick (error: %s)\n", captured.error.c_str());
+        ++failures;
+    }
+    if (pyroclast::parse_command_line({}).options.capture_tick)
+    {
+        std::fputs("FAIL: no capture tick by default\n", stderr);
+        ++failures;
     }
 
     if (!pyroclast::adapter_matches("Intel(R) UHD Graphics 770", "uhd") || !pyroclast::adapter_matches("NVIDIA GeForce RTX 4090", "RTX 4090") ||

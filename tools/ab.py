@@ -2,10 +2,14 @@
 
   python tools/ab.py --a <dir-with-Pyroclast.exe> --b <dir> [--runs 5] [--matrix default|quick|scenarios]
                      [--cases 100@6,1@6 [--smoke full,half]] [--renderers d3d12,vulkan] [--csv out/ab/latest.csv]
-                     [--a-args="--flag=value ..."] [--b-args="..."]
+                     [--a-args="--flag=value ..."] [--b-args="..."] [--scenarios single,range]
 
 --cases replaces the matrix with fixed-state cases <explosions>@<tick> on every renderer and smoke
 resolution given (--smoke, default full), e.g. an early tick while the temporary lights are lit.
+
+--scenarios runs the scripts named instead of a matrix, on every renderer and smoke resolution given
+(--smoke, default full), e.g. a script the A build does not know, when both sides are one build under two
+settings.
 
 --a-args and --b-args append flags to every launch of that side, so one build can be compared
 under two settings (pass the same directory to --a and --b), e.g. a format or a feature toggle.
@@ -104,12 +108,15 @@ def main():
     parser.add_argument("--runs", type=int, default=5)
     parser.add_argument("--matrix", default="default", choices=sorted(MATRICES))
     parser.add_argument("--cases", default="", help="fixed-state cases <explosions>@<tick>, comma-separated, instead of the matrix")
-    parser.add_argument("--smoke", default="full", help="smoke resolutions for --cases, comma-separated")
+    parser.add_argument("--smoke", default="full", help="smoke resolutions for --cases and --scenarios, comma-separated")
+    parser.add_argument("--scenarios", default="", help="scripted runs (--scenario), comma-separated, instead of the matrix")
     parser.add_argument("--renderers", default="d3d12,vulkan", help="comma-separated subset of the matrix to run")
     parser.add_argument("--csv", default="out/ab/latest.csv")
     parser.add_argument("--a-args", default="", help="extra flags for every A launch")
     parser.add_argument("--b-args", default="", help="extra flags for every B launch")
     arguments = parser.parse_args()
+    if arguments.cases and arguments.scenarios:
+        parser.error("--cases and --scenarios each replace the matrix; give one")
     extra = {"A": shlex.split(arguments.a_args), "B": shlex.split(arguments.b_args)}
     pairs = []
     for case in filter(None, arguments.cases.split(",")):
@@ -128,6 +135,9 @@ def main():
         if pairs:
             matrix = [(renderer, smoke, explosions, tick) for renderer in ("d3d12", "vulkan")
                       for smoke in arguments.smoke.split(",") for explosions, tick in pairs]
+        if arguments.scenarios:
+            matrix = [(renderer, smoke, scenario, None) for renderer in ("d3d12", "vulkan")
+                      for smoke in arguments.smoke.split(",") for scenario in arguments.scenarios.split(",")]
         for case in [case for case in matrix if case[0] in renderers]:
             samples = {"A": [], "B": []}
             for run in range(arguments.runs):

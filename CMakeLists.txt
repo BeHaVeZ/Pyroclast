@@ -142,7 +142,8 @@ if(BUILD_TESTING)
     add_test(NAME environment COMMAND EnvironmentTests)
     list(APPEND project_targets EnvironmentTests)
     add_executable(ExplosionSystemTests tests/explosion_system_tests.cpp src/simulation/explosion_system.cpp
-        src/simulation/explosion_scenarios.cpp src/simulation/explosion_presets.cpp src/simulation/terrain.cpp src/core/math.cpp)
+        src/simulation/explosion_scenarios.cpp src/simulation/explosion_presets.cpp src/simulation/terrain.cpp
+        src/simulation/environment.cpp src/simulation/range_props.cpp src/core/math.cpp)
     target_include_directories(ExplosionSystemTests PRIVATE src)
     add_test(NAME explosion_system COMMAND ExplosionSystemTests)
     list(APPEND project_targets ExplosionSystemTests)

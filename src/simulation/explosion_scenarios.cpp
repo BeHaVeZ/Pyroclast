@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <limits>
 
 namespace pyroclast
 {
@@ -41,11 +42,39 @@ std::vector<ExplosionEvent> group_events(const Terrain& terrain, std::uint32_t c
     return events;
 }
 
-std::optional<Scenario> make_scenario(std::string_view name, const Terrain& terrain, ExplosionPreset preset)
+std::optional<Scenario> make_scenario(std::string_view name, const Environment& environment, ExplosionPreset preset)
 {
     if (!is_scenario_name(name)) return std::nullopt;
+    const auto& terrain = environment.terrain();
     Scenario scenario{name, {}, 0};
-    if (name == "presets")
+    if (name == "range")
+    {
+        struct Aim
+        {
+            float3 origin;
+            float3 direction;
+            ExplosionPreset preset;
+        };
+        constexpr float3 down{0, -1, 0};
+        const Aim aims[] = {
+            {{-14, 20, -48.5f}, down, ExplosionPreset::artillery_he},
+            {{-11, 1.5f, -40}, {0, 0, -1}, ExplosionPreset::small_impact},
+            {{-2, 20, -50}, down, ExplosionPreset::small_he},
+            {{8, 20, -45.5f}, down, ExplosionPreset::heavy},
+            {{9.5f, 20, -55}, down, ExplosionPreset::small_he},
+            {{-31.4f, 20, -45.7f}, down, ExplosionPreset::dust_blast},
+            {{26.35f, 20, -47.93f}, down, ExplosionPreset::fuel_fire},
+        };
+        for (std::uint32_t index = 0; index < std::size(aims); ++index)
+        {
+            const auto& aim = aims[index];
+            const auto hit = environment.raycast({aim.origin, aim.direction}, std::numeric_limits<float>::infinity(), true);
+            assert(hit);
+            if (!hit) continue;
+            scenario.events.push_back({0, {environment.event_origin(*hit), hit->normal, 3000 + index, aim.preset, hit->surface}});
+        }
+    }
+    else if (name == "presets")
     {
         for (std::uint32_t index = 0; index < preset_count; ++index)
         {

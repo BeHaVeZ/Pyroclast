@@ -298,6 +298,20 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
                 return result;
             }
         }
+        else if (option.starts_with("--capture-tick="))
+        {
+            if (result.options.capture_tick)
+            {
+                result.error = "Specify --capture-tick only once.";
+                return result;
+            }
+            result.options.capture_tick = parse_count(option.substr(std::string_view("--capture-tick=").size()), 1, 100'000);
+            if (!result.options.capture_tick)
+            {
+                result.error = "Expected --capture-tick=N with an integer from 1 to 100000.";
+                return result;
+            }
+        }
         else if (option.starts_with("--capture="))
         {
             if (capture_specified)
@@ -362,9 +376,13 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
         }
     }
 
-    if (capture_specified && !result.options.profile_tick)
+    if (capture_specified && !result.options.profile_tick && !(scenario_specified && result.options.capture_tick))
     {
-        result.error = "--capture requires --profile-tick so the captured state is reproducible.";
+        result.error = "--capture requires --profile-tick, or --scenario with --capture-tick, so the captured state is reproducible.";
+    }
+    if (result.options.capture_tick && !(scenario_specified && capture_specified))
+    {
+        result.error = "--capture-tick requires --scenario and --capture.";
     }
     if (scenario_specified && (explosions_specified || profile_specified))
     {

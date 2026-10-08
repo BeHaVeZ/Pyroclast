@@ -2,8 +2,13 @@
 
   python tools/captures.py capture --config Debug --out out/baselines/<label> [--views overview,ground,hill,aerial,range]
                                    [--presets small-he,artillery-he,...] [--args="--disable=props ..."]
+                                   [--scenarios range --ticks 6,45,180]
   python tools/captures.py compare <dir-a> <dir-b> [--subset] [--max-level 0] [--max-outliers 0] [--min-within-one 1.0]
   python tools/captures.py cross-api <dir> [--max-level 2] [--max-outliers 9] [--min-within-one 0.999]
+
+--scenarios captures scripted runs instead of fixed states: each scenario at each tick (--capture-tick, the
+frame that draws that tick), over the renderers, smoke resolutions and views, named
+<renderer>-<smoke>-scenario-<name>-<tick>[-<view>]. --explosions and --presets do not apply.
 
 --args appends flags to every launch without changing the file names, so a capture set taken with a
 feature switched off (--args=--disable=props) can be compared with an older baseline of the same names.
@@ -40,24 +45,36 @@ def run_environment():
     return environment
 
 
+def capture_cases(arguments):
+    """(file name, workload flags) for every capture asked for."""
+    renderers, views, smokes = arguments.renderers.split(","), arguments.views.split(","), arguments.smoke.split(",")
+    ticks = arguments.ticks.split(",")
+    if arguments.scenarios:
+        for renderer, view, smoke, scenario, tick in itertools.product(renderers, views, smokes, arguments.scenarios.split(","), ticks):
+            name = f"{renderer}-{smoke}-scenario-{scenario}-{tick}" + ("" if view == "overview" else f"-{view}")
+            yield name, renderer, view, smoke, [f"--scenario={scenario}", f"--capture-tick={tick}"]
+        return
+    for renderer, view, smoke, explosions, tick, preset in itertools.product(renderers, views, smokes, arguments.explosions.split(","),
+                                                                             ticks, arguments.presets.split(",")):
+        name = (f"{renderer}-{smoke}-{explosions}-{tick}" + ("" if view == "overview" else f"-{view}") +
+                ("" if preset == "small-he" else f"-{preset}"))
+        workload = [f"--explosions={explosions}", f"--profile-tick={tick}"]
+        if preset != "small-he":
+            workload.append(f"--preset={preset}")
+        yield name, renderer, view, smoke, workload
+
+
 def capture(arguments):
     executable = Path(arguments.exe) if arguments.exe else BUILD / arguments.config / "Pyroclast.exe"
     output = Path(arguments.out).resolve()
     output.mkdir(parents=True, exist_ok=True)
-    cases = itertools.product(arguments.renderers.split(","), arguments.views.split(","), arguments.smoke.split(","),
-                              arguments.explosions.split(","), arguments.ticks.split(","), arguments.presets.split(","))
     failures = 0
-    for renderer, view, smoke, explosions, tick, preset in cases:
-        name = (f"{renderer}-{smoke}-{explosions}-{tick}" + ("" if view == "overview" else f"-{view}") +
-                ("" if preset == "small-he" else f"-{preset}"))
+    for name, renderer, view, smoke, workload in capture_cases(arguments):
         image = output / f"{name}.png"
         image.unlink(missing_ok=True)
-        command = [str(executable), f"--renderer={renderer}", f"--smoke-resolution={smoke}",
-                   f"--explosions={explosions}", f"--profile-tick={tick}", f"--capture={image}"]
+        command = [str(executable), f"--renderer={renderer}", f"--smoke-resolution={smoke}", *workload, f"--capture={image}"]
         if view != "overview":
             command.append(f"--view={view}")
-        if preset != "small-he":
-            command.append(f"--preset={preset}")
         command += shlex.split(arguments.args)
         try:
             result = subprocess.run(command, capture_output=True, text=True, env=run_environment(), timeout=300)
@@ -137,6 +154,7 @@ def main():
     run.add_argument("--views", default="overview", help="camera poses (--view) to capture from")
     run.add_argument("--presets", default="small-he", help="explosion presets (--preset) to capture")
     run.add_argument("--args", default="", help="flags appended to every launch; not part of the file names")
+    run.add_argument("--scenarios", default="", help="scripted runs (--scenario) to capture at --ticks instead of fixed states")
     for name, default_level, default_outliers, default_fraction in (("compare", 0, 0, 1.0), ("cross-api", 2, 9, 0.999)):
         command = commands.add_parser(name)
         if name == "compare":

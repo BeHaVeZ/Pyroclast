@@ -73,7 +73,8 @@ int main()
     };
     check(run() == run(), "the same script gives the same slots and generations");
 
-    const Terrain terrain;
+    const Environment environment;
+    const auto& terrain = environment.terrain();
     for (const auto count : {1u, 10u, 50u, 100u})
     {
         const auto group = group_events(terrain, count);
@@ -92,14 +93,14 @@ int main()
             (count == 1 || group[1].position.x - group[0].position.x == group_spacing), "a startup group is a centred grid on the ground");
     }
 
-    check(!make_scenario("storm", terrain) && !is_scenario_name("storm") && is_scenario_name("barrage"), "unknown scenarios are rejected");
-    const auto single = make_scenario("single", terrain);
+    check(!make_scenario("storm", environment) && !is_scenario_name("storm") && is_scenario_name("barrage"), "unknown scenarios are rejected");
+    const auto single = make_scenario("single", environment);
     const auto lifetime_ticks = effect_ticks(ExplosionPreset::small_he, SurfaceType::dirt);
     check(single && single->events.size() == 1 && single->events[0].tick == 0 && single->duration_ticks == lifetime_ticks,
         "single: one effect for its lifetime");
-    const auto grid = make_scenario("grid-100", terrain);
+    const auto grid = make_scenario("grid-100", environment);
     check(grid && grid->events.size() == 100 && grid->events.back().tick == 0, "grid-100: the startup group at tick 0");
-    const auto barrage = make_scenario("barrage", terrain);
+    const auto barrage = make_scenario("barrage", environment);
     bool walking = barrage && barrage->events.size() == 80;
     for (std::size_t index = 0; walking && index < barrage->events.size(); ++index)
     {
@@ -110,7 +111,7 @@ int main()
     check(walking && barrage->events.front().event.position.x < -50 && barrage->events.back().event.position.x > 50 &&
         barrage->duration_ticks == 79 * 15 + lifetime_ticks,
         "barrage: 80 impacts 15 ticks apart, walking east along the range");
-    const auto again = make_scenario("barrage", terrain);
+    const auto again = make_scenario("barrage", environment);
     bool same = again && again->events.size() == barrage->events.size();
     for (std::size_t index = 0; same && index < again->events.size(); ++index)
     {
@@ -129,7 +130,7 @@ int main()
     }
     check(peak == 32 && slots.dropped() == 0, "the barrage peaks at 32 effects and drops none");
 
-    const auto heavy_barrage = make_scenario("barrage", terrain, ExplosionPreset::heavy);
+    const auto heavy_barrage = make_scenario("barrage", environment, ExplosionPreset::heavy);
     bool surfaced = heavy_barrage && heavy_barrage->events.size() == 80;
     bool concrete = false;
     for (std::size_t index = 0; surfaced && index < heavy_barrage->events.size(); ++index)
@@ -140,7 +141,7 @@ int main()
     }
     check(surfaced && concrete && heavy_barrage->duration_ticks == 79 * 15 + effect_ticks(ExplosionPreset::heavy, SurfaceType::dirt),
         "scripted events carry the preset and the surface under them; the barrage crosses the concrete pad");
-    const auto presets = make_scenario("presets", terrain, ExplosionPreset::heavy);
+    const auto presets = make_scenario("presets", environment, ExplosionPreset::heavy);
     bool row = presets && presets->events.size() == preset_count && is_scenario_name("presets");
     std::uint32_t longest = 0;
     for (std::uint32_t index = 0; row && index < presets->events.size(); ++index)
