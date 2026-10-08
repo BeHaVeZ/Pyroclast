@@ -110,6 +110,20 @@ int main()
         std::fprintf(stderr, "FAIL: counter log coverage columns\n%s", covered.csv().c_str());
         ++failures;
     }
+    pyroclast::CounterLog thinned(true, true, true, true);
+    thinned.add_frame({4, 1, 1, 1, 0, true, true, 2});
+    record.thinned = 6;
+    record.faint = 7;
+    thinned.add_counters(record);
+    const std::string thinned_expected =
+        "frame,tick,steps,active,started,dropped,counter_tick,alive,smoke,light,debris,draw_ms,compute_ms,cpu_ms,"
+        "offscreen,smoke_bin0,smoke_bin1,smoke_bin2,smoke_bin3,coverage_smoke,coverage_light,thinned,faint,half,evicted\n"
+        "0,4,1,1,1,0,4,70,40,20,10,,,0.0000,3,1,2,3,4,10,5,6,7,1,2\n";
+    if (thinned.csv() != thinned_expected)
+    {
+        std::fprintf(stderr, "FAIL: counter log thinned, faint and evicted columns\n%s", thinned.csv().c_str());
+        ++failures;
+    }
     record.tick = 7;
     log.add_counters(record);
     log.add_timing(1, 1);

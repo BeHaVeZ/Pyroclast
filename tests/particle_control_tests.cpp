@@ -313,6 +313,12 @@ int main()
     check(one_list.dispatches[1].constants[2] == 0 && one_list.dispatches[2].constants[1] == 0 &&
         draws(one_list.offscreen_particles, device.offscreen, 0, ParticleSystem::capacity, 2, layout::particle_arguments_offset),
         "half-resolution light keeps one list and draws all of it offscreen");
+    const auto thinned_one_list = system.plan(0, 3, 2, {false, true, 24, 0.002f});
+    check(&thinned_one_list.offscreen_particles.pipeline == device.lod_offscreen &&
+        thinned_one_list.offscreen_particles.constants[4] == std::bit_cast<std::uint32_t>(24.0f) &&
+        thinned_one_list.offscreen_particles.constants[5] == std::bit_cast<std::uint32_t>(0.002f) &&
+        &one_list.offscreen_particles.pipeline == device.offscreen && one_list.offscreen_particles.constants[4] == 0,
+        "half-resolution light thins through the LOD shader too");
     check(layered.dispatches[1].constants[2] == 1 && layered.dispatches[2].constants[1] == 1 &&
         draws(layered.offscreen_smoke, device.offscreen, 0, layout::light_list_first, 2, layout::smoke_arguments_offset) &&
         draws(layered.light, device.particles, layout::light_list_first, ParticleSystem::capacity, 1,
@@ -536,6 +542,7 @@ int main()
     check(half_resolution.render(device, rendered, half_effects, range, camera, 1280, 720, 1.0 / 60, half_options) == RenderResult::submitted &&
         device.valid_frame && device.half_light_passes, "with half-resolution light the target holds every translucent particle");
     half_options.scalability.half_light = false;
+    half_resolution.render(device, rendered, half_effects, range, camera, 1280, 720, 1.0 / 60, {});
     ExplosionRenderer::FrameOptions automatic{};
     automatic.scalability.smoke_resolution = SmokeResolution::automatic;
     automatic.scalability.smoke_budget = {false, 100};
@@ -544,10 +551,19 @@ int main()
         "automatic without a record draws at full resolution and measures");
     ParticleCounters heavy_record;
     heavy_record.smoke_coverage[3] = 100 * 1280 * 720 / layout::coverage_unit_pixels;
+    heavy_record.measured = true;
     automatic.counters = heavy_record;
     check(half_resolution.render(device, rendered, half_effects, range, camera, 1280, 720, 1.0 / 60, automatic) == RenderResult::submitted &&
         device.valid_frame && device.half_resolution_passes && half_resolution.half_smoke() && half_resolution.smoke_policy().switches() == 1,
         "automatic switches to half resolution at the budget");
+    ExplosionRenderer::FrameOptions fixed_full{};
+    fixed_full.counters = heavy_record;
+    half_resolution.render(device, rendered, half_effects, range, camera, 1280, 720, 1.0 / 60, fixed_full);
+    ParticleCounters unread_record;
+    automatic.counters = unread_record;
+    check(half_resolution.render(device, rendered, half_effects, range, camera, 1280, 720, 1.0 / 60, automatic) == RenderResult::submitted &&
+        device.full_resolution_passes && !half_resolution.half_smoke() && half_resolution.smoke_policy().switches() == 1,
+        "back in automatic, an unmeasured record keeps the full resolution just drawn");
 
     {
         Sandbox sandbox;

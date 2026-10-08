@@ -21,6 +21,7 @@ public:
 
     bool decide(const std::optional<ParticleCounters>& newest, const SmokeBudget& budget, double screen_pixels) const;
     void commit(bool half);
+    void follow(bool half);
     bool half() const { return half_; }
     std::uint64_t half_frames() const { return half_frames_; }
     std::uint64_t switches() const { return switches_; }

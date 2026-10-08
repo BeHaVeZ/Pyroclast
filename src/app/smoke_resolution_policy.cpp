@@ -20,7 +20,7 @@ double SmokeResolutionPolicy::load(const ParticleCounters& counters, const Smoke
 
 bool SmokeResolutionPolicy::decide(const std::optional<ParticleCounters>& newest, const SmokeBudget& budget, double screen_pixels) const
 {
-    if (!newest || since_switch_ < dwell_frames) return half_;
+    if (!newest || since_switch_ < dwell_frames || (!budget.count && !newest->measured)) return half_;
     const double measured = load(*newest, budget, screen_pixels);
     const double up = limit(budget);
     if (!half_) return measured >= up;
@@ -37,5 +37,11 @@ void SmokeResolutionPolicy::commit(bool half)
     }
     else if (since_switch_ < dwell_frames) ++since_switch_;
     if (half) ++half_frames_;
+}
+
+void SmokeResolutionPolicy::follow(bool half)
+{
+    half_ = half;
+    since_switch_ = dwell_frames;
 }
 }

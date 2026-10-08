@@ -106,7 +106,8 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_e
     const DrawConstants smoke_layer = lod ? DrawConstants{capacity, 0, light_first, std::max(offscreen_divisor, 1u), lod_pixels, faint_floor} :
         DrawConstants{capacity, 0, light_first, std::max(offscreen_divisor, 1u)};
     const DrawConstants light_layer{capacity, light_first, capacity, 1};
-    const DrawConstants every_layer{capacity, 0, capacity, std::max(offscreen_divisor, 1u)};
+    const DrawConstants every_layer = lod ? DrawConstants{capacity, 0, capacity, std::max(offscreen_divisor, 1u), lod_pixels, faint_floor} :
+        DrawConstants{capacity, 0, capacity, std::max(offscreen_divisor, 1u)};
     const DrawConstants debris_list{capacity, particle_layout::debris_list_first, capacity};
     return {
         {{{*compute_, simulation, parameters, {groups, 1, 1}, "Particle simulation"},
@@ -116,7 +117,8 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_e
         {lod ? *lod_offscreen_graphics_ : *offscreen_graphics_, drawing, smoke_layer, 0, 0, "Smoke", arguments_.get(),
             particle_layout::smoke_arguments_offset},
         {*graphics_, drawing, light_layer, 0, 0, "Light", arguments_.get(), particle_layout::light_arguments_offset},
-        {*offscreen_graphics_, drawing, every_layer, 0, 0, "Smoke and light", arguments_.get(), particle_layout::particle_arguments_offset},
+        {lod ? *lod_offscreen_graphics_ : *offscreen_graphics_, drawing, every_layer, 0, 0, "Smoke and light", arguments_.get(),
+            particle_layout::particle_arguments_offset},
         {*debris_graphics_, drawing, debris_list, 0, 0, "Debris", arguments_.get(), particle_layout::debris_arguments_offset},
         {arguments_.get(), particle_layout::counters_offset, listing.measure ? particle_layout::counters_bytes : particle_layout::counters_basic_bytes},
         steps, active_effects};
@@ -124,7 +126,7 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_e
 
 std::optional<ParticleCounters> ParticleSystem::counters(const ReadbackData& data)
 {
-    static_assert(sizeof(ParticleCounters) == particle_layout::counters_bytes &&
+    static_assert(offsetof(ParticleCounters, measured) == particle_layout::counters_bytes &&
         particle_layout::counters_bytes == particle_layout::arguments_bytes - particle_layout::counters_offset &&
         offsetof(ParticleCounters, offscreen) == particle_layout::counter_offscreen_word * 4 &&
         offsetof(ParticleCounters, smoke_coverage) == particle_layout::counter_smoke_coverage_word * 4 &&
@@ -132,6 +134,7 @@ std::optional<ParticleCounters> ParticleSystem::counters(const ReadbackData& dat
     if (data.size != particle_layout::counters_basic_bytes && data.size != particle_layout::counters_bytes) return std::nullopt;
     ParticleCounters counters;
     std::memcpy(&counters, data.bytes.data(), data.size);
+    counters.measured = data.size == particle_layout::counters_bytes;
     return counters;
 }
 

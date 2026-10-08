@@ -65,6 +65,7 @@ struct DiagnosticsSnapshot
         std::optional<ParticleCounters> particles;
         std::uint32_t lights = 0;
         bool coverage = false;
+        bool coverage_flag = false;
         std::string_view smoke_resolution = "full";
         bool smoke_half = false;
         bool half_light = false;

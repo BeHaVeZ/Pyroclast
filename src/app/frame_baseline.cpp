@@ -24,7 +24,7 @@ std::string json_string(const std::string& text)
 
 std::string camera_json(const std::array<float, 6>& pose)
 {
-    char text[160];
+    char text[6 * 48 + 8];
     std::snprintf(text, sizeof(text), "[%.3f,%.3f,%.3f,%.3f,%.3f,%.3f]", static_cast<double>(pose[0]), static_cast<double>(pose[1]),
         static_cast<double>(pose[2]), static_cast<double>(pose[3]), static_cast<double>(pose[4]), static_cast<double>(pose[5]));
     return text;

@@ -146,6 +146,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     {
         particles.commit(work);
         if (automatic) smoke_policy_.commit(half);
+        else smoke_policy_.follow(half);
         half_smoke_ = half;
     }
     return result;

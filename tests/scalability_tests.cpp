@@ -24,6 +24,7 @@ ParticleCounters covering(double screens, double pixels)
     ParticleCounters counters;
     counters.smoke_coverage[3] = static_cast<std::uint32_t>(std::lround(screens * pixels / particle_layout::coverage_unit_pixels));
     counters.smoke = 1000;
+    counters.measured = true;
     return counters;
 }
 
@@ -92,6 +93,21 @@ int main()
     ParticleCounters many;
     many.smoke = 70000;
     check(counted.decide(many, {true, 60000}, pixels) && !counted.decide(sample, {true, 60000}, pixels), "the count arm compares smoke particles");
+    SmokeResolutionPolicy unmeasured;
+    unmeasured.commit(true);
+    run(unmeasured, heavy, coverage, pixels, SmokeResolutionPolicy::dwell_frames);
+    ParticleCounters unread;
+    unread.smoke = 70000;
+    check(unmeasured.decide(unread, coverage, pixels) && unmeasured.decide(std::nullopt, coverage, pixels) &&
+        counted.decide(unread, {true, 60000}, pixels), "an unmeasured record keeps the mode under a coverage budget");
+    SmokeResolutionPolicy resumed;
+    resumed.commit(resumed.decide(heavy, coverage, pixels));
+    const auto counted_switches = resumed.switches();
+    const auto counted_half = resumed.half_frames();
+    resumed.follow(false);
+    check(!resumed.half() && resumed.switches() == counted_switches && resumed.half_frames() == counted_half &&
+        !resumed.decide(band, coverage, pixels) && resumed.decide(heavy, coverage, pixels),
+        "after fixed-resolution frames the policy starts from the resolution drawn");
 
     check(std::abs(cloud_rise(ExplosionPreset::heavy, 3) - 26 * (1 - std::exp(-1.0f))) < 1e-4f && cloud_rise(ExplosionPreset::heavy, 0) == 0 &&
         cloud_rise(ExplosionPreset::small_impact, 5) == 0 && cloud_rise(ExplosionPreset::heavy, 100) > 25.99f,

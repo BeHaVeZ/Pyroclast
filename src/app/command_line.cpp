@@ -368,7 +368,7 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
             const auto text = option.substr(option.find('=') + 1);
             if (!parse_numbers(text, value) || value[0] <= 0 || (!lod && value[0] >= 1) || (lod && value[0] > 4096))
             {
-                result.error = lod ? "Expected --smoke-lod=P, a radius in pixels above 0." : "Expected --faint-floor=F, an opacity between 0 and 1.";
+                result.error = lod ? "Expected --smoke-lod=P, a radius in pixels above 0 and at most 4096." : "Expected --faint-floor=F, an opacity between 0 and 1.";
                 return result;
             }
             setting = value[0];

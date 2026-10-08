@@ -41,7 +41,9 @@ std::string CounterLog::csv() const
 {
     std::string text = "frame,tick,steps,active,started,dropped,counter_tick,alive,smoke,light,debris,draw_ms,compute_ms,cpu_ms";
     if (coverage_) text += ",offscreen,smoke_bin0,smoke_bin1,smoke_bin2,smoke_bin3,coverage_smoke,coverage_light";
-    text += smoke_resolution_ ? ",half\n" : "\n";
+    if (lod_) text += ",thinned,faint";
+    if (smoke_resolution_) text += ",half";
+    text += evicted_ ? ",evicted\n" : "\n";
     char line[256];
     for (std::size_t index = 0; index < rows_.size(); ++index)
     {
@@ -74,7 +76,18 @@ std::string CounterLog::csv() const
             text += line;
         }
         else if (coverage_) text += ",,,,,,,";
+        if (lod_ && row.counters)
+        {
+            std::snprintf(line, sizeof(line), ",%u,%u", row.counters->thinned, row.counters->faint);
+            text += line;
+        }
+        else if (lod_) text += ",,";
         if (smoke_resolution_) text += frame.half ? ",1" : ",0";
+        if (evicted_)
+        {
+            std::snprintf(line, sizeof(line), ",%llu", static_cast<unsigned long long>(frame.evicted));
+            text += line;
+        }
         text += '\n';
     }
     return text;

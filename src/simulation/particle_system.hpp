@@ -57,6 +57,7 @@ struct ParticleCounters
     std::array<std::uint32_t, 4> smoke_coverage{};
     std::uint32_t light_coverage = 0;
     std::uint32_t reserved[3]{};
+    bool measured = false;
 };
 
 struct ParticleListing

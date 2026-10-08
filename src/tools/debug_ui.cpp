@@ -386,10 +386,13 @@ void showcase_window(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>
 
     if (ImGui::CollapsingHeader("Scalability"))
     {
-        bool coverage = snapshot.load.coverage;
+        const bool automatic = snapshot.load.smoke_resolution == "auto";
+        bool coverage = snapshot.load.coverage_flag || automatic;
+        if (automatic) ImGui::BeginDisabled();
         if (ImGui::Checkbox("Measure coverage", &coverage)) commands.push_back({UiCommand::Kind::toggle_coverage});
+        if (automatic) ImGui::EndDisabled();
         ImGui::SameLine();
-        ImGui::TextDisabled("(Load rows; scatter cost)");
+        ImGui::TextDisabled(automatic ? "(auto measures)" : "(Load rows; scatter cost)");
         bool evict = snapshot.load.slot_policy == "evict-oldest";
         if (ImGui::Checkbox("Evict oldest when full", &evict)) commands.push_back({UiCommand::Kind::set_slot_policy, evict ? 1u : 0u});
         constexpr const char* modes[] = {"Full", "Half", "Auto"};

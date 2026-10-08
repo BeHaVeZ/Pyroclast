@@ -288,6 +288,36 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
             text += (text.empty() ? "" : ",") + std::string("\"half_frames\":") + std::to_string(policy.half_frames()) +
                 ",\"switches\":" + std::to_string(policy.switches());
         }
+        const auto& settings = sandbox.scalability;
+        std::string options;
+        char number[64];
+        const auto add = [&options](const std::string& entry) { options += (options.empty() ? "" : ",") + entry; };
+        if (settings.smoke_budget.count || settings.smoke_budget.limit > 0)
+        {
+            std::snprintf(number, sizeof(number), "%s:%g", settings.smoke_budget.count ? "count" : "coverage",
+                pyroclast::SmokeResolutionPolicy::limit(settings.smoke_budget));
+            add(std::string("\"smoke_budget\":\"") + number + "\"");
+        }
+        if (settings.half_light) add("\"half_light\":true");
+        if (settings.smoke_lod > 0)
+        {
+            std::snprintf(number, sizeof(number), "%g", static_cast<double>(settings.smoke_lod));
+            add(std::string("\"smoke_lod\":") + number);
+        }
+        if (settings.faint_floor > 0)
+        {
+            std::snprintf(number, sizeof(number), "%g", static_cast<double>(settings.faint_floor));
+            add(std::string("\"faint_floor\":") + number);
+        }
+        if (settings.effect_order != pyroclast::EffectOrder::origin)
+        {
+            add(std::string("\"effect_order\":\"") + pyroclast::effect_order_name(settings.effect_order) + "\"");
+        }
+        if (settings.slot_policy != pyroclast::SlotPolicy::drop_new)
+        {
+            add(std::string("\"slot_policy\":\"") + pyroclast::slot_policy_name(settings.slot_policy) + "\"");
+        }
+        if (!options.empty()) text += (text.empty() ? "" : ",") + std::string("\"scalability\":{") + options + "}";
         return text;
     };
     baseline.set_extra(scalability_json);
@@ -436,6 +466,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                 const auto tick_before = demo.tick();
                 const auto started_before = sandbox.effects.started();
                 const auto dropped_before = sandbox.effects.dropped();
+                const auto evicted_before = sandbox.effects.evicted();
                 const bool capture = !options.capture_path.empty() &&
                     (options.capture_tick ? demo.tick() + 1 == *options.capture_tick : !demo.has_pending_steps());
                 const auto result = sandbox.renderer.render(renderer, demo, sandbox.effects, sandbox.range, camera, width, height, elapsed,
@@ -455,7 +486,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                 {
                     counter_log->add_frame({demo.tick(), last_steps, static_cast<std::uint32_t>(sandbox.effects.active().size()),
                         sandbox.effects.started() - started_before, sandbox.effects.dropped() - dropped_before, !sandbox.effects.active().empty(),
-                        sandbox.renderer.half_smoke()});
+                        sandbox.renderer.half_smoke(), sandbox.effects.evicted() - evicted_before});
                 }
                 const double wall = static_cast<double>(SDL_GetPerformanceCounter()) / static_cast<double>(SDL_GetPerformanceFrequency());
                 tick_rate.add(wall, demo.tick());
@@ -468,7 +499,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                 const auto counters = sandbox.poll_counters(renderer);
                 if (scenario && !frozen && counters) scenario->count(*counters);
                 if (counter_log && counters) counter_log->add_counters(*counters);
-                if (counters && (sandbox.scalability.coverage || automatic) && (!profile_tick || counters->tick == *profile_tick))
+                if (counters && counters->measured && (!profile_tick || counters->tick == *profile_tick))
                 {
                     coverage.add(counters->smoke_coverage, counters->light_coverage, counters->offscreen,
                         static_cast<double>(width) * static_cast<double>(height));
@@ -628,7 +659,12 @@ int run_application(const pyroclast::ApplicationOptions& options)
     SDL_Log("Explosion demo ready. %.*s.", static_cast<int>(pyroclast::controls_summary().size()), pyroclast::controls_summary().data());
     std::optional<pyroclast::CounterLog> counter_log;
     const bool automatic_smoke = options.scalability.smoke_resolution == pyroclast::SmokeResolution::automatic;
-    if (!options.counter_log.empty()) counter_log.emplace(options.scalability.coverage || automatic_smoke, automatic_smoke);
+    if (!options.counter_log.empty())
+    {
+        const auto& settings = options.scalability;
+        counter_log.emplace(settings.coverage || automatic_smoke, automatic_smoke, settings.smoke_lod > 0 || settings.faint_floor > 0,
+            settings.slot_policy == pyroclast::SlotPolicy::evict_oldest);
+    }
     int exit_code = run_event_loop(window.get(), device, *sandbox, ui.get(), options, std::move(scenario), counter_log ? &*counter_log : nullptr);
     if (counter_log)
     {
@@ -666,7 +702,7 @@ int main(int argc, char** argv)
     {
         std::puts(
             "Usage: Pyroclast.exe [--renderer=d3d12|vulkan] [--explosions=1|10|50|100] [--gpu-timing] [--gpu-regions] [--profile-tick=N]\n"
-            "                     [--smoke-resolution=full|half] [--ui=on|off] [--gpu-validation]\n"
+            "                     [--smoke-resolution=full|half|auto] [--ui=on|off] [--gpu-validation]\n"
             "                     [--capture=FILE.png] [--exit-after=N] [--view=overview|ground|hill|aerial|range|yard]\n"
             "                     [--scene-format=rgba16f|r11g11b10f|rgba8] [--scenario=NAME] [--capture-tick=N] [--effect-lines] [--help]\n"
             "  --renderer=d3d12   Request Direct3D 12 (default).\n"
@@ -708,8 +744,8 @@ int main(int argc, char** argv)
             "  --debug-views=LIST Start with debug views on: comma-separated bounds (effect bounds), boxes (collision\n"
             "                     boxes), regions (where the showcase places events, F8), wind (wind arrow, F9), or all.\n"
             "                     Not with --effect-lines or --scenario.\n"
-            "  --smoke-lod=P      Thin smoke particles larger than P pixels in radius, fading every other one out by 2P and\n"
-            "                     compensating its neighbour (docs/optimizations/03).\n"
+            "  --smoke-lod=P      Thin smoke particles larger than P pixels in radius (0 < P <= 4096), fading every other one\n"
+            "                     out by 2P and compensating its neighbour (docs/optimizations/03).\n"
             "  --faint-floor=F    Do not draw smoke particles whose opacity is below F (0-1).\n"
             "  --coverage         Count each listed particle's screen coverage and whether it is off screen into the\n"
             "                     counter record (records gain \"coverage\"; counter logs gain its columns).\n"

@@ -98,6 +98,7 @@ void Sandbox::fill_snapshot(DiagnosticsSnapshot& snapshot) const
     if (!effects.active().empty()) load.particles = counters;
     load.lights = renderer.lights();
     load.coverage = scalability.coverage || scalability.smoke_resolution == SmokeResolution::automatic;
+    load.coverage_flag = scalability.coverage;
     load.smoke_resolution = smoke_resolution_name(scalability.smoke_resolution);
     load.smoke_half = renderer.half_smoke();
     load.half_light = scalability.half_light;

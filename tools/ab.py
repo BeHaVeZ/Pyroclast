@@ -56,8 +56,9 @@ relative difference of B against A. The difference counts as noise ("neutral") w
 max(1%, 3 x the larger relative median absolute deviation); otherwise "CHANGED". The median
 absolute deviation ignores a single outlying run, so one slow run cannot hide a consistent shift.
 Raw per-run values are written to the CSV after every launch. Newer records' keys follow the original
-columns (half_frames, switches, effects_evicted, coverage_smoke = the average smoke coverage, offscreen;
-blank when absent), then smoke_arg, then the --tails and --regions metrics.
+columns (half_frames, switches, effects_evicted, coverage_smoke = the average smoke coverage, offscreen,
+scalability = the record's object of non-default M19 options as compact JSON; blank when absent), then
+smoke_arg, then the --tails and --regions metrics.
 """
 import argparse
 import collections
@@ -85,7 +86,7 @@ TAIL_METRICS = ("gpu_draw_p99", "gpu_draw_max", "cpu_p99", "cpu_max")
 FIELDS = ["renderer", "smoke", "explosions", "tick", "scenario", "run", "build", "args", "scene_format", "status",
           *METRICS, "gpu_draw_p95", "checksum"]
 # Appended after the original columns so older readers keep working.
-NEW_FIELDS = ["half_frames", "switches", "effects_evicted", "coverage_smoke", "offscreen", "smoke_arg"]
+NEW_FIELDS = ["half_frames", "switches", "effects_evicted", "coverage_smoke", "offscreen", "scalability", "smoke_arg"]
 
 
 def is_scenario(case):
@@ -136,7 +137,8 @@ def record_values(record, scenario):
               "cpu_max": cpu.get("max"), "half_frames": record.get("half_frames"), "switches": record.get("switches"),
               "effects_evicted": record.get("effects_evicted"),
               "coverage_smoke": smoke_coverage.get("average") if isinstance(smoke_coverage, dict) else smoke_coverage,
-              "offscreen": coverage.get("offscreen", record.get("offscreen"))}
+              "offscreen": coverage.get("offscreen", record.get("offscreen")),
+              "scalability": json.dumps(record["scalability"], sort_keys=True, separators=(",", ":")) if "scalability" in record else None}
     if scenario:
         draw = gpu["draw"]
         values.update(gpu_draw=draw["average"], gpu_draw_p95=draw["p95"], gpu_draw_p99=draw.get("p99"),
@@ -280,7 +282,10 @@ def main():
     if arguments.regions and not any(flag == "--gpu-regions" for build in builds for flag in extra[build]):
         print("Warning: --regions needs --gpu-regions in --a-args or --b-args; records without it have no regions.", flush=True)
 
-    renderers = arguments.renderers.split(",")
+    renderers = [name.strip().lower() for name in arguments.renderers.split(",") if name.strip()]
+    unknown = sorted(set(renderers) - {"d3d12", "vulkan"})
+    if unknown or not renderers:
+        sys.exit(f"--renderers: expected d3d12 and/or vulkan, got {arguments.renderers!r}")
     matrix = MATRICES[arguments.matrix]
     if pairs:
         matrix = [(renderer, smoke, workload, tick) for renderer in ("d3d12", "vulkan")

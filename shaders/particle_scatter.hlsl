@@ -102,6 +102,11 @@ void cs_measure(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID)
             value = (value + coverage_unit_pixels / 2) / coverage_unit_pixels;
             word = thread.x < 4 ? counter_smoke_coverage_word + thread.x : counter_light_coverage_word;
         }
-        if (value != 0) arguments.InterlockedAdd(counters_offset + word * 4, value);
+        if (value != 0)
+        {
+            uint before;
+            arguments.InterlockedAdd(counters_offset + word * 4, value, before);
+            if (before + value < before) arguments.InterlockedMax(counters_offset + word * 4, 0xffffffffu);
+        }
     }
 }
