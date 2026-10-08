@@ -9,6 +9,10 @@ struct DrawConstants
     uint list_first;
     uint list_count;
     uint depth_scale;
+#ifdef PARTICLE_LOD_CONSTANTS
+    float lod_pixels;
+    float faint_floor;
+#endif
 };
 #ifdef __spirv__
 [[vk::push_constant]]

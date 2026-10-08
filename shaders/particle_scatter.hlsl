@@ -7,6 +7,8 @@ struct Parameters
     uint effect_count;
     uint layered;
     uint record_count;
+    float lod_pixels;
+    float faint_floor;
 };
 #ifdef __spirv__
 [[vk::push_constant]]
@@ -40,7 +42,7 @@ void cs_main(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID)
     }
 }
 
-static const uint measured_words = 6;
+static const uint measured_words = 8;
 groupshared uint measured[measured_words];
 
 [numthreads(simulation_group_size, 1, 1)]
@@ -73,9 +75,14 @@ void cs_measure(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID)
     {
         bool smoke = smoke_like(layer_index);
         Footprint footprint = particle_footprint(particles, record, load_layer(classes, effect_class, layer_index), smoke);
+        if (smoke && parameters.lod_pixels > 0 && (local & 1) != 0 && footprint.pixels >= 2 * parameters.lod_pixels)
+        {
+            InterlockedAdd(measured[6], 1);
+        }
+        if (smoke && parameters.faint_floor > 0 && footprint.opacity < parameters.faint_floor) InterlockedAdd(measured[7], 1);
         if (sphere_outside_view(footprint.position, footprint.bound))
         {
-            InterlockedAdd(measured[measured_words - 1], 1);
+            InterlockedAdd(measured[5], 1);
         }
         else
         {
@@ -89,8 +96,8 @@ void cs_measure(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID)
     if (thread.x < measured_words)
     {
         uint value = measured[thread.x];
-        uint word = counter_offscreen_word;
-        if (thread.x < measured_words - 1)
+        uint word = thread.x == 5 ? counter_offscreen_word : thread.x == 6 ? counter_thinned_word : counter_faint_word;
+        if (thread.x < 5)
         {
             value = (value + coverage_unit_pixels / 2) / coverage_unit_pixels;
             word = thread.x < 4 ? counter_smoke_coverage_word + thread.x : counter_light_coverage_word;

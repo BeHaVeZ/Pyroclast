@@ -12,6 +12,7 @@ struct Footprint
     float distance;
     float bound;
     float trail_pixels;
+    float opacity;
 };
 
 Footprint particle_footprint(ByteAddressBuffer particles, uint record, Layer layer, bool smoke)
@@ -36,6 +37,8 @@ Footprint particle_footprint(ByteAddressBuffer particles, uint record, Layer lay
     float trail = layer.stretch > 0 && !result.flat ? length(velocity.xyz) * layer.stretch : 0;
     result.trail_pixels = trail * frame.projection.x / result.distance;
     result.bound = 1.4142136 * size + trail + result.distance / max(frame.projection.x, 1e-6);
+    float coverage = result.flat ? 1.5707963 * result.pixels * result.pixels : 1;
+    result.opacity = layer.strength * saturate(age * layer.fade_in_rate) * (1 - progress) * (1 - progress) * coverage;
     return result;
 }
 

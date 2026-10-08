@@ -63,6 +63,8 @@ struct ParticleListing
 {
     bool measure = false;
     bool offscreen_light = false;
+    float lod_pixels = 0;
+    float faint_floor = 0;
 };
 
 struct ParticleTargets
@@ -109,6 +111,8 @@ private:
     std::unique_ptr<GraphicsPipeline> graphics_;
     std::unique_ptr<GraphicsPipeline> offscreen_graphics_;
     std::unique_ptr<GraphicsPipeline> debris_graphics_;
+    std::unique_ptr<GraphicsPipeline> lod_graphics_;
+    std::unique_ptr<GraphicsPipeline> lod_offscreen_graphics_;
     std::unique_ptr<ComputePipeline> compute_;
     std::unique_ptr<ComputePipeline> scan_;
     std::unique_ptr<ComputePipeline> scatter_;

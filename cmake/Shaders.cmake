@@ -36,6 +36,7 @@ endif()
 set(PYROCLAST_SHADERS
     particle_vertex:particles:vs:vs_main
     particle_pixel:particles:ps:ps_main
+    particle_lod_vertex:particles_lod:vs:vs_lod
     particle_simulation:particles_compute:cs:cs_main
     particle_scan:particle_scan:cs:cs_main
     particle_scatter:particle_scatter:cs:cs_main

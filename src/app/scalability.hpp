@@ -23,5 +23,7 @@ struct ScalabilitySettings
     SmokeResolution smoke_resolution = SmokeResolution::full;
     SmokeBudget smoke_budget;
     bool half_light = false;
+    float smoke_lod = 0;
+    float faint_floor = 0;
 };
 }

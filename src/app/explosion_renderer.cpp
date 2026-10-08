@@ -39,7 +39,8 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
         (automatic && smoke_policy_.decide(options.counters, scalability.smoke_budget, screen_pixels));
     const bool half_light = half && scalability.half_light;
     const auto work = particles.plan(elapsed_seconds, static_cast<std::uint32_t>(active.size()),
-        half ? smoke_target_->description().divisor : 0, {scalability.coverage || automatic, half_light});
+        half ? smoke_target_->description().divisor : 0,
+        {scalability.coverage || automatic, half_light, scalability.smoke_lod, scalability.faint_floor});
 
     FrameConstants constants{};
     const float w = static_cast<float>(width);

@@ -72,6 +72,8 @@ struct DiagnosticsSnapshot
         double smoke_limit = 0;
         double smoke_load = 0;
         std::uint64_t smoke_switches = 0;
+        float smoke_lod = 0;
+        float faint_floor = 0;
     };
     struct Aim
     {
@@ -158,6 +160,8 @@ struct UiCommand
         set_smoke_resolution,
         set_smoke_budget,
         toggle_half_light,
+        set_smoke_lod,
+        set_faint_floor,
     };
     Kind kind;
     std::uint32_t value = 0;

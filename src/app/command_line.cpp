@@ -353,6 +353,24 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
                 return result;
             }
         }
+        else if (option.starts_with("--smoke-lod=") || option.starts_with("--faint-floor="))
+        {
+            const bool lod = option.starts_with("--smoke-lod=");
+            float& setting = lod ? result.options.scalability.smoke_lod : result.options.scalability.faint_floor;
+            if (setting != 0)
+            {
+                result.error = lod ? "Specify --smoke-lod only once." : "Specify --faint-floor only once.";
+                return result;
+            }
+            float value[1]{};
+            const auto text = option.substr(option.find('=') + 1);
+            if (!parse_numbers(text, value) || value[0] <= 0 || (!lod && value[0] >= 1) || (lod && value[0] > 4096))
+            {
+                result.error = lod ? "Expected --smoke-lod=P, a radius in pixels above 0." : "Expected --faint-floor=F, an opacity between 0 and 1.";
+                return result;
+            }
+            setting = value[0];
+        }
         else if (option.starts_with("--smoke-budget="))
         {
             if (budget_specified)

@@ -2,6 +2,7 @@
 
 #include <SDL3/SDL.h>
 #include <algorithm>
+#include <bit>
 #include <cassert>
 #include <cmath>
 #include <cstring>
@@ -27,6 +28,10 @@ bool ParticleSystem::initialize(GraphicsDevice& device, const Buffer& environmen
         {Shader::particle_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha, DepthMode::test, targets.scene});
     offscreen_graphics_ = device.create_graphics_pipeline(
         {Shader::particle_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha, DepthMode::none, targets.offscreen});
+    lod_graphics_ = device.create_graphics_pipeline(
+        {Shader::particle_lod_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha, DepthMode::test, targets.scene});
+    lod_offscreen_graphics_ = device.create_graphics_pipeline(
+        {Shader::particle_lod_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha, DepthMode::none, targets.offscreen});
     debris_graphics_ = device.create_graphics_pipeline(
         {Shader::debris_vertex, Shader::debris_pixel, BlendMode::opaque, DepthMode::test_write, targets.scene});
     compute_ = device.create_compute_pipeline(Shader::particle_simulation);
@@ -34,7 +39,7 @@ bool ParticleSystem::initialize(GraphicsDevice& device, const Buffer& environmen
     scatter_ = device.create_compute_pipeline(Shader::particle_scatter);
     scatter_measure_ = device.create_compute_pipeline(Shader::particle_scatter_measure);
     if (!particles_ || !alive_masks_ || !offsets_ || !alive_ || !arguments_ || !classes_ || !graphics_ || !offscreen_graphics_ ||
-        !debris_graphics_ || !compute_ || !scan_ || !scatter_ || !scatter_measure_)
+        !debris_graphics_ || !lod_graphics_ || !lod_offscreen_graphics_ || !compute_ || !scan_ || !scatter_ || !scatter_measure_)
     {
         return false;
     }
@@ -92,10 +97,14 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_e
     const DrawConstants parameters{steps, active_effects, capacity, tick_};
     const std::uint32_t flags = listing.measure ? particle_layout::listing_measure : 0u;
     const DrawConstants scan_parameters{active_effects * groups_per_slab, tick_ + steps, layered ? 1u : 0u, flags};
-    const DrawConstants scatter_parameters = listing.measure ? DrawConstants{active_effects, layered ? 1u : 0u, capacity} :
+    const auto lod_pixels = std::bit_cast<std::uint32_t>(listing.lod_pixels);
+    const auto faint_floor = std::bit_cast<std::uint32_t>(listing.faint_floor);
+    const DrawConstants scatter_parameters = listing.measure ? DrawConstants{active_effects, layered ? 1u : 0u, capacity, lod_pixels, faint_floor} :
         DrawConstants{active_effects, layered ? 1u : 0u};
-    const DrawConstants both_layers{capacity, 0, capacity, 1};
-    const DrawConstants smoke_layer{capacity, 0, light_first, std::max(offscreen_divisor, 1u)};
+    const bool lod = listing.lod_pixels > 0 || listing.faint_floor > 0;
+    const DrawConstants both_layers = lod ? DrawConstants{capacity, 0, capacity, 1, lod_pixels, faint_floor} : DrawConstants{capacity, 0, capacity, 1};
+    const DrawConstants smoke_layer = lod ? DrawConstants{capacity, 0, light_first, std::max(offscreen_divisor, 1u), lod_pixels, faint_floor} :
+        DrawConstants{capacity, 0, light_first, std::max(offscreen_divisor, 1u)};
     const DrawConstants light_layer{capacity, light_first, capacity, 1};
     const DrawConstants every_layer{capacity, 0, capacity, std::max(offscreen_divisor, 1u)};
     const DrawConstants debris_list{capacity, particle_layout::debris_list_first, capacity};
@@ -103,8 +112,9 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_e
         {{{*compute_, simulation, parameters, {groups, 1, 1}, "Particle simulation"},
             {*scan_, scan, scan_parameters, {1, 1, 1}, "Particle scan"},
             {listing.measure ? *scatter_measure_ : *scatter_, scatter, scatter_parameters, {groups, 1, 1}, "Particle scatter"}}},
-        {*graphics_, drawing, both_layers, 0, 0, "Particles", arguments_.get(), particle_layout::particle_arguments_offset},
-        {*offscreen_graphics_, drawing, smoke_layer, 0, 0, "Smoke", arguments_.get(), particle_layout::smoke_arguments_offset},
+        {lod ? *lod_graphics_ : *graphics_, drawing, both_layers, 0, 0, "Particles", arguments_.get(), particle_layout::particle_arguments_offset},
+        {lod ? *lod_offscreen_graphics_ : *offscreen_graphics_, drawing, smoke_layer, 0, 0, "Smoke", arguments_.get(),
+            particle_layout::smoke_arguments_offset},
         {*graphics_, drawing, light_layer, 0, 0, "Light", arguments_.get(), particle_layout::light_arguments_offset},
         {*offscreen_graphics_, drawing, every_layer, 0, 0, "Smoke and light", arguments_.get(), particle_layout::particle_arguments_offset},
         {*debris_graphics_, drawing, debris_list, 0, 0, "Debris", arguments_.get(), particle_layout::debris_arguments_offset},

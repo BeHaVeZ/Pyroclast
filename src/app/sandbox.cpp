@@ -109,6 +109,8 @@ void Sandbox::fill_snapshot(DiagnosticsSnapshot& snapshot) const
             static_cast<double>(snapshot.system.width) * static_cast<double>(snapshot.system.height));
     }
     load.smoke_switches = renderer.smoke_policy().switches();
+    load.smoke_lod = scalability.smoke_lod;
+    load.faint_floor = scalability.faint_floor;
 
     auto& shown = snapshot.showcase;
     shown.preset = showcase.preset;
@@ -286,6 +288,20 @@ void apply(UiCommand command, Sandbox& sandbox)
     case Kind::toggle_half_light:
         sandbox.scalability.half_light = !sandbox.scalability.half_light;
         SDL_Log("Half-resolution light: %s.", sandbox.scalability.half_light ? "on" : "off");
+        break;
+    case Kind::set_smoke_lod:
+        if (std::isfinite(command.scalar) && command.scalar >= 0 && command.scalar <= 4096)
+        {
+            sandbox.scalability.smoke_lod = command.scalar;
+            SDL_Log("Smoke thinning above %.0f pixels (0: off).", static_cast<double>(command.scalar));
+        }
+        break;
+    case Kind::set_faint_floor:
+        if (std::isfinite(command.scalar) && command.scalar >= 0 && command.scalar < 1)
+        {
+            sandbox.scalability.faint_floor = command.scalar;
+            SDL_Log("Faint smoke floor: %g.", static_cast<double>(command.scalar));
+        }
         break;
     case Kind::toggle_coverage:
         sandbox.scalability.coverage = !sandbox.scalability.coverage;

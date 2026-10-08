@@ -130,6 +130,10 @@ int main()
         {"budget not positive", {"--smoke-resolution=auto", "--smoke-budget=count:0"}, d3d12, false, "Expected --smoke-budget"},
         {"budget twice", {"--smoke-resolution=auto", "--smoke-budget=count:5", "--smoke-budget=count:6"}, d3d12, false, "only once"},
         {"half light at full resolution", {"--half-light"}, d3d12, false, "--half-light requires"},
+        {"thinning radius zero", {"--smoke-lod=0"}, d3d12, false, "Expected --smoke-lod"},
+        {"thinning radius text", {"--smoke-lod=wide"}, d3d12, false, "Expected --smoke-lod"},
+        {"faint floor at one", {"--faint-floor=1"}, d3d12, false, "Expected --faint-floor"},
+        {"faint floor twice", {"--faint-floor=0.001", "--faint-floor=0.002"}, d3d12, false, "only once"},
         {"duplicate smoke resolution", {"--smoke-resolution=full", "--smoke-resolution=half"}, d3d12, false, "only once"},
         {"profile tick zero", {"--profile-tick=0"}, d3d12, false, {}, false, 1, 0},
         {"profile tick death", {"--profile-tick=480"}, d3d12, false, {}, false, 1, 480},
@@ -284,6 +288,14 @@ int main()
         pyroclast::SmokeResolution::full)
     {
         std::fputs("FAIL: --smoke-resolution=auto and --smoke-budget\n", stderr);
+        ++failures;
+    }
+
+    const char* lod[] = {"--smoke-lod=32", "--faint-floor=0.0025"};
+    const auto lod_options = pyroclast::parse_command_line(lod).options.scalability;
+    if (lod_options.smoke_lod != 32 || lod_options.faint_floor != 0.0025f || pyroclast::parse_command_line({}).options.scalability.smoke_lod != 0)
+    {
+        std::fputs("FAIL: --smoke-lod and --faint-floor\n", stderr);
         ++failures;
     }
 

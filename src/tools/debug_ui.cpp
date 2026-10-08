@@ -176,6 +176,7 @@ void engine_window(const DiagnosticsSnapshot& snapshot)
                     bins[2] * screens, bins[3] * screens);
                 row("Light coverage", "%.2f screens", counts.light_coverage * screens);
                 row("Off screen", "%u of %u listed", counts.offscreen, counts.smoke + counts.light);
+                if (load.smoke_lod > 0 || load.faint_floor > 0) row("Thinned, faint", "%u, %u", counts.thinned, counts.faint);
             }
             row("Temporary lights", "%u of %u", load.lights, particle_layout::maximum_lights);
             if (load.smoke_resolution == "auto")
@@ -408,6 +409,22 @@ void showcase_window(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>
             ImGui::SliderFloat("Budget (screens)", &budget_edit, 50, 3000, "%.0f", ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_Logarithmic);
             budget_editing = ImGui::IsItemActive();
             if (ImGui::IsItemDeactivatedAfterEdit()) commands.push_back({UiCommand::Kind::set_smoke_budget, 0, {}, budget_edit});
+        }
+    }
+
+    if (ImGui::CollapsingHeader("Smoke level of detail"))
+    {
+        float lod = snapshot.load.smoke_lod;
+        ImGui::SetNextItemWidth(160);
+        if (ImGui::SliderFloat("Thin above (px)", &lod, 0, 256, lod > 0 ? "%.0f" : "off"))
+        {
+            commands.push_back({UiCommand::Kind::set_smoke_lod, 0, {}, lod});
+        }
+        float floor = snapshot.load.faint_floor;
+        ImGui::SetNextItemWidth(160);
+        if (ImGui::SliderFloat("Faint floor", &floor, 0, 0.01f, floor > 0 ? "%.5f" : "off", ImGuiSliderFlags_Logarithmic))
+        {
+            commands.push_back({UiCommand::Kind::set_faint_floor, 0, {}, floor});
         }
     }
 

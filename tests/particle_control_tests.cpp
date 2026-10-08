@@ -4,6 +4,7 @@
 #include "simulation/explosion_scenarios.hpp"
 
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -43,6 +44,9 @@ public:
         if (description.vertex_shader == Shader::tonemap_vertex) present = pipeline.get();
         if (particle && description.blend == BlendMode::premultiplied_alpha)
             (description.depth == DepthMode::test ? particles : offscreen) = pipeline.get();
+        if (description.vertex_shader == Shader::particle_lod_vertex && description.pixel_shader == Shader::particle_pixel &&
+            description.blend == BlendMode::premultiplied_alpha)
+            (description.depth == DepthMode::test ? lod_particles : lod_offscreen) = pipeline.get();
         if (description.vertex_shader == Shader::composite_vertex) composite = pipeline.get();
         if (description.vertex_shader == Shader::terrain_vertex) terrain = pipeline.get();
         if (description.vertex_shader == Shader::debris_vertex && description.depth == DepthMode::test_write) debris = pipeline.get();
@@ -192,6 +196,8 @@ public:
     pyroclast::FrameConstants constants{};
     const pyroclast::GraphicsPipeline* particles = nullptr;
     const pyroclast::GraphicsPipeline* offscreen = nullptr;
+    const pyroclast::GraphicsPipeline* lod_particles = nullptr;
+    const pyroclast::GraphicsPipeline* lod_offscreen = nullptr;
     const pyroclast::GraphicsPipeline* present = nullptr;
     const pyroclast::GraphicsPipeline* composite = nullptr;
     const pyroclast::GraphicsPipeline* terrain = nullptr;
@@ -288,6 +294,21 @@ int main()
     check(draws(three.particles, device.particles, 0, ParticleSystem::capacity, 1, layout::particle_arguments_offset),
         "every layer is drawn from the whole list");
     const auto layered = system.plan(0, 3, 2);
+    ParticleListing thinning;
+    thinning.lod_pixels = 24;
+    thinning.faint_floor = 0.002f;
+    const auto thinned = system.plan(0, 3, 0, thinning);
+    const auto thinned_half = system.plan(0, 3, 2, thinning);
+    check(device.lod_particles && device.lod_offscreen && &thinned.particles.pipeline == device.lod_particles &&
+        thinned.particles.constants[4] == std::bit_cast<std::uint32_t>(24.0f) && thinned.particles.constants[5] == std::bit_cast<std::uint32_t>(0.002f) &&
+        &thinned_half.offscreen_smoke.pipeline == device.lod_offscreen && thinned_half.offscreen_smoke.constants[4] == thinned.particles.constants[4] &&
+        &thinned_half.light.pipeline == device.particles && &three.particles.pipeline == device.particles && three.particles.constants[4] == 0,
+        "thinning draws smoke through the LOD shader; light and the default frame keep M18's draws");
+    ParticleListing counting = thinning;
+    counting.measure = true;
+    const auto counted_lod = system.plan(0, 3, 0, counting);
+    check(counted_lod.dispatches[2].constants[3] == thinned.particles.constants[4] && counted_lod.dispatches[2].constants[4] ==
+        thinned.particles.constants[5], "the measuring scatter counts thinned and faint particles by the same radius and floor");
     const auto one_list = system.plan(0, 3, 2, {false, true});
     check(one_list.dispatches[1].constants[2] == 0 && one_list.dispatches[2].constants[1] == 0 &&
         draws(one_list.offscreen_particles, device.offscreen, 0, ParticleSystem::capacity, 2, layout::particle_arguments_offset),
@@ -637,6 +658,15 @@ int main()
         check(automatic_set && sandbox.scalability.smoke_resolution == SmokeResolution::automatic && counted_budget &&
             sandbox.scalability.smoke_budget.limit == 50000, "set_smoke_resolution and set_smoke_budget take valid values only");
         apply(command(Kind::set_smoke_resolution, 0), sandbox);
+        apply(command(Kind::set_smoke_lod, 0, 32), sandbox);
+        apply(command(Kind::set_faint_floor, 0, 0.004f), sandbox);
+        const bool lod_set = sandbox.scalability.smoke_lod == 32 && sandbox.scalability.faint_floor == 0.004f;
+        apply(command(Kind::set_smoke_lod, 0, -1), sandbox);
+        apply(command(Kind::set_faint_floor, 0, 1.5f), sandbox);
+        check(lod_set && sandbox.scalability.smoke_lod == 32 && sandbox.scalability.faint_floor == 0.004f,
+            "set_smoke_lod and set_faint_floor take valid values only");
+        apply(command(Kind::set_smoke_lod, 0, 0), sandbox);
+        apply(command(Kind::set_faint_floor, 0, 0), sandbox);
         apply(command(Kind::toggle_coverage), sandbox);
         const bool covering = sandbox.scalability.coverage;
         apply(command(Kind::toggle_coverage), sandbox);
