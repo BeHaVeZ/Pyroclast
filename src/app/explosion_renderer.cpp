@@ -30,7 +30,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     const TestRange& range, const Camera& camera, int width, int height, double elapsed_seconds, const FrameOptions& options)
 {
     assert(width > 0 && height > 0);
-    effects.start(particles.tick());
+    effects.start(particles.tick(), options.scalability.slot_policy);
     const auto active = effects.active();
     const auto& scalability = options.scalability;
     const bool automatic = scalability.smoke_resolution == SmokeResolution::automatic;

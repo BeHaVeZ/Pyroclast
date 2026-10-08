@@ -32,6 +32,8 @@ struct EffectSlot
     bool active = false;
 };
 
+enum class SlotPolicy { drop_new, evict_oldest };
+
 class ExplosionSystem final
 {
 public:
@@ -39,11 +41,12 @@ public:
     std::uint32_t capacity() const { return static_cast<std::uint32_t>(slots_.size()); }
     void submit(const ExplosionEvent& event);
     void clear();
-    void start(std::uint32_t tick);
+    void start(std::uint32_t tick, SlotPolicy policy = SlotPolicy::drop_new);
     std::span<const EffectSlot> slots() const { return slots_; }
     std::span<const std::uint32_t> active() const { return active_; }
     std::uint64_t started() const { return started_; }
     std::uint64_t dropped() const { return dropped_; }
+    std::uint64_t evicted() const { return evicted_; }
     std::size_t pending() const { return pending_.size(); }
 
 private:
@@ -52,5 +55,6 @@ private:
     std::vector<ExplosionEvent> pending_;
     std::uint64_t started_ = 0;
     std::uint64_t dropped_ = 0;
+    std::uint64_t evicted_ = 0;
 };
 }

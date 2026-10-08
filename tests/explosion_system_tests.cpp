@@ -1,6 +1,8 @@
 #include "simulation/explosion_scenarios.hpp"
 #include "simulation/explosion_system.hpp"
 
+#include <tuple>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -172,6 +174,58 @@ int main()
         busiest = std::max(busiest, saturated.active().size());
     }
     std::printf("bombardment: peak %zu effects, %llu dropped of 400\n", busiest, static_cast<unsigned long long>(saturated.dropped()));
+    const auto windows = [&](ExplosionPreset preset, SlotPolicy policy, const char* name = "bombardment") {
+        const auto script = make_scenario(name, environment, preset);
+        ExplosionSystem system(128);
+        std::size_t submitted = 0;
+        std::uint64_t last_dropped = 0;
+        std::uint32_t run = 0;
+        std::uint32_t longest_run = 0;
+        std::uint32_t last_start = 0;
+        std::uint32_t longest_gap = 0;
+        std::uint64_t last_started = 0;
+        for (std::uint32_t tick = 0; tick < script->duration_ticks; ++tick)
+        {
+            while (submitted < script->events.size() && script->events[submitted].tick <= tick) system.submit(script->events[submitted++].event);
+            system.start(tick, policy);
+            if (system.dropped() > last_dropped) run += static_cast<std::uint32_t>(system.dropped() - last_dropped);
+            else if (system.started() > last_started) run = 0;
+            longest_run = std::max(longest_run, run);
+            if (system.started() > last_started)
+            {
+                longest_gap = std::max(longest_gap, tick - last_start);
+                last_start = tick;
+            }
+            last_dropped = system.dropped();
+            last_started = system.started();
+        }
+        return std::tuple{system.dropped(), system.evicted(), longest_run, longest_gap, system.started()};
+    };
+    const auto [small_dropped, small_evicted, small_run, small_gap, small_started] = windows(ExplosionPreset::small_he, SlotPolicy::drop_new);
+    const auto [art_dropped, art_evicted, art_run, art_gap, art_started] = windows(ExplosionPreset::artillery_he, SlotPolicy::drop_new);
+    std::printf("bombardment drop-new: small-he %llu dropped (runs of %u, %u ticks without a start), artillery-he %llu (runs of %u, %u ticks)\n",
+        static_cast<unsigned long long>(small_dropped), small_run, small_gap, static_cast<unsigned long long>(art_dropped), art_run, art_gap);
+    check(small_dropped == 64 && art_dropped == 144 && small_evicted == 0 && art_evicted == 0 && small_run == 32 && art_run == 72 &&
+        small_gap == 99 && art_gap == 219, "drop-new drops 64 small-he and 144 artillery-he impacts in runs of 32 and 72");
+    const auto [kept_dropped, kept_evicted, kept_run, kept_gap, kept_started] = windows(ExplosionPreset::artillery_he, SlotPolicy::evict_oldest);
+    std::printf("bombardment evict-oldest: artillery-he %llu evicted, %llu dropped\n", static_cast<unsigned long long>(kept_evicted),
+        static_cast<unsigned long long>(kept_dropped));
+    check(kept_dropped == 0 && kept_evicted > 0 && kept_run == 0 && kept_gap <= 3 && kept_started == 400,
+        "evict-oldest starts every impact, replacing the oldest effects");
+    for (const char* name : {"barrage", "grid-100"})
+    {
+        const auto dropping = windows(ExplosionPreset::heavy, SlotPolicy::drop_new, name);
+        const auto evicting = windows(ExplosionPreset::heavy, SlotPolicy::evict_oldest, name);
+        check(dropping == evicting && std::get<0>(dropping) == 0 && std::get<1>(evicting) == 0, "unsaturated scripts ignore the slot policy");
+    }
+    ExplosionSystem crowded(128);
+    for (std::uint32_t index = 0; index < 129; ++index) crowded.submit({{static_cast<float>(index), 0, 0}, {0, 1, 0}, index, ExplosionPreset::small_he, SurfaceType::dirt});
+    crowded.start(0, SlotPolicy::evict_oldest);
+    const auto first_generation = crowded.slots()[0].generation;
+    crowded.submit({{1000, 0, 0}, {0, 1, 0}, 999, ExplosionPreset::small_he, SurfaceType::dirt});
+    crowded.start(1, SlotPolicy::evict_oldest);
+    check(crowded.dropped() == 1 && crowded.evicted() == 1 && crowded.slots()[0].seed == 999 && crowded.slots()[0].generation == first_generation + 1 &&
+        crowded.slots()[0].start_tick == 1 && crowded.active().size() == 128, "an evicted slot restarts with a new generation; same-tick starts stay");
     check(busiest == 128 && saturated.dropped() == 64 && saturated.started() + saturated.dropped() == 400,
         "the bombardment fills the 128 slots and drops the rest");
     return failures == 0 ? 0 : 1;

@@ -92,6 +92,7 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
     bool view_specified = false;
     bool budget_specified = false;
     bool order_specified = false;
+    bool policy_specified = false;
     const auto set_once = [&result](bool& flag, const char* name) {
         if (flag)
         {
@@ -371,6 +372,22 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
                 return result;
             }
             setting = value[0];
+        }
+        else if (option.starts_with("--slot-policy="))
+        {
+            if (policy_specified)
+            {
+                result.error = "Specify --slot-policy only once.";
+                return result;
+            }
+            policy_specified = true;
+            const auto value = option.substr(std::string_view("--slot-policy=").size());
+            if (value == "evict-oldest") result.options.scalability.slot_policy = SlotPolicy::evict_oldest;
+            else if (value != "drop-new")
+            {
+                result.error = "Expected --slot-policy=drop-new or evict-oldest.";
+                return result;
+            }
         }
         else if (option.starts_with("--effect-order="))
         {

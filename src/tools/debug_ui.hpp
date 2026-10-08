@@ -75,6 +75,8 @@ struct DiagnosticsSnapshot
         float smoke_lod = 0;
         float faint_floor = 0;
         std::string_view effect_order = "origin";
+        std::string_view slot_policy = "drop-new";
+        std::uint64_t evicted = 0;
     };
     struct Aim
     {
@@ -164,6 +166,7 @@ struct UiCommand
         set_smoke_lod,
         set_faint_floor,
         set_effect_order,
+        set_slot_policy,
     };
     Kind kind;
     std::uint32_t value = 0;

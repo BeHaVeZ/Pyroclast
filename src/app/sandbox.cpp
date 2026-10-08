@@ -112,6 +112,8 @@ void Sandbox::fill_snapshot(DiagnosticsSnapshot& snapshot) const
     load.smoke_lod = scalability.smoke_lod;
     load.faint_floor = scalability.faint_floor;
     load.effect_order = effect_order_name(scalability.effect_order);
+    load.slot_policy = slot_policy_name(scalability.slot_policy);
+    load.evicted = effects.evicted();
 
     auto& shown = snapshot.showcase;
     shown.preset = showcase.preset;
@@ -302,6 +304,13 @@ void apply(UiCommand command, Sandbox& sandbox)
         {
             sandbox.scalability.faint_floor = command.scalar;
             SDL_Log("Faint smoke floor: %g.", static_cast<double>(command.scalar));
+        }
+        break;
+    case Kind::set_slot_policy:
+        if (command.value <= 1)
+        {
+            sandbox.scalability.slot_policy = static_cast<SlotPolicy>(command.value);
+            SDL_Log("Slot policy: %s.", slot_policy_name(sandbox.scalability.slot_policy));
         }
         break;
     case Kind::set_effect_order:

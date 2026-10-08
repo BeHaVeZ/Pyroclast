@@ -143,6 +143,7 @@ void engine_window(const DiagnosticsSnapshot& snapshot)
             row("Startup group", "%u (Space)", load.explosions);
             row("Peak since clear", "%u, %zu queued", load.peak_since_clear, load.queued);
             row("Started, dropped", "%llu, %llu", static_cast<unsigned long long>(load.started), static_cast<unsigned long long>(load.dropped));
+            if (load.slot_policy != "drop-new") row("Evicted", "%llu (%.*s)", static_cast<unsigned long long>(load.evicted), length(load.slot_policy), load.slot_policy.data());
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::TextUnformatted("Dropped");
@@ -389,6 +390,8 @@ void showcase_window(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>
         if (ImGui::Checkbox("Measure coverage", &coverage)) commands.push_back({UiCommand::Kind::toggle_coverage});
         ImGui::SameLine();
         ImGui::TextDisabled("(Load rows; scatter cost)");
+        bool evict = snapshot.load.slot_policy == "evict-oldest";
+        if (ImGui::Checkbox("Evict oldest when full", &evict)) commands.push_back({UiCommand::Kind::set_slot_policy, evict ? 1u : 0u});
         constexpr const char* modes[] = {"Full", "Half", "Auto"};
         ImGui::TextUnformatted("Smoke");
         for (std::uint32_t mode = 0; mode < 3; ++mode)

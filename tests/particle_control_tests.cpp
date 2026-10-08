@@ -686,6 +686,18 @@ int main()
         const bool covering = sandbox.scalability.coverage;
         apply(command(Kind::toggle_coverage), sandbox);
         check(covering && !sandbox.scalability.coverage, "toggle_coverage switches the coverage counters");
+        apply(command(Kind::set_effect_order, 2), sandbox);
+        const bool cloud_order = sandbox.scalability.effect_order == EffectOrder::cloud;
+        apply(command(Kind::set_effect_order, 3), sandbox);
+        apply(command(Kind::set_slot_policy, 1), sandbox);
+        const bool evicting = sandbox.scalability.slot_policy == SlotPolicy::evict_oldest;
+        apply(command(Kind::set_slot_policy, 2), sandbox);
+        check(cloud_order && sandbox.scalability.effect_order == EffectOrder::cloud && evicting &&
+            sandbox.scalability.slot_policy == SlotPolicy::evict_oldest, "set_effect_order and set_slot_policy take valid values only");
+        apply(command(Kind::set_effect_order, 0), sandbox);
+        apply(command(Kind::set_slot_policy, 0), sandbox);
+        check(sandbox.scalability.effect_order == EffectOrder::origin && sandbox.scalability.slot_policy == SlotPolicy::drop_new,
+            "set_effect_order and set_slot_policy return to the defaults");
         apply(command(Kind::toggle_layer, layout::props_mask_bit), sandbox);
         const bool hidden_props = !sandbox.props_shown();
         apply(command(Kind::toggle_layer, layout::props_mask_bit), sandbox);

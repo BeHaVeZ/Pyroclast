@@ -311,6 +311,16 @@ int main()
         ++failures;
     }
 
+    const char* evicting[] = {"--slot-policy=evict-oldest"};
+    const char* bad_policy[] = {"--slot-policy=random"};
+    if (pyroclast::parse_command_line(evicting).options.scalability.slot_policy != pyroclast::SlotPolicy::evict_oldest ||
+        pyroclast::parse_command_line({}).options.scalability.slot_policy != pyroclast::SlotPolicy::drop_new ||
+        pyroclast::parse_command_line(bad_policy).error.find("Expected --slot-policy") == std::string::npos)
+    {
+        std::fputs("FAIL: --slot-policy\n", stderr);
+        ++failures;
+    }
+
     const char* covered[] = {"--coverage"};
     const char* covered_twice[] = {"--coverage", "--coverage"};
     if (pyroclast::parse_command_line({}).options.scalability.coverage || !pyroclast::parse_command_line(covered).options.scalability.coverage ||

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../simulation/explosion_system.hpp"
+
 #include <cstdint>
 
 namespace pyroclast
@@ -33,5 +35,11 @@ struct ScalabilitySettings
     float smoke_lod = 0;
     float faint_floor = 0;
     EffectOrder effect_order = EffectOrder::origin;
+    SlotPolicy slot_policy = SlotPolicy::drop_new;
 };
+
+constexpr const char* slot_policy_name(SlotPolicy policy)
+{
+    return policy == SlotPolicy::evict_oldest ? "evict-oldest" : "drop-new";
+}
 }
