@@ -65,6 +65,7 @@ struct DiagnosticsSnapshot
         std::uint32_t pool_capacity = 0;
         std::optional<ParticleCounters> particles;
         std::uint32_t lights = 0;
+        bool coverage = false;
     };
     struct Aim
     {
@@ -147,6 +148,7 @@ struct UiCommand
         toggle_bombardment,
         set_bombardment,
         toggle_debug_view,
+        toggle_coverage,
     };
     Kind kind;
     std::uint32_t value = 0;

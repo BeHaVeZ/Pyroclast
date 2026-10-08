@@ -31,6 +31,7 @@ struct Sandbox
     SlotPressure pressure;
     std::uint32_t layer_mask = particle_layout::full_mask;
     WindSettings wind;
+    ScalabilitySettings scalability;
     std::optional<ParticleCounters> counters;
     std::uint64_t counter_sample = 0;
 

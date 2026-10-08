@@ -4,7 +4,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace pyroclast
 {
@@ -18,6 +20,20 @@ struct FrameStatistics
 };
 
 FrameStatistics summarize(std::span<double> samples);
+
+class CoverageStatistics final
+{
+public:
+    void add(std::span<const std::uint32_t, 4> smoke_units, std::uint32_t light_units, std::uint32_t offscreen, double screen_pixels);
+    std::size_t samples() const { return smoke_.size(); }
+    std::string json() const;
+
+private:
+    std::vector<double> smoke_;
+    std::array<double, 4> bins_{};
+    double light_ = 0;
+    double offscreen_ = 0;
+};
 
 class TickRate final
 {

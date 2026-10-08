@@ -263,7 +263,17 @@ int main()
         scatter.bindings.read[1] == offsets && scatter.bindings.read[2] == class_buffer && alive && alive->size() == 3 * ParticleSystem::capacity * 4,
         "the scatter writes one list of every alive particle without offscreen smoke");
     check(three.counters.source == arguments && three.counters.offset == layout::counters_offset &&
-        three.counters.size == sizeof(ParticleCounters), "the counter record is read back from the arguments");
+        three.counters.size == layout::counters_basic_bytes, "the counter record's first 32 bytes are read back from the arguments");
+    check(!scatter.bindings.read[3] && !scatter.bindings.write[1] && scatter.constants[2] == 0 && scan.constants[3] == 0,
+        "by default the scatter only lists");
+    const auto measured = system.plan(0, 3, 0, {true});
+    const auto& measuring_scan = measured.dispatches[1];
+    const auto& measuring = measured.dispatches[2];
+    check(device.shader_of(measuring.pipeline) == Shader::particle_scatter_measure && measuring.bindings.read[3] == pool &&
+        measuring.bindings.write[1] == arguments && measuring.bindings.read[0] == masks && measuring.bindings.write[0] == alive &&
+        measuring.constants[2] == ParticleSystem::capacity && measuring_scan.constants[3] == layout::listing_measure &&
+        measured.counters.size == layout::counters_bytes && measured.particles.bindings.read[1] == alive,
+        "a measuring scatter reads the pool, adds to the counter record and the whole record is read back");
     const auto draws = [&](const Draw& draw, const GraphicsPipeline* pipeline, std::uint32_t first, std::uint32_t count,
         std::uint32_t depth_scale, std::uint32_t offset) {
         return &draw.pipeline == pipeline && draw.constants[0] == ParticleSystem::capacity && draw.constants[1] == first &&
@@ -291,6 +301,15 @@ int main()
         "a counter record reads back");
     record.size = 16;
     check(!ParticleSystem::counters(record), "a readback of another size is no counter record");
+    const std::uint32_t measured_words[] = {7, 36, 10, 20, 6, 4, 0, 0, 11, 12, 13, 14, 15, 0, 0, 0};
+    std::memcpy(record.bytes.data(), measured_words, sizeof(measured_words));
+    record.size = sizeof(measured_words);
+    const auto whole = ParticleSystem::counters(record);
+    check(whole && whole->offscreen == 4 && whole->smoke_coverage[0] == 11 && whole->smoke_coverage[3] == 14 && whole->light_coverage == 15,
+        "a measured counter record reads back whole");
+    record.size = sizeof(words);
+    check(ParticleSystem::counters(record)->smoke_coverage[0] == 0 && ParticleSystem::counters(record)->light_coverage == 0,
+        "a short record has no coverage words");
 
     ParticleSystem timed;
     timed.initialize(device, range.environment_buffer(), targets, classes);
@@ -579,6 +598,10 @@ int main()
         apply(command(Kind::toggle_debug_view, 4), sandbox);
         check(one_view && !sandbox.views.effect_bounds && !sandbox.views.collision_boxes && !sandbox.views.spawn_regions &&
             !sandbox.views.wind_arrow, "toggle_debug_view flips only its view and ignores an unknown one");
+        apply(command(Kind::toggle_coverage), sandbox);
+        const bool covering = sandbox.scalability.coverage;
+        apply(command(Kind::toggle_coverage), sandbox);
+        check(covering && !sandbox.scalability.coverage, "toggle_coverage switches the coverage counters");
         apply(command(Kind::toggle_layer, layout::props_mask_bit), sandbox);
         const bool hidden_props = !sandbox.props_shown();
         apply(command(Kind::toggle_layer, layout::props_mask_bit), sandbox);

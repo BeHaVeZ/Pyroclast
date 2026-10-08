@@ -37,7 +37,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     effects.start(particles.tick());
     const auto active = effects.active();
     const auto work = particles.plan(elapsed_seconds, static_cast<std::uint32_t>(active.size()),
-        smoke_target_ ? smoke_target_->description().divisor : 0);
+        smoke_target_ ? smoke_target_->description().divisor : 0, {options.scalability.coverage});
 
     FrameConstants constants{};
     const float w = static_cast<float>(width);

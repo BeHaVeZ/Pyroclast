@@ -167,6 +167,17 @@ void engine_window(const DiagnosticsSnapshot& snapshot)
                 row("  smoke/light/debris", "%u, %u, %u (tick %u)", counts.smoke, counts.light, counts.debris, counts.tick);
             }
             else row("Alive particles", "none");
+            if (load.coverage && load.particles && system.width > 0 && system.height > 0)
+            {
+                const auto& counts = *load.particles;
+                const double screens = particle_layout::coverage_unit_pixels / (static_cast<double>(system.width) * system.height);
+                const auto& bins = counts.smoke_coverage;
+                row("Smoke coverage", "%.2f screens", (bins[0] + bins[1] + bins[2] + bins[3]) * screens);
+                row("  by radius", "<4: %.2f, <16: %.2f, <64: %.2f, more: %.2f px", bins[0] * screens, bins[1] * screens,
+                    bins[2] * screens, bins[3] * screens);
+                row("Light coverage", "%.2f screens", counts.light_coverage * screens);
+                row("Off screen", "%u of %u listed", counts.offscreen, counts.smoke + counts.light);
+            }
             row("Temporary lights", "%u of %u", load.lights, particle_layout::maximum_lights);
             ImGui::EndTable();
         }
@@ -364,6 +375,14 @@ void showcase_window(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>
         if (ImGui::Checkbox(toggles[index].first, &shown)) commands.push_back({UiCommand::Kind::toggle_debug_view, index});
     }
     ImGui::TextDisabled("L toggles bounds and boxes together");
+
+    if (ImGui::CollapsingHeader("Scalability"))
+    {
+        bool coverage = snapshot.load.coverage;
+        if (ImGui::Checkbox("Measure coverage", &coverage)) commands.push_back({UiCommand::Kind::toggle_coverage});
+        ImGui::SameLine();
+        ImGui::TextDisabled("(Load rows; scatter cost)");
+    }
 
     if (ImGui::CollapsingHeader("Layers and features"))
     {

@@ -39,7 +39,8 @@ void CounterLog::add_counters(const ParticleCounters& counters)
 
 std::string CounterLog::csv() const
 {
-    std::string text = "frame,tick,steps,active,started,dropped,counter_tick,alive,smoke,light,debris,draw_ms,compute_ms,cpu_ms\n";
+    std::string text = "frame,tick,steps,active,started,dropped,counter_tick,alive,smoke,light,debris,draw_ms,compute_ms,cpu_ms";
+    text += coverage_ ? ",offscreen,smoke_bin0,smoke_bin1,smoke_bin2,smoke_bin3,coverage_smoke,coverage_light\n" : "\n";
     char line[256];
     for (std::size_t index = 0; index < rows_.size(); ++index)
     {
@@ -61,8 +62,18 @@ std::string CounterLog::csv() const
             text += line;
         }
         else text += ",,";
-        std::snprintf(line, sizeof(line), "%.4f\n", row.cpu_ms);
+        std::snprintf(line, sizeof(line), "%.4f", row.cpu_ms);
         text += line;
+        if (coverage_ && row.counters)
+        {
+            const auto& counters = *row.counters;
+            const auto& bins = counters.smoke_coverage;
+            std::snprintf(line, sizeof(line), ",%u,%u,%u,%u,%u,%u,%u", counters.offscreen, bins[0], bins[1], bins[2], bins[3],
+                bins[0] + bins[1] + bins[2] + bins[3], counters.light_coverage);
+            text += line;
+        }
+        else if (coverage_) text += ",,,,,,,";
+        text += '\n';
     }
     return text;
 }

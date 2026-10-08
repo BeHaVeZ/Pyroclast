@@ -6,6 +6,7 @@ struct Parameters
     uint group_count;
     uint tick;
     uint layered;
+    uint flags;
 };
 #ifdef __spirv__
 [[vk::push_constant]]
@@ -89,5 +90,10 @@ void cs_main(uint thread : SV_GroupIndex)
         arguments.Store4(debris_arguments_offset, uint4(debris_vertices, alive.z, 0, 0));
         arguments.Store4(counters_offset, uint4(parameters.tick, alive.x + alive.y + alive.z, alive.x, alive.y));
         arguments.Store4(counters_offset + 16, uint4(alive.z, 0, 0, 0));
+        if ((parameters.flags & listing_measure) != 0)
+        {
+            arguments.Store4(counters_offset + 32, uint4(0, 0, 0, 0));
+            arguments.Store4(counters_offset + 48, uint4(0, 0, 0, 0));
+        }
     }
 }

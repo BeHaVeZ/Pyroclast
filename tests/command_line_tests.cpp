@@ -267,6 +267,15 @@ int main()
         ++failures;
     }
 
+    const char* covered[] = {"--coverage"};
+    const char* covered_twice[] = {"--coverage", "--coverage"};
+    if (pyroclast::parse_command_line({}).options.scalability.coverage || !pyroclast::parse_command_line(covered).options.scalability.coverage ||
+        pyroclast::parse_command_line(covered_twice).error.find("only once") == std::string::npos)
+    {
+        std::fputs("FAIL: --coverage\n", stderr);
+        ++failures;
+    }
+
     const char* logged[] = {"--scenario=grid-100", "--counter-log=out/a.csv"};
     const char* logged_profile[] = {"--profile-tick=180", "--counter-log=b.csv"};
     const char* logged_interactive[] = {"--counter-log=c.csv"};

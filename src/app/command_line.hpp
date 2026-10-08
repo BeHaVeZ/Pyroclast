@@ -2,6 +2,7 @@
 
 #include "debug_views.hpp"
 #include "range_view.hpp"
+#include "scalability.hpp"
 #include "../graphics/graphics_api.hpp"
 #include "../simulation/explosion_presets.hpp"
 #include "../simulation/wind.hpp"
@@ -41,6 +42,7 @@ struct ApplicationOptions
     std::uint32_t layer_mask = particle_layout::full_mask;
     WindSettings wind;
     std::string counter_log;
+    ScalabilitySettings scalability;
 };
 
 inline constexpr std::uint32_t maximum_profile_tick = 480;

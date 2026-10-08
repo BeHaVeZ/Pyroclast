@@ -1,6 +1,7 @@
 #pragma once
 
 #include "camera.hpp"
+#include "scalability.hpp"
 #include "showcase_marks.hpp"
 #include "test_range.hpp"
 #include "../simulation/explosion_system.hpp"
@@ -22,6 +23,7 @@ public:
         std::uint32_t layer_mask = particle_layout::full_mask;
         WindSettings wind;
         std::span<const ShowcaseMark> marks;
+        ScalabilitySettings scalability;
     };
     RenderResult render(GraphicsDevice& device, ParticleSystem& particles, ExplosionSystem& effects, const TestRange& range,
         const Camera& camera, int width, int height, double elapsed_seconds, const FrameOptions& options);

@@ -50,7 +50,17 @@ struct ParticleCounters
     std::uint32_t smoke = 0;
     std::uint32_t light = 0;
     std::uint32_t debris = 0;
+    std::uint32_t offscreen = 0;
+    std::uint32_t thinned = 0;
+    std::uint32_t faint = 0;
+    std::array<std::uint32_t, 4> smoke_coverage{};
+    std::uint32_t light_coverage = 0;
     std::uint32_t reserved[3]{};
+};
+
+struct ParticleListing
+{
+    bool measure = false;
 };
 
 struct ParticleTargets
@@ -71,7 +81,8 @@ public:
     bool initialize(GraphicsDevice& device, const Buffer& environment, ParticleTargets targets, std::span<const EffectClass> classes);
     const Buffer& particles() const { return *particles_; }
     std::uint32_t tick() const { return tick_; }
-    ParticleWork plan(double elapsed_seconds, std::uint32_t active_effects, std::uint32_t offscreen_divisor = 0);
+    ParticleWork plan(double elapsed_seconds, std::uint32_t active_effects, std::uint32_t offscreen_divisor = 0,
+        ParticleListing listing = {});
     static std::optional<ParticleCounters> counters(const ReadbackData& data);
     void commit(const ParticleWork& work);
     void set_fixed_ticks(bool fixed) { fixed_ticks_ = fixed; }
@@ -99,6 +110,7 @@ private:
     std::unique_ptr<ComputePipeline> compute_;
     std::unique_ptr<ComputePipeline> scan_;
     std::unique_ptr<ComputePipeline> scatter_;
+    std::unique_ptr<ComputePipeline> scatter_measure_;
     std::uint32_t tick_ = 0;
     std::uint32_t pending_steps_ = 0;
     double accumulator_ = 0;

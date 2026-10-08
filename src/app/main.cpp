@@ -130,7 +130,7 @@ public:
         }
     }
     int report(const Sandbox& sandbox, const pyroclast::ApplicationOptions& options, std::string_view gpu_name, int width, int height,
-        bool overlay)
+        bool overlay, const pyroclast::CoverageStatistics& coverage)
     {
         const auto statistics = [](std::vector<double>& samples) {
             if (samples.empty()) return std::string("null");
@@ -162,7 +162,8 @@ public:
                 sum.label, sum.milliseconds / static_cast<double>(sum.samples), sum.samples);
             regions += entry;
         }
-        const std::string camera = options.camera ? ",\"camera\":" + pyroclast::camera_json(*options.camera) : std::string();
+        std::string camera = options.camera ? ",\"camera\":" + pyroclast::camera_json(*options.camera) : std::string();
+        if (coverage.samples() != 0) camera += "," + coverage.json();
         std::printf("{\"scenario\":\"%.*s\",\"valid\":%s,\"build\":\"%s\",\"renderer\":\"%s\",\"gpu\":%s,\"width\":%d,\"height\":%d,"
             "\"smoke_resolution\":\"%s\",\"scene_format\":\"%s\",\"view\":\"%s\"%s,\"overlay\":%s,\"effect_lines\":%s,\"gpu_regions\":%s,"
             "\"preset\":\"%.*s\",\"layer_mask\":%u,\"wind\":[%.2f,%.1f,%.2f],\"ticks\":%u,\"frames\":%zu,\"effects_started\":%llu,\"effects_dropped\":%llu,\"peak_effects\":%u,"
@@ -276,6 +277,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
     pyroclast::TickRate tick_rate;
     std::uint32_t last_steps = 0;
     double showcase_ms = 0;
+    pyroclast::CoverageStatistics coverage;
     std::vector<pyroclast::UiCommand> commands;
     auto previous_time = SDL_GetPerformanceCounter();
     std::uint32_t submitted_frames = 0;
@@ -424,7 +426,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                 const bool capture = !options.capture_path.empty() &&
                     (options.capture_tick ? demo.tick() + 1 == *options.capture_tick : !demo.has_pending_steps());
                 const auto result = sandbox.renderer.render(renderer, demo, sandbox.effects, sandbox.range, camera, width, height, elapsed,
-                    {capture, overlay, sandbox.views, sandbox.layer_mask, sandbox.wind, sandbox.marks});
+                    {capture, overlay, sandbox.views, sandbox.layer_mask, sandbox.wind, sandbox.marks, sandbox.scalability});
                 if (result == pyroclast::RenderResult::failed) return 1;
                 if (!unattended)
                 {
@@ -452,6 +454,11 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                 const auto counters = sandbox.poll_counters(renderer);
                 if (scenario && !frozen && counters) scenario->count(*counters);
                 if (counter_log && counters) counter_log->add_counters(*counters);
+                if (counters && sandbox.scalability.coverage && (!profile_tick || counters->tick == *profile_tick))
+                {
+                    coverage.add(counters->smoke_coverage, counters->light_coverage, counters->offscreen,
+                        static_cast<double>(width) * static_cast<double>(height));
+                }
                 if (result == pyroclast::RenderResult::submitted)
                 {
                     history.add(1000.0 * elapsed);
@@ -465,7 +472,8 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     }
                     if (!profile_tick || !demo.has_pending_steps())
                         baseline.record(milliseconds, renderer.completed_gpu_timings(), sandbox.effects.active().empty() ?
-                            std::optional<std::uint32_t>(0) : sandbox.counters ? std::optional(sandbox.counters->alive) : std::nullopt);
+                            std::optional<std::uint32_t>(0) : sandbox.counters ? std::optional(sandbox.counters->alive) : std::nullopt,
+                            &coverage);
                     if (capture) return save_capture(renderer, options.capture_path);
                     if (scenario && options.capture_tick && scenario->finished(sandbox))
                     {
@@ -478,7 +486,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                         scenario->record(milliseconds, renderer.completed_gpu_timings(), sandbox);
                         if (scenario->finished(sandbox))
                         {
-                            return scenario->report(sandbox, options, renderer.adapter_name(), width, height, ui != nullptr);
+                            return scenario->report(sandbox, options, renderer.adapter_name(), width, height, ui != nullptr, coverage);
                         }
                     }
                     if (options.exit_after && ++submitted_frames >= *options.exit_after)
@@ -572,6 +580,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
     sandbox->showcase.preset = options.preset;
     sandbox->layer_mask = options.layer_mask;
     sandbox->wind = options.wind;
+    sandbox->scalability = options.scalability;
     const auto preset = pyroclast::preset_name(options.preset);
     SDL_Log("Preset: %.*s; mask 0x%04x; wind %.1f m/s towards %.0f deg, gustiness %.2f.", static_cast<int>(preset.size()), preset.data(),
         options.layer_mask, options.wind.speed, options.wind.direction_degrees, options.wind.gustiness);
@@ -605,7 +614,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
     SDL_SetWindowTitle(window.get(), title.c_str());
     SDL_Log("Explosion demo ready. %.*s.", static_cast<int>(pyroclast::controls_summary().size()), pyroclast::controls_summary().data());
     std::optional<pyroclast::CounterLog> counter_log;
-    if (!options.counter_log.empty()) counter_log.emplace();
+    if (!options.counter_log.empty()) counter_log.emplace(options.scalability.coverage);
     int exit_code = run_event_loop(window.get(), device, *sandbox, ui.get(), options, std::move(scenario), counter_log ? &*counter_log : nullptr);
     if (counter_log)
     {
@@ -678,6 +687,8 @@ int main(int argc, char** argv)
             "  --debug-views=LIST Start with debug views on: comma-separated bounds (effect bounds), boxes (collision\n"
             "                     boxes), regions (where the showcase places events, F8), wind (wind arrow, F9), or all.\n"
             "                     Not with --effect-lines or --scenario.\n"
+            "  --coverage         Count each listed particle's screen coverage and whether it is off screen into the\n"
+            "                     counter record (records gain \"coverage\"; counter logs gain its columns).\n"
             "  --counter-log=FILE With --scenario or --profile-tick: write a CSV row per frame at exit (tick, steps, effects\n"
             "                     started and dropped, the frame's live counts and GPU intervals).\n"
             "  --gpu-validation   Debug only: D3D12 GPU-based or Vulkan GPU-assisted validation (slow).\n"

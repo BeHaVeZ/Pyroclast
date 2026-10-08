@@ -97,6 +97,7 @@ void Sandbox::fill_snapshot(DiagnosticsSnapshot& snapshot) const
     load.pool_capacity = ParticleSystem::capacity;
     if (!effects.active().empty()) load.particles = counters;
     load.lights = renderer.lights();
+    load.coverage = scalability.coverage;
 
     auto& shown = snapshot.showcase;
     shown.preset = showcase.preset;
@@ -257,6 +258,10 @@ void apply(UiCommand command, Sandbox& sandbox)
             sandbox.particles.tick());
         break;
     case Kind::set_bombardment: sandbox.showcase.set_bombardment(command.value, command.scalar, sandbox.particles.tick()); break;
+    case Kind::toggle_coverage:
+        sandbox.scalability.coverage = !sandbox.scalability.coverage;
+        SDL_Log("Coverage counters: %s.", sandbox.scalability.coverage ? "on" : "off");
+        break;
     case Kind::toggle_debug_view:
     {
         bool* const views[] = {&sandbox.views.effect_bounds, &sandbox.views.collision_boxes, &sandbox.views.spawn_regions,

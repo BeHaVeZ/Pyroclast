@@ -1,7 +1,10 @@
 #include "frame_statistics.hpp"
 
+#include "../graphics/particle_layout.hpp"
+
 #include <algorithm>
 #include <cassert>
+#include <cstdio>
 #include <numeric>
 
 namespace pyroclast
@@ -37,5 +40,35 @@ double TickRate::rate() const
     }
     const double span = newest.first - oldest.first;
     return span > 0 ? static_cast<double>(newest.second - oldest.second) / span : 0.0;
+}
+
+void CoverageStatistics::add(std::span<const std::uint32_t, 4> smoke_units, std::uint32_t light_units, std::uint32_t offscreen,
+    double screen_pixels)
+{
+    const double scale = particle_layout::coverage_unit_pixels / std::max(screen_pixels, 1.0);
+    double smoke = 0;
+    for (std::size_t bin = 0; bin < bins_.size(); ++bin)
+    {
+        bins_[bin] += smoke_units[bin] * scale;
+        smoke += smoke_units[bin] * scale;
+    }
+    smoke_.push_back(smoke);
+    light_ += light_units * scale;
+    offscreen_ += offscreen;
+}
+
+std::string CoverageStatistics::json() const
+{
+    if (smoke_.empty()) return {};
+    auto sorted = smoke_;
+    const auto summary = summarize(sorted);
+    const double count = static_cast<double>(smoke_.size());
+    char text[320];
+    std::snprintf(text, sizeof(text),
+        "\"coverage\":{\"samples\":%zu,\"smoke\":{\"average\":%.4f,\"p95\":%.4f,\"max\":%.4f},\"bins\":[%.4f,%.4f,%.4f,%.4f],"
+        "\"light\":%.4f,\"offscreen\":%.1f}",
+        smoke_.size(), summary.average, summary.p95, summary.max, bins_[0] / count, bins_[1] / count, bins_[2] / count, bins_[3] / count,
+        light_ / count, offscreen_ / count);
+    return text;
 }
 }

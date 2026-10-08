@@ -32,8 +32,9 @@ bool ParticleSystem::initialize(GraphicsDevice& device, const Buffer& environmen
     compute_ = device.create_compute_pipeline(Shader::particle_simulation);
     scan_ = device.create_compute_pipeline(Shader::particle_scan);
     scatter_ = device.create_compute_pipeline(Shader::particle_scatter);
+    scatter_measure_ = device.create_compute_pipeline(Shader::particle_scatter_measure);
     if (!particles_ || !alive_masks_ || !offsets_ || !alive_ || !arguments_ || !classes_ || !graphics_ || !offscreen_graphics_ ||
-        !debris_graphics_ || !compute_ || !scan_ || !scatter_)
+        !debris_graphics_ || !compute_ || !scan_ || !scatter_ || !scatter_measure_)
     {
         return false;
     }
@@ -46,7 +47,8 @@ namespace
 constexpr double fixed_step = 1.0 / 60.0;
 }
 
-ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_effects, std::uint32_t offscreen_divisor)
+ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_effects, std::uint32_t offscreen_divisor,
+    ParticleListing listing)
 {
     assert(particles_ && environment_ && graphics_ && offscreen_graphics_ && debris_graphics_ && compute_ && scan_ && scatter_);
     assert(std::isfinite(elapsed_seconds) && elapsed_seconds >= 0);
@@ -75,6 +77,11 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_e
     scatter.read[1] = offsets_.get();
     scatter.read[2] = classes_.get();
     scatter.write[0] = alive_.get();
+    if (listing.measure)
+    {
+        scatter.read[3] = particles_.get();
+        scatter.write[1] = arguments_.get();
+    }
     Bindings drawing{};
     drawing.read[0] = particles_.get();
     drawing.read[1] = alive_.get();
@@ -83,8 +90,10 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_e
     const bool layered = offscreen_divisor != 0;
     constexpr auto light_first = particle_layout::light_list_first;
     const DrawConstants parameters{steps, active_effects, capacity, tick_};
-    const DrawConstants scan_parameters{active_effects * groups_per_slab, tick_ + steps, layered ? 1u : 0u};
-    const DrawConstants scatter_parameters{active_effects, layered ? 1u : 0u};
+    const std::uint32_t flags = listing.measure ? particle_layout::listing_measure : 0u;
+    const DrawConstants scan_parameters{active_effects * groups_per_slab, tick_ + steps, layered ? 1u : 0u, flags};
+    const DrawConstants scatter_parameters = listing.measure ? DrawConstants{active_effects, layered ? 1u : 0u, capacity} :
+        DrawConstants{active_effects, layered ? 1u : 0u};
     const DrawConstants both_layers{capacity, 0, capacity, 1};
     const DrawConstants smoke_layer{capacity, 0, light_first, std::max(offscreen_divisor, 1u)};
     const DrawConstants light_layer{capacity, light_first, capacity, 1};
@@ -92,21 +101,25 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_e
     return {
         {{{*compute_, simulation, parameters, {groups, 1, 1}, "Particle simulation"},
             {*scan_, scan, scan_parameters, {1, 1, 1}, "Particle scan"},
-            {*scatter_, scatter, scatter_parameters, {groups, 1, 1}, "Particle scatter"}}},
+            {listing.measure ? *scatter_measure_ : *scatter_, scatter, scatter_parameters, {groups, 1, 1}, "Particle scatter"}}},
         {*graphics_, drawing, both_layers, 0, 0, "Particles", arguments_.get(), particle_layout::particle_arguments_offset},
         {*offscreen_graphics_, drawing, smoke_layer, 0, 0, "Smoke", arguments_.get(), particle_layout::smoke_arguments_offset},
         {*graphics_, drawing, light_layer, 0, 0, "Light", arguments_.get(), particle_layout::light_arguments_offset},
         {*debris_graphics_, drawing, debris_list, 0, 0, "Debris", arguments_.get(), particle_layout::debris_arguments_offset},
-        {arguments_.get(), particle_layout::counters_offset, static_cast<std::uint32_t>(sizeof(ParticleCounters))},
+        {arguments_.get(), particle_layout::counters_offset, listing.measure ? particle_layout::counters_bytes : particle_layout::counters_basic_bytes},
         steps, active_effects};
 }
 
 std::optional<ParticleCounters> ParticleSystem::counters(const ReadbackData& data)
 {
-    static_assert(sizeof(ParticleCounters) == particle_layout::arguments_bytes - particle_layout::counters_offset);
-    if (data.size != sizeof(ParticleCounters)) return std::nullopt;
+    static_assert(sizeof(ParticleCounters) == particle_layout::counters_bytes &&
+        particle_layout::counters_bytes == particle_layout::arguments_bytes - particle_layout::counters_offset &&
+        offsetof(ParticleCounters, offscreen) == particle_layout::counter_offscreen_word * 4 &&
+        offsetof(ParticleCounters, smoke_coverage) == particle_layout::counter_smoke_coverage_word * 4 &&
+        offsetof(ParticleCounters, light_coverage) == particle_layout::counter_light_coverage_word * 4);
+    if (data.size != particle_layout::counters_basic_bytes && data.size != particle_layout::counters_bytes) return std::nullopt;
     ParticleCounters counters;
-    std::memcpy(&counters, data.bytes.data(), sizeof(counters));
+    std::memcpy(&counters, data.bytes.data(), data.size);
     return counters;
 }
 

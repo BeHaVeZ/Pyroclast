@@ -94,6 +94,22 @@ int main()
         std::fprintf(stderr, "FAIL: counter log rows\n%s", log.csv().c_str());
         ++failures;
     }
+    pyroclast::CounterLog covered(true);
+    covered.add_frame({4, 1, 1, 1, 0, true});
+    record.tick = 4;
+    record.offscreen = 3;
+    record.smoke_coverage = {1, 2, 3, 4};
+    record.light_coverage = 5;
+    covered.add_counters(record);
+    const std::string covered_expected =
+        "frame,tick,steps,active,started,dropped,counter_tick,alive,smoke,light,debris,draw_ms,compute_ms,cpu_ms,"
+        "offscreen,smoke_bin0,smoke_bin1,smoke_bin2,smoke_bin3,coverage_smoke,coverage_light\n"
+        "0,4,1,1,1,0,4,70,40,20,10,,,0.0000,3,1,2,3,4,10,5\n";
+    if (covered.csv() != covered_expected)
+    {
+        std::fprintf(stderr, "FAIL: counter log coverage columns\n%s", covered.csv().c_str());
+        ++failures;
+    }
     record.tick = 7;
     log.add_counters(record);
     log.add_timing(1, 1);
@@ -101,6 +117,24 @@ int main()
     if (log.mismatches() != 2)
     {
         std::fprintf(stderr, "FAIL: counter log mismatches (got %zu)\n", log.mismatches());
+        ++failures;
+    }
+
+    pyroclast::CoverageStatistics coverage;
+    if (!coverage.json().empty())
+    {
+        std::fputs("FAIL: no coverage record without samples\n", stderr);
+        ++failures;
+    }
+    const std::uint32_t frame_a[] = {100, 0, 0, 0};
+    const std::uint32_t frame_b[] = {0, 100, 0, 100};
+    coverage.add(frame_a, 50, 6, 1600);
+    coverage.add(frame_b, 0, 2, 1600);
+    const std::string coverage_expected = "\"coverage\":{\"samples\":2,\"smoke\":{\"average\":1.5000,\"p95\":2.0000,\"max\":2.0000},"
+        "\"bins\":[0.5000,0.5000,0.0000,0.5000],\"light\":0.2500,\"offscreen\":4.0}";
+    if (coverage.samples() != 2 || coverage.json() != coverage_expected)
+    {
+        std::fprintf(stderr, "FAIL: coverage statistics %s\n", coverage.json().c_str());
         ++failures;
     }
 

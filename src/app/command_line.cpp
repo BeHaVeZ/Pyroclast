@@ -115,6 +115,10 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
         {
             if (!set_once(result.options.gpu_regions, "--gpu-regions")) return result;
         }
+        else if (option == "--coverage")
+        {
+            if (!set_once(result.options.scalability.coverage, "--coverage")) return result;
+        }
         else if (option == "--effect-lines")
         {
             if (!set_once(result.options.effect_lines, "--effect-lines")) return result;

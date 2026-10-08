@@ -30,7 +30,8 @@ std::string camera_json(const std::array<float, 6>& pose)
     return text;
 }
 
-void FrameBaseline::record(double milliseconds, std::optional<GpuTimings> gpu, std::optional<std::uint32_t> alive)
+void FrameBaseline::record(double milliseconds, std::optional<GpuTimings> gpu, std::optional<std::uint32_t> alive,
+    const CoverageStatistics* coverage)
 {
     if (!enabled_) return;
     if (warmup_ != 0)
@@ -111,6 +112,7 @@ void FrameBaseline::record(double milliseconds, std::optional<GpuTimings> gpu, s
     std::string extra;
     if (!sample.scenario.empty()) extra += ",\"scenario\":" + json_string(sample.scenario);
     if (sample.camera) extra += ",\"camera\":" + camera_json(*sample.camera);
+    if (coverage && coverage->samples() != 0) extra += "," + coverage->json();
     std::printf("{\"build\":\"%s\",\"renderer\":%s,\"gpu\":%s,\"explosions\":%u,\"capacity\":%u,\"profile_tick\":%s,"
         "\"vsync\":%s,\"smoke_resolution\":\"%s\",\"view\":%s,\"scene_format\":%s,\"preset\":%s,\"layer_mask\":%u,\"wind\":[%.2f,%.1f,%.2f]%s,"
         "\"width\":1280,\"height\":720,\"warmup_frames\":%zu,\"samples\":%zu,"

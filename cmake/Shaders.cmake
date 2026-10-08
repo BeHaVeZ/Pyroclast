@@ -39,6 +39,7 @@ set(PYROCLAST_SHADERS
     particle_simulation:particles_compute:cs:cs_main
     particle_scan:particle_scan:cs:cs_main
     particle_scatter:particle_scatter:cs:cs_main
+    particle_scatter_measure:particle_scatter:cs:cs_measure
     debris_vertex:debris:vs:vs_main
     debris_pixel:debris:ps:ps_main
     composite_vertex:composite:vs:vs_main
