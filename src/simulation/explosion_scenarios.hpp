@@ -36,11 +36,11 @@ struct Scenario
     std::uint32_t duration_ticks = 0;
 };
 
-inline constexpr std::string_view scenario_names = "single, grid-10, grid-50, grid-100, barrage, presets, range";
+inline constexpr std::string_view scenario_names = "single, grid-10, grid-50, grid-100, barrage, presets, range, bombardment";
 constexpr bool is_scenario_name(std::string_view name)
 {
     return name == "single" || name == "grid-10" || name == "grid-50" || name == "grid-100" || name == "barrage" ||
-        name == "presets" || name == "range";
+        name == "presets" || name == "range" || name == "bombardment";
 }
 std::optional<Scenario> make_scenario(std::string_view name, const Environment& environment,
     ExplosionPreset preset = ExplosionPreset::small_he);

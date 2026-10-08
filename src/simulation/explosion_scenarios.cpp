@@ -64,6 +64,16 @@ std::optional<Scenario> make_scenario(std::string_view name, const Environment& 
             scenario.events.push_back({0, ground_event(terrain, x, -30.0f, 2000 + index, static_cast<ExplosionPreset>(index))});
         }
     }
+    else if (name == "bombardment")
+    {
+        constexpr std::uint32_t impacts = 400;
+        constexpr std::uint32_t interval = 3;
+        for (std::uint32_t index = 0; index < impacts; ++index)
+        {
+            const auto offset = bombardment_offset(8000, index, 30);
+            scenario.events.push_back({index * interval, ground_event(terrain, offset.x, offset.y, 4000 + index, preset)});
+        }
+    }
     else if (name == "barrage")
     {
         for (std::uint32_t index = 0; index < barrage_impacts; ++index)

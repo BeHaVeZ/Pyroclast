@@ -152,5 +152,27 @@ int main()
         longest = std::max(longest, effect_ticks(scripted.event.preset, SurfaceType::dirt));
     }
     check(row && presets->duration_ticks == longest, "presets: every preset once, west to east, on dirt, until the longest-lived ends");
+    const auto bombardment = make_scenario("bombardment", environment);
+    bool disc = bombardment && bombardment->events.size() == 400 && is_scenario_name("bombardment");
+    for (std::size_t index = 0; disc && index < bombardment->events.size(); ++index)
+    {
+        const auto& scripted = bombardment->events[index];
+        const auto& position = scripted.event.position;
+        disc = scripted.tick == index * 3 && scripted.event.seed == 4000 + index && std::sqrt(position.x * position.x + position.z * position.z) <= 30.001f;
+    }
+    check(disc && bombardment->duration_ticks == 399 * 3 + effect_ticks(ExplosionPreset::small_he, SurfaceType::dirt),
+        "bombardment: 400 impacts every 3 ticks within 30 m of the origin");
+    ExplosionSystem saturated(128);
+    std::size_t busiest = 0;
+    next = 0;
+    for (std::uint32_t tick = 0; tick < bombardment->duration_ticks; ++tick)
+    {
+        while (next < bombardment->events.size() && bombardment->events[next].tick <= tick) saturated.submit(bombardment->events[next++].event);
+        saturated.start(tick);
+        busiest = std::max(busiest, saturated.active().size());
+    }
+    std::printf("bombardment: peak %zu effects, %llu dropped of 400\n", busiest, static_cast<unsigned long long>(saturated.dropped()));
+    check(busiest == 128 && saturated.dropped() > 0 && saturated.started() + saturated.dropped() == 400,
+        "the bombardment fills the 128 slots and drops the rest");
     return failures == 0 ? 0 : 1;
 }

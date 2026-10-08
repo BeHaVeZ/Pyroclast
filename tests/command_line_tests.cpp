@@ -56,7 +56,7 @@ int main()
         {"invalid scene format", {"--scene-format=rgba32f"}, d3d12, false, "Expected --scene-format"},
         {"barrage scenario", {"--scenario=barrage"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {},
             pyroclast::SceneFormat::rgba16f, "barrage"},
-        {"invalid scenario", {"--scenario=storm"}, d3d12, false, "Expected --scenario=single, grid-10, grid-50, grid-100, barrage, presets or range"},
+        {"invalid scenario", {"--scenario=storm"}, d3d12, false, "Expected --scenario=single, grid-10, grid-50, grid-100, barrage, presets, range or bombardment"},
         {"presets scenario", {"--scenario=presets"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {}, {}, "presets"},
         {"preset", {"--preset=fuel-fire"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {}, {}, {}, false,
             pyroclast::ExplosionPreset::fuel_fire},
