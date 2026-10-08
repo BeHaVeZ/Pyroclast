@@ -56,11 +56,14 @@ add_executable(Pyroclast
     src/app/camera.cpp
     src/app/test_range.cpp
     src/app/prop_mesh.cpp
+    src/app/sandbox.cpp
+    src/app/key_bindings.cpp
     src/core/math.cpp
     src/tools/debug_ui.cpp
     src/simulation/particle_system.cpp
     src/simulation/explosion_system.cpp
     src/simulation/explosion_scenarios.cpp
+    src/simulation/impact_patterns.cpp
     src/simulation/explosion_presets.cpp
     src/simulation/effect_lights.cpp
     src/simulation/wind.cpp
@@ -110,7 +113,7 @@ if(BUILD_TESTING)
     add_test(NAME command_line COMMAND CommandLineTests)
     list(APPEND project_targets CommandLineTests)
     add_executable(ParticleControlTests tests/particle_control_tests.cpp src/simulation/particle_system.cpp
-        src/simulation/explosion_system.cpp src/simulation/explosion_scenarios.cpp src/simulation/explosion_presets.cpp
+        src/simulation/explosion_system.cpp src/simulation/explosion_scenarios.cpp src/simulation/impact_patterns.cpp src/simulation/explosion_presets.cpp
         src/simulation/effect_lights.cpp src/simulation/wind.cpp src/simulation/terrain.cpp src/simulation/environment.cpp src/simulation/range_props.cpp
         src/core/math.cpp src/app/explosion_renderer.cpp src/app/camera.cpp
         src/app/test_range.cpp src/app/prop_mesh.cpp src/graphics/draw_validation.cpp)
@@ -136,13 +139,13 @@ if(BUILD_TESTING)
     add_test(NAME terrain COMMAND TerrainTests)
     list(APPEND project_targets TerrainTests)
     add_executable(EnvironmentTests tests/environment_tests.cpp src/simulation/environment.cpp src/simulation/range_props.cpp
-        src/simulation/terrain.cpp src/simulation/explosion_scenarios.cpp src/simulation/explosion_system.cpp
+        src/simulation/terrain.cpp src/simulation/explosion_scenarios.cpp src/simulation/impact_patterns.cpp src/simulation/explosion_system.cpp
         src/simulation/explosion_presets.cpp src/app/prop_mesh.cpp src/core/math.cpp)
     target_include_directories(EnvironmentTests PRIVATE src)
     add_test(NAME environment COMMAND EnvironmentTests)
     list(APPEND project_targets EnvironmentTests)
     add_executable(ExplosionSystemTests tests/explosion_system_tests.cpp src/simulation/explosion_system.cpp
-        src/simulation/explosion_scenarios.cpp src/simulation/explosion_presets.cpp src/simulation/terrain.cpp
+        src/simulation/explosion_scenarios.cpp src/simulation/impact_patterns.cpp src/simulation/explosion_presets.cpp src/simulation/terrain.cpp
         src/simulation/environment.cpp src/simulation/range_props.cpp src/core/math.cpp)
     target_include_directories(ExplosionSystemTests PRIVATE src)
     add_test(NAME explosion_system COMMAND ExplosionSystemTests)
@@ -152,6 +155,13 @@ if(BUILD_TESTING)
     target_include_directories(ExplosionPresetTests PRIVATE src)
     add_test(NAME explosion_presets COMMAND ExplosionPresetTests)
     list(APPEND project_targets ExplosionPresetTests)
+    add_executable(ShowcaseTests tests/showcase_tests.cpp src/simulation/impact_patterns.cpp src/simulation/explosion_scenarios.cpp
+        src/simulation/explosion_system.cpp src/simulation/explosion_presets.cpp src/simulation/environment.cpp
+        src/simulation/range_props.cpp src/simulation/terrain.cpp src/simulation/wind.cpp src/core/math.cpp src/app/key_bindings.cpp)
+    target_include_directories(ShowcaseTests PRIVATE src)
+    target_link_libraries(ShowcaseTests PRIVATE SDL3::SDL3-static pyroclast_shader_list)
+    add_test(NAME showcase COMMAND ShowcaseTests)
+    list(APPEND project_targets ShowcaseTests)
     add_executable(ImageCompareTests tests/image_compare_tests.cpp tools/image_diff/image_compare.cpp)
     target_include_directories(ImageCompareTests PRIVATE tools)
     add_test(NAME image_compare COMMAND ImageCompareTests)
