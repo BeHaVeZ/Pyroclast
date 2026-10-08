@@ -13,6 +13,7 @@ constexpr std::array bindings{
     KeyBinding{SDLK_P, false, {Kind::toggle_pause}, "pause"},
     KeyBinding{SDLK_N, false, {Kind::step}, "step"},
     KeyBinding{SDLK_L, false, {Kind::toggle_debug_lines}, "lines"},
+    KeyBinding{SDLK_T, false, {Kind::toggle_slow_motion}, "0.25x"},
 };
 }
 

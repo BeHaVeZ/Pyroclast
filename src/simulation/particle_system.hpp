@@ -81,6 +81,9 @@ public:
     bool paused() const { return paused_; }
     void toggle_pause();
     void step();
+    void set_time_scale(double scale);
+    double time_scale() const { return time_scale_; }
+    std::uint64_t capped_frames() const { return capped_frames_; }
 
 private:
     std::unique_ptr<Buffer> particles_;
@@ -99,6 +102,8 @@ private:
     std::uint32_t tick_ = 0;
     std::uint32_t pending_steps_ = 0;
     double accumulator_ = 0;
+    double time_scale_ = 1;
+    std::uint64_t capped_frames_ = 0;
     bool paused_ = false;
     bool fixed_ticks_ = false;
 };

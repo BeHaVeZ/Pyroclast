@@ -124,7 +124,8 @@ ImDrawData* DebugUi::build(const DiagnosticsSnapshot& snapshot, std::vector<UiCo
             row("Smoke resolution", "%s", snapshot.half_resolution_smoke ? "half" : "full");
             row("Scene target", "%.*s, exposure %.2f", static_cast<int>(snapshot.scene_format.size()), snapshot.scene_format.data(),
                 snapshot.exposure);
-            row("State", "%s", snapshot.paused ? "paused" : "running");
+            row("State", "%s", snapshot.paused ? "paused" : snapshot.time_scale == 1 ? "running 1x" : "running 0.25x");
+            row("Capped frames", "%llu (catch-up clipped at 4 steps)", static_cast<unsigned long long>(snapshot.capped_frames));
             ImGui::EndTable();
         }
         ImGui::SeparatorText("Camera");
@@ -178,6 +179,9 @@ ImDrawData* DebugUi::build(const DiagnosticsSnapshot& snapshot, std::vector<UiCo
         ImGui::BeginDisabled(!snapshot.paused);
         if (ImGui::Button("Step (N)")) commands.push_back({UiCommand::Kind::step});
         ImGui::EndDisabled();
+        ImGui::SameLine();
+        bool slow = snapshot.time_scale != 1;
+        if (ImGui::Checkbox("Slow motion 0.25x (T)", &slow)) commands.push_back({UiCommand::Kind::toggle_slow_motion});
         bool lines = snapshot.debug_lines;
         if (ImGui::Checkbox("Lines (L)", &lines)) commands.push_back({UiCommand::Kind::toggle_debug_lines});
         ImGui::SameLine();

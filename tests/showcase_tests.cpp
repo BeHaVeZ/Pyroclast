@@ -71,6 +71,7 @@ int main()
     check(command(SDLK_SPACE) && command(SDLK_SPACE)->kind == Kind::trigger && command(SDLK_R)->kind == Kind::clear &&
         command(SDLK_P)->kind == Kind::toggle_pause && command(SDLK_N)->kind == Kind::step &&
         command(SDLK_L)->kind == Kind::toggle_debug_lines, "Space, R, P, N and L keep their actions");
+    check(command(SDLK_T) && command(SDLK_T)->kind == Kind::toggle_slow_motion, "T toggles slow motion");
     check(command(SDLK_R, SDL_KMOD_LSHIFT) && command(SDLK_R, SDL_KMOD_LSHIFT)->kind == Kind::clear,
         "Shift does not change a key's action");
     check(!command(SDLK_R, SDL_KMOD_LALT) && !command(SDLK_F4, SDL_KMOD_LALT), "Alt-modified keys send nothing");

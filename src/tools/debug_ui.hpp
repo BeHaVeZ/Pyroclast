@@ -46,11 +46,13 @@ struct DiagnosticsSnapshot
     std::uint32_t layer_mask = particle_layout::full_mask;
     std::uint32_t lights = 0;
     WindSettings wind;
+    float time_scale = 1;
+    std::uint64_t capped_frames = 0;
 };
 
 struct UiCommand
 {
-    enum class Kind { trigger, clear, toggle_pause, step, toggle_debug_lines, select_preset, toggle_layer, set_wind };
+    enum class Kind { trigger, clear, toggle_pause, step, toggle_debug_lines, select_preset, toggle_layer, set_wind, toggle_slow_motion };
     Kind kind;
     std::uint32_t value = 0;
     WindSettings wind;

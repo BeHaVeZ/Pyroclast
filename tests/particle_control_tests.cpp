@@ -298,12 +298,29 @@ int main()
     timed.discard_pending();
     check(!timed.has_pending_steps(), "discarding forgets queued steps");
     timed.toggle_pause();
+    timed.set_time_scale(0.25);
+    const auto slow_start = timed.tick();
+    ticks = 0;
+    for (int frame = 0; frame < 240; ++frame) ticks += submit(timed, 1.0 / 60).steps;
+    check(ticks == 60 && timed.tick() == slow_start + 60, "0.25x advances 60 ticks in 4 wall seconds");
+    const auto capped = timed.capped_frames();
+    check(submit(timed, 1.0).steps == particle_layout::maximum_simulation_steps && submit(timed, 0).steps == 0 &&
+        timed.capped_frames() == capped + 1, "at 0.25x a stall is still capped at 4 steps, and the capped frame is counted");
+    timed.toggle_pause();
+    timed.step();
+    check(submit(timed, 1.0).steps == 1 && submit(timed, 1.0).steps == 0, "paused single steps ignore the time scale");
+    timed.toggle_pause();
+    timed.set_time_scale(1);
     timed.set_fixed_ticks(true);
     check(submit(timed, 0).steps == 1 && submit(timed, 5.0).steps == 1, "scripted runs advance one tick per frame whatever the elapsed time");
+    timed.set_time_scale(0.25);
+    check(submit(timed, 1.0 / 60).steps == 1, "scripted runs ignore the time scale");
+    timed.set_time_scale(1);
 
     ParticleSystem profile;
     profile.initialize(device, range.environment_buffer(), targets, classes);
     profile.prepare_profile(180);
+    profile.set_time_scale(0.25);
     profile.plan(1, 1);
     check(profile.has_pending_steps(), "skipped profile preparation retains ticks");
     for (int tick = 0; tick < 180; ++tick) check(submit(profile, 1).steps == 1, "profile preparation advances one fixed tick");

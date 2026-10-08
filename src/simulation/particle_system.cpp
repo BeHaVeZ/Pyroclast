@@ -53,7 +53,10 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_e
     assert(active_effects <= effect_slots);
     if (!paused_ && !fixed_ticks_)
     {
-        accumulator_ = std::min(accumulator_ + elapsed_seconds, particle_layout::maximum_simulation_steps * fixed_step);
+        const double wanted = accumulator_ + elapsed_seconds * time_scale_;
+        const double cap = particle_layout::maximum_simulation_steps * fixed_step;
+        if (wanted > cap) ++capped_frames_;
+        accumulator_ = std::min(wanted, cap);
     }
     const auto steps = paused_ ? std::min(pending_steps_, 1u) : fixed_ticks_ ? 1u :
         static_cast<std::uint32_t>(std::floor(accumulator_ / fixed_step));
@@ -126,6 +129,13 @@ void ParticleSystem::discard_pending()
 {
     pending_steps_ = 0;
     accumulator_ = 0;
+}
+
+void ParticleSystem::set_time_scale(double scale)
+{
+    assert(scale == 1.0 || scale == 0.25);
+    time_scale_ = scale;
+    SDL_Log("Simulation speed: %gx", scale);
 }
 
 void ParticleSystem::toggle_pause()

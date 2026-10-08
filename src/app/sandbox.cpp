@@ -80,6 +80,7 @@ void apply(UiCommand command, Sandbox& sandbox)
     case Kind::set_wind:
         if (const auto wind = validated(command.wind)) sandbox.wind = *wind;
         break;
+    case Kind::toggle_slow_motion: sandbox.particles.set_time_scale(sandbox.particles.time_scale() == 1 ? 0.25 : 1); break;
     }
 }
 }

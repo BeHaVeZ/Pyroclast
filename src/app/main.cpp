@@ -364,7 +364,8 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                         pyroclast::scene_format_name(options.scene_format), pyroclast::TestRange::exposure,
                         {camera.position.x, camera.position.y, camera.position.z},
                         camera.yaw * 180 / std::numbers::pi_v<float>, camera.pitch * 180 / std::numbers::pi_v<float>, flight.speed,
-                        sandbox.click_preset, sandbox.layer_mask, sandbox.renderer.lights(), sandbox.wind};
+                        sandbox.click_preset, sandbox.layer_mask, sandbox.renderer.lights(), sandbox.wind,
+                        static_cast<float>(demo.time_scale()), demo.capped_frames()};
                     commands.clear();
                     overlay = ui->build(snapshot, commands);
                     if (!unattended) for (const auto command : commands) pyroclast::apply(command, sandbox);
