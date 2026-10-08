@@ -12,7 +12,8 @@ by clicks or scripts, built from seven presets of layered effects (flash, fireba
 plume, ground dust, debris, temporary lights) that respond to the surface they hit, and the GPU decides
 which particles are alive and how many to draw. Smoke rides gusty wind, rolls into mushroom caps and is lit
 as volume. Walls, a hut, crates, vehicles, barriers and rocks on the range stop sparks, debris, dust and
-smoke, and turn the wind. Showcase and benchmark modes follow.
+smoke, and turn the wind. A showcase mode aims, fires and walks the range, and optional scalability settings
+keep dense smoke fields within a frame budget. A benchmark mode follows.
 
 ## Core question
 
@@ -58,6 +59,42 @@ This project is an independent technical exploration.
 It is not affiliated with Bohemia Interactive, Arma, Enfusion, or Blastcore, and does not use proprietary engine source code.
 
 ## Current milestone
+
+**M19 - Scalability program** (complete)
+
+Measured experiments on what makes dense smoke expensive and what to do about it, each with a record of the
+problem, the evidence, the change, the result and the trade-off. Every new option is off by default, so the
+default frame is still M18's (all 192 reference captures identical, every timing within noise).
+
+- Where the time goes: drawing the translucent particles is 98-100% of the drawing time in every expensive case,
+  and its cost follows how much screen the smoke covers (R² 0.98), not how many particles are alive (0.33).
+  `--coverage` (or the overlay) counts that coverage on the GPU, by particle size, along with particles off
+  screen.
+- `--smoke-resolution=auto` draws smoke at half resolution only on frames whose measured coverage is above a
+  budget (1,000 screens by default, `--smoke-budget`), with hysteresis and a minimum of 30 frames between
+  switches; lighter frames stay full resolution and identical to it. `--half-light` also puts the fireball and
+  sparks into the half-size target, keeping the full-resolution drawing order.
+- `--smoke-lod=16` thins smoke particles larger than 16 pixels in radius: every other one fades out by 32
+  pixels while its neighbour grows more opaque to block about as much light, so dense clouds look the same
+  with half the blending. No popping between frames. `--faint-floor=F` skips nearly invisible smoke (a
+  quality trade: it can remove a visible ground haze).
+- `--effect-order=origin|cloud|none` chooses how explosions are sorted back to front (by origin, the
+  default; by the centre of their rising cloud; or not at all, which shows that the order matters).
+  `--slot-policy=evict-oldest` lets new impacts replace the oldest explosion when all 128 slots are busy,
+  instead of being dropped: no more seconds without a new impact under sustained fire, at about a third more
+  drawing time over the bombardment.
+- Measured (RTX 4090), the recommended set `--smoke-resolution=auto --half-light --smoke-lod=16` against
+  everything off: 100 heavy explosions draw in 1.8 ms instead of 11.0 (p95 3.6 ms instead of 26.1), the heavy
+  bombardment in 1.3 ms instead of 7.9 (p95 2.5 instead of 17.4), 100 artillery explosions in 1.1 ms instead
+  of 4.7; lighter scenes gain 24-50%. It is not the default because each part changes the image a little
+  (softer smoke on half-resolution frames, slightly reshaped edges of young clouds).
+- Tried and not kept: exact culling of off-screen particles (identical images, no measurable gain on this
+  GPU). Analysed and not built: smoke aggregation, occlusion culling, order-independent transparency, a
+  global particle sort, adaptive emission and simulation level of detail; each record says what would
+  reopen it.
+- Measuring aids: `--scenario=NAME --profile-tick=T` freezes a script at a tick, `--camera=` places the
+  camera exactly, `--counter-log=FILE.csv` writes every frame's counts and GPU times, and `tools/ab.py`,
+  `tools/captures.py` and `tools/counter_log.py` compare them.
 
 **M18 - Showcase mode** (complete)
 
@@ -372,6 +409,16 @@ Presets, layers, smoke features and the wind apply to groups, profiles and scena
 .\out\build\windows-x64\Release\Pyroclast.exe --scenario=range --view=yard --disable=deflection
 ```
 
+Scalability settings (all off by default; the overlay's Scalability and Smoke level of detail sections switch
+them live):
+
+```powershell
+.\out\build\windows-x64\Release\Pyroclast.exe --preset=heavy --smoke-resolution=auto --half-light --smoke-lod=16
+.\out\build\windows-x64\Release\Pyroclast.exe --scenario=bombardment --preset=artillery-he --slot-policy=evict-oldest
+.\out\build\windows-x64\Release\Pyroclast.exe --scenario=grid-100 --preset=heavy --profile-tick=360 --coverage --view=ground
+.\out\build\windows-x64\Release\Pyroclast.exe --scenario=bombardment --smoke-resolution=auto --smoke-budget=coverage:500 --counter-log=bombardment.csv
+```
+
 `--view=range` and `--view=yard` look at the props in the north yard; `--disable=props` removes them (no
 drawing, clicks or collision), `--disable=collision` keeps them drawn while particles pass through.
 `--debug-views=bounds,boxes,regions,wind` (or `all`) starts an interactive run with debug views on.
@@ -538,6 +585,12 @@ python tools/ab.py --a C:/baseline/out/build/windows-x64/Release --b out/build/w
 python tools/ab.py --a out/build/windows-x64/Release --b out/build/windows-x64/Release --scenarios range --a-args=--disable=collision
 # Interactive lifecycle under native validation: controls, the showcase keys, 30 resizes, minimize/restore, minimized start
 powershell -File tools/lifecycle.ps1 -Configuration Debug -Renderer vulkan -SmokeResolution half
+# Every automatic-resolution capture must equal the full- or half-resolution capture of the same case
+python tools/captures.py policy-check out/baselines/mine out/auto-captures
+# Frozen scenario states as A/B cases, tail percentiles, and per-frame counter logs compared run to run
+python tools/ab.py --a out/build/windows-x64/Release --b out/build/windows-x64/Release --cases bombardment@450 --b-args=--smoke-lod=16
+python tools/ab.py --a out/build/windows-x64/Release --b out/build/windows-x64/Release --scenarios bombardment --b-smoke auto --tails --counter-logs out/logs
+python tools/counter_log.py diff out/logs/*.csv
 ```
 
 `ImageDiff` (built with the project) compares two captures and can write an amplified difference
@@ -556,6 +609,7 @@ Other diagnostic options:
 .\out\build\windows-x64\Debug\Pyroclast.exe --explosions=100 --profile-tick=180 --gpu-validation --capture=gpuav.png
 # The same frozen state with another scene target format, or from another camera pose
 .\out\build\windows-x64\Release\Pyroclast.exe --explosions=100 --profile-tick=180 --scene-format=r11g11b10f --view=ground
+.\out\build\windows-x64\Release\Pyroclast.exe --explosions=100 --profile-tick=180 --camera=0,40,-120,0,10,0
 # The overlay in a capture, or no overlay in an interactive run
 .\out\build\windows-x64\Debug\Pyroclast.exe --profile-tick=60 --ui=on --capture=overlay.png
 ```
@@ -565,9 +619,9 @@ differ from the RTX 4090 by up to 7 levels inside the dense smoke of the 100-eff
 scene blended in floating point), and from each other by up to 2, while D3D12 and Vulkan agree within
 one level on each vendor.
 
-For the optional half-resolution smoke experiment, add
-`"--smoke-resolution=half"` to your Visual Studio launch `args`. Full resolution
-remains the default; use `"--smoke-resolution=full"` for the comparison. Both APIs
+For half-resolution smoke on every frame, add
+`"--smoke-resolution=half"` to your Visual Studio launch `args` (`auto` chooses per frame; see M19). Full
+resolution remains the default; use `"--smoke-resolution=full"` for the comparison. Both APIs
 render the smoke, effect by effect from back to front, into a reusable target with half the width and
 height, cleared to transparent black; each smoke pixel fades against the full-resolution scene depth, so
 the terrain hides it. The target is then composited premultiplied over the scene with a linear-filtered
@@ -584,7 +638,8 @@ coverage, opacity and edge softness; remove `--profile-tick` for normal playback
 and verify the flash, sparks, smoke drift and dissipation. Repeat resize and
 minimize/restore in Debug on both APIs. The half target rounds odd dimensions
 up and retains the full-window aspect ratio. All smoke is composited before any light, unlike the
-full-resolution per-effect order, and smoke edges against nearer geometry are half-resolution. Reduced
+full-resolution per-effect order (`--half-light` keeps that order by drawing light into the half target too),
+and smoke edges against nearer geometry are half-resolution. Reduced
 detail and an extra pass are explicit trade-offs, so half resolution is optional.
 
 See `docs/PHASE1.md` through `docs/PHASE10.md`, `docs/PHASE10_PROFILING.md`,
