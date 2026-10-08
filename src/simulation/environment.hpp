@@ -72,6 +72,7 @@ public:
     std::uint32_t box_count() const;
     bool inside(float3 point) const;
     std::optional<SurfaceHit> raycast(const Ray& ray, float max_distance, bool props) const;
+    float3 event_origin(const SurfaceHit& hit) const;
     Statistics statistics() const;
 
 private:

@@ -45,6 +45,10 @@ public:
         if (description.vertex_shader == Shader::debris_vertex && description.depth == DepthMode::test_write) debris = pipeline.get();
         if (description.vertex_shader == Shader::sky_vertex) sky = pipeline.get();
         if (description.vertex_shader == Shader::debug_lines_vertex && description.topology == pyroclast::Topology::lines) lines = pipeline.get();
+        if (description.vertex_shader == Shader::props_vertex && description.pixel_shader == Shader::props_pixel &&
+            description.blend == BlendMode::opaque && description.depth == DepthMode::test_write) props = pipeline.get();
+        if (description.vertex_shader == Shader::collider_lines_vertex && description.pixel_shader == Shader::debug_lines_pixel &&
+            description.depth == DepthMode::test && description.topology == pyroclast::Topology::lines) colliders = pipeline.get();
         return pipeline;
     }
     std::unique_ptr<pyroclast::ComputePipeline> create_compute_pipeline(pyroclast::Shader shader) override
@@ -90,9 +94,31 @@ public:
             return pass.inputs[0] == first && !pass.inputs[1];
         };
         const auto& passes = frame.passes;
+        pyroclast::FrameConstants sent{};
+        if (frame.constants.size() == sizeof(sent)) std::memcpy(&sent, frame.constants.data(), sizeof(sent));
+        const bool props_shown = ((sent.light_state[1] >> pyroclast::particle_layout::props_mask_bit) & 1) != 0;
         const auto range_pass = [&](const pyroclast::Pass& pass) {
-            return pass.target == scene && !pass.load && pass.depth == depth && pass.depth_write && inputs(pass, nullptr) &&
-                (frame.dispatches.empty() ? draws(pass, {terrain, sky}) : draws(pass, {terrain, debris, sky}));
+            std::vector<const pyroclast::GraphicsPipeline*> expected;
+            if (props_shown) expected.push_back(props);
+            expected.push_back(terrain);
+            if (!frame.dispatches.empty()) expected.push_back(debris);
+            expected.push_back(sky);
+            if (props_shown && expect_lines) expected.push_back(colliders);
+            bool same = pass.draws.size() == expected.size();
+            for (std::size_t index = 0; same && index < expected.size(); ++index) same = &pass.draws[index].pipeline == expected[index];
+            if (same && props_shown)
+            {
+                const auto& drawn = pass.draws.front();
+                same = drawn.vertex_count == prop_vertices && drawn.instance_count == 1 && drawn.bindings.read[0] &&
+                    drawn.bindings.read[0] != environment && drawn.bindings.read[1] == environment;
+            }
+            if (same && props_shown && expect_lines)
+            {
+                const auto& drawn = pass.draws.back();
+                same = drawn.vertex_count == 24 && drawn.instance_count == boxes && drawn.constants[0] == boxes &&
+                    drawn.bindings.read[0] == environment;
+            }
+            return same && pass.target == scene && !pass.load && pass.depth == depth && pass.depth_write && inputs(pass, nullptr);
         };
         const auto present_pass = [&](const pyroclast::Pass& pass) {
             return !pass.target && !pass.depth && inputs(pass, scene) && draws(pass, {present}) && pass.draws[0].vertex_count == 3;
@@ -127,6 +153,10 @@ public:
     std::vector<pyroclast::EffectClass> uploaded_classes;
     std::vector<std::pair<const pyroclast::ComputePipeline*, pyroclast::Shader>> compute_shaders;
     bool environment_uploaded = false;
+    bool expect_lines = false;
+    std::uint32_t prop_vertices = 0;
+    std::uint32_t boxes = 0;
+    const pyroclast::Buffer* environment = nullptr;
     bool depth_cleared_far = false;
     bool valid_frame = false;
     bool range_only = false;
@@ -148,6 +178,8 @@ public:
     const pyroclast::GraphicsPipeline* debris = nullptr;
     const pyroclast::GraphicsPipeline* sky = nullptr;
     const pyroclast::GraphicsPipeline* lines = nullptr;
+    const pyroclast::GraphicsPipeline* props = nullptr;
+    const pyroclast::GraphicsPipeline* colliders = nullptr;
     pyroclast::RenderResult result = pyroclast::RenderResult::submitted;
 };
 }
@@ -164,7 +196,12 @@ int main()
     constexpr auto hdr = TargetFormat::r11g11b10_float;
     static_assert(hdr != ExplosionRenderer::smoke_format);
     constexpr ParticleTargets targets{hdr, ExplosionRenderer::smoke_format};
-    check(range.initialize(device, hdr) && device.environment_uploaded && device.terrain && device.sky, "the range uploads its environment");
+    check(range.initialize(device, hdr) && device.environment_uploaded && device.terrain && device.sky && device.props && device.colliders,
+        "the range uploads its environment and creates the props' and collision boxes' pipelines");
+    check(range.prop_vertex_count() == 18 * 36 + 7 * 84 + 4 * 132 && range.environment().box_count() == 36, "the props' mesh");
+    device.prop_vertices = range.prop_vertex_count();
+    device.boxes = range.environment().box_count();
+    device.environment = &range.environment_buffer();
     const auto submit = [](ParticleSystem& particles, double elapsed, std::uint32_t effects = 1) {
         const auto work = particles.plan(elapsed, effects);
         particles.commit(work);
@@ -308,8 +345,14 @@ int main()
         near(rebuild(drawn.sun_billboard), sun) && near(rebuild(drawn.up_billboard), {0, 1, 0}) &&
         dot(towards, camera.position - (camera.position + camera.forward())) > 0,
         "the frame carries its tick, the gusting wind, and the sun and up directions in billboard space");
+    device.expect_lines = true;
     check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, {false, nullptr, true}) == RenderResult::submitted &&
-        device.valid_frame && device.lined_passes, "effect lines are drawn before the particles");
+        device.valid_frame && device.lined_passes, "effect lines are drawn before the particles, the collision boxes after the sky");
+    auto hidden = ExplosionRenderer::FrameOptions{false, nullptr, true};
+    hidden.layer_mask &= ~(1u << layout::props_mask_bit);
+    check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, hidden) == RenderResult::submitted &&
+        device.valid_frame && device.lined_passes, "hidden props: the range without them");
+    device.expect_lines = false;
     device.result = RenderResult::skipped;
     const auto before_skip = rendered.tick();
     check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::skipped &&

@@ -44,7 +44,8 @@ static const uint gusts_mask_bit = 10;
 static const uint shading_mask_bit = 11;
 static const uint shadow_mask_bit = 12;
 static const uint emission_mask_bit = 13;
-static const uint full_mask = 0x3fff;
+static const uint props_mask_bit = 14;
+static const uint full_mask = 0x7fff;
 
 static const uint spawn_burst = 0;
 static const uint spawn_ring = 1;

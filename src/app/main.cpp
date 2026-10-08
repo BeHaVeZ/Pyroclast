@@ -111,19 +111,29 @@ struct Sandbox
     }
     void spawn(const pyroclast::Ray& ray)
     {
-        const auto hit = range.terrain().raycast(ray, std::numeric_limits<float>::infinity());
+        const bool props = ((layer_mask >> pyroclast::particle_layout::props_mask_bit) & 1) != 0;
+        const auto& environment = range.environment();
+        const auto hit = environment.raycast(ray, std::numeric_limits<float>::infinity(), props);
         if (!hit)
         {
-            SDL_Log("No terrain under the cursor.");
+            SDL_Log("Nothing under the cursor.");
             return;
         }
-        const auto normal = range.terrain().normal(hit->x, hit->z);
-        const auto surface = pyroclast::Terrain::surface(hit->x, hit->z);
-        effects.submit({*hit + normal * 0.5f, normal, next_seed++, click_preset, surface});
+        const auto origin = props ? environment.event_origin(*hit) : hit->point + hit->normal * 0.5f;
+        effects.submit({origin, hit->normal, next_seed++, click_preset, hit->surface});
         const auto preset = pyroclast::preset_name(click_preset);
-        const auto ground = pyroclast::surface_name(surface);
-        SDL_Log("Explosion at (%.1f, %.1f, %.1f): %.*s on %.*s.", hit->x, hit->y, hit->z, static_cast<int>(preset.size()), preset.data(),
-            static_cast<int>(ground.size()), ground.data());
+        const auto surface = pyroclast::surface_name(hit->surface);
+        if (hit->prop)
+        {
+            const auto& prop = environment.props()[*hit->prop];
+            const auto material = pyroclast::material_name(prop.material);
+            SDL_Log("Explosion at (%.1f, %.1f, %.1f): %.*s on the %.*s (%.*s: %.*s response).", hit->point.x, hit->point.y,
+                hit->point.z, static_cast<int>(preset.size()), preset.data(), static_cast<int>(prop.name.size()), prop.name.data(),
+                static_cast<int>(material.size()), material.data(), static_cast<int>(surface.size()), surface.data());
+            return;
+        }
+        SDL_Log("Explosion at (%.1f, %.1f, %.1f): %.*s on %.*s.", hit->point.x, hit->point.y, hit->point.z,
+            static_cast<int>(preset.size()), preset.data(), static_cast<int>(surface.size()), surface.data());
     }
 };
 
@@ -617,7 +627,7 @@ int main(int argc, char** argv)
         std::puts(
             "Usage: Pyroclast.exe [--renderer=d3d12|vulkan] [--explosions=1|10|50|100] [--gpu-timing] [--gpu-regions] [--profile-tick=N]\n"
             "                     [--smoke-resolution=full|half] [--ui=on|off] [--gpu-validation]\n"
-            "                     [--capture=FILE.png] [--exit-after=N] [--view=overview|ground|hill|aerial]\n"
+            "                     [--capture=FILE.png] [--exit-after=N] [--view=overview|ground|hill|aerial|range]\n"
             "                     [--scene-format=rgba16f|r11g11b10f|rgba8] [--scenario=NAME] [--effect-lines] [--help]\n"
             "  --renderer=d3d12   Request Direct3D 12 (default).\n"
             "  --renderer=vulkan  Request Vulkan.\n"
@@ -628,16 +638,19 @@ int main(int argc, char** argv)
             "  --gpu-regions      Also time every dispatch, pass and the overlay (serializes Vulkan GPU work).\n"
             "  --capture=FILE.png Write the first frame drawn at the profile tick, then exit (requires --profile-tick).\n"
             "  --exit-after=N     Exit after N submitted frames.\n"
-            "  --view=NAME        Start the camera at a named pose: overview (default), ground, hill or aerial.\n"
+            "  --view=NAME        Start the camera at a named pose: overview (default), ground, hill, aerial or range\n"
+            "                     (the north yard's props).\n"
             "  --scene-format=F   Scene target: rgba16f (default), r11g11b10f, or rgba8 (a cost reference; bands).\n"
             "  --scenario=NAME    Scripted run, one tick per frame, then a JSON summary: single, grid-10, grid-50,\n"
             "                     grid-100, barrage (80 impacts walking across the range) or presets (all seven in a row).\n"
             "  --preset=NAME      small-impact, small-he (default), artillery-he, heavy, fuel-fire, dust-blast or stress-test,\n"
             "                     for the startup group, profiles, scenarios and the first click.\n"
-            "  --disable=LIST     Hide layers, the lights or smoke features: comma-separated dust, smoke, plume, flash,\n"
-            "                     fireball, sparks, debris, lights, curl, vortex, gusts, shading, shadow, emission.\n"
+            "  --disable=LIST     Hide layers, the lights, smoke features or the props: comma-separated dust, smoke, plume,\n"
+            "                     flash, fireball, sparks, debris, lights, curl, vortex, gusts, shading, shadow, emission,\n"
+            "                     props (no props drawn, hit or collided with).\n"
             "  --wind=S,D,G       Wind speed 0-40 m/s, heading in degrees from +x towards +z, gustiness 0-1 (default 3,0,0.3).\n"
-            "  --effect-lines     Start with each effect's origin, normal and reach drawn as lines (L toggles).\n"
+            "  --effect-lines     Start with each effect's origin, normal and reach, and the props' collision boxes,\n"
+            "                     drawn as lines (L toggles).\n"
             "  --gpu-validation   Debug only: D3D12 GPU-based or Vulkan GPU-assisted validation (slow).\n"
             "  --ui=on|off        Dear ImGui overlay (default on, off with --profile-tick). F1 hides it.\n"
             "  --adapter=NAME     Use the GPU whose name contains NAME (case-insensitive); 'warp' is the D3D12 software rasterizer.\n"

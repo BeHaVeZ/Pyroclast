@@ -1,9 +1,12 @@
 """Capture and compare fixed-state frames.
 
-  python tools/captures.py capture --config Debug --out out/baselines/<label> [--views overview,ground,hill,aerial]
-                                   [--presets small-he,artillery-he,...]
+  python tools/captures.py capture --config Debug --out out/baselines/<label> [--views overview,ground,hill,aerial,range]
+                                   [--presets small-he,artillery-he,...] [--args="--disable=props ..."]
   python tools/captures.py compare <dir-a> <dir-b> [--subset] [--max-level 0] [--max-outliers 0] [--min-within-one 1.0]
   python tools/captures.py cross-api <dir> [--max-level 2] [--max-outliers 9] [--min-within-one 0.999]
+
+--args appends flags to every launch without changing the file names, so a capture set taken with a
+feature switched off (--args=--disable=props) can be compared with an older baseline of the same names.
 
 compare requires both directories to hold the same captures unless --subset allows the first to
 hold only some of the second's. cross-api requires every capture to exist for both renderers.
@@ -20,6 +23,7 @@ GPU output; desktop screenshots are not used. In Debug the native validation sum
 import argparse
 import itertools
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -54,6 +58,7 @@ def capture(arguments):
             command.append(f"--view={view}")
         if preset != "small-he":
             command.append(f"--preset={preset}")
+        command += shlex.split(arguments.args)
         try:
             result = subprocess.run(command, capture_output=True, text=True, env=run_environment(), timeout=300)
             log, code = result.stderr, result.returncode
@@ -131,6 +136,7 @@ def main():
     run.add_argument("--ticks", default="0,60,180,480")
     run.add_argument("--views", default="overview", help="camera poses (--view) to capture from")
     run.add_argument("--presets", default="small-he", help="explosion presets (--preset) to capture")
+    run.add_argument("--args", default="", help="flags appended to every launch; not part of the file names")
     for name, default_level, default_outliers, default_fraction in (("compare", 0, 0, 1.0), ("cross-api", 2, 9, 0.999)):
         command = commands.add_parser(name)
         if name == "compare":

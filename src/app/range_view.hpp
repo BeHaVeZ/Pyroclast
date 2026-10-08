@@ -8,5 +8,6 @@ enum class RangeView
     ground,
     hill,
     aerial,
+    range,
 };
 }

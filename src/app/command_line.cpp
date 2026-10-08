@@ -36,7 +36,7 @@ std::optional<std::uint32_t> disable_bit(std::string_view name)
     constexpr std::pair<std::string_view, std::uint32_t> others[] = {{"lights", particle_layout::lights_mask_bit},
         {"curl", particle_layout::curl_mask_bit}, {"vortex", particle_layout::vortex_mask_bit}, {"gusts", particle_layout::gusts_mask_bit},
         {"shading", particle_layout::shading_mask_bit}, {"shadow", particle_layout::shadow_mask_bit},
-        {"emission", particle_layout::emission_mask_bit}};
+        {"emission", particle_layout::emission_mask_bit}, {"props", particle_layout::props_mask_bit}};
     for (const auto& [other, bit] : others)
     {
         if (other == name) return bit;
@@ -144,9 +144,10 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
             else if (value == "ground") result.options.view = RangeView::ground;
             else if (value == "hill") result.options.view = RangeView::hill;
             else if (value == "aerial") result.options.view = RangeView::aerial;
+            else if (value == "range") result.options.view = RangeView::range;
             else
             {
-                result.error = "Expected --view=overview, ground, hill or aerial.";
+                result.error = "Expected --view=overview, ground, hill, aerial or range.";
                 return result;
             }
         }
@@ -396,6 +397,7 @@ const char* view_name(RangeView view)
     case RangeView::ground: return "ground";
     case RangeView::hill: return "hill";
     case RangeView::aerial: return "aerial";
+    case RangeView::range: return "range";
     }
     return "overview";
 }

@@ -162,6 +162,20 @@ std::optional<SurfaceHit> Environment::raycast(const Ray& ray, float max_distanc
     return nearest;
 }
 
+float3 Environment::event_origin(const SurfaceHit& hit) const
+{
+    constexpr float offset = 0.5f;
+    if (!inside(hit.point + hit.normal * offset)) return hit.point + hit.normal * offset;
+    float outside = 0;
+    float within = offset;
+    for (int step = 0; step < 8; ++step)
+    {
+        const float middle = 0.5f * (outside + within);
+        (inside(hit.point + hit.normal * middle) ? within : outside) = middle;
+    }
+    return hit.point + hit.normal * outside;
+}
+
 Environment::Statistics Environment::statistics() const
 {
     using namespace terrain_layout;

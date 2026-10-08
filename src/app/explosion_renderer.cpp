@@ -88,13 +88,17 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     constants.up_billboard = {right.y, up.y, towards_camera.y, 0};
 
     const auto opaque = range.draws();
+    const bool props = ((options.layer_mask >> particle_layout::props_mask_bit) & 1) != 0;
     const Draw present{*present_, {}, {}, 3, 1, "Tonemap"};
     const Draw lines{*lines_, {}, {work.effects}, 32, std::max(work.effects, 1u), "Effect lines"};
     const bool simulate = work.effects != 0;
     const bool show_lines = options.debug_lines && simulate;
-    std::vector<Draw> scene_draws{opaque[0]};
+    std::vector<Draw> scene_draws;
+    if (props) scene_draws.push_back(opaque.props);
+    scene_draws.push_back(opaque.terrain);
     if (simulate) scene_draws.push_back(work.debris);
-    scene_draws.push_back(opaque[1]);
+    scene_draws.push_back(opaque.sky);
+    if (props && options.debug_lines) scene_draws.push_back(opaque.colliders);
     std::vector<Pass> passes{{scene_.get(), {}, scene_draws, "Scene", false, depth_.get(), true}};
     std::vector<Draw> over_scene;
     if (show_lines) over_scene.push_back(lines);

@@ -1,3 +1,4 @@
+#include "app/prop_mesh.hpp"
 #include "simulation/environment.hpp"
 #include "simulation/explosion_scenarios.hpp"
 #include "simulation/wind.hpp"
@@ -445,6 +446,84 @@ int main()
     check(prop_hits > 20 && on_faces, "every prop hit lies on a face of its box, facing the ray");
     check(!environment.inside(down(-2, -50).origin) && environment.inside(boxes[props[crates].first_box].centre) &&
         !environment.inside(float3{-2, 2.4f, -50}), "inside is strict");
+
+    const auto& barrier = boxes[props[prop_index(environment, "jersey barrier")].first_box];
+    const auto end = barrier.centre + from_box(barrier, {barrier.half_extent.x, 0.5f - barrier.centre.y, 0});
+    const auto end_normal = from_box(barrier, {1, 0, 0});
+    const auto origin = environment.event_origin({end, end_normal, SurfaceType::concrete, 0});
+    check(!environment.inside(origin) && dot(origin - end, end_normal) > 0.05f && dot(origin - end, end_normal) <= 0.1f,
+        "an origin that would be inside the next barrier is bisected out of it");
+    const auto open_ground = environment.event_origin({{0, 0, 0}, {0, 1, 0}, SurfaceType::dirt, std::nullopt});
+    check(open_ground.x == 0 && open_ground.y == 0.5f && open_ground.z == 0, "elsewhere the origin is 0.5 m off the surface");
+
+    const auto mesh = build_prop_mesh(environment);
+    check(mesh.size() % 3 == 0 && mesh.size() == 18 * 36 + 7 * 84 + 4 * 132, "a triangle list: 18 boxes, 7 barriers, 4 rocks");
+    std::size_t first = 0;
+    bool closed = true;
+    bool outward = true;
+    bool enclosed = true;
+    bool materials = true;
+    for (const auto& prop : props)
+    {
+        const std::size_t count = prop.shape == PropShape::box ? 36u * prop.box_count : prop.shape == PropShape::jersey_barrier ? 84u : 132u;
+        const std::size_t part = prop.shape == PropShape::box ? 36u : count;
+        for (std::size_t start = first; start < first + count; start += part)
+        {
+            std::vector<std::pair<std::size_t, std::size_t>> edges;
+            const auto same = [&mesh](std::size_t a, std::size_t b) {
+                return std::memcmp(&mesh[a].position, &mesh[b].position, sizeof(float3)) == 0;
+            };
+            for (std::size_t vertex = start; vertex < start + part; vertex += 3)
+            {
+                for (std::size_t corner = 0; corner < 3; ++corner) edges.push_back({vertex + corner, vertex + (corner + 1) % 3});
+            }
+            for (const auto& [from, to] : edges)
+            {
+                std::size_t forward = 0;
+                std::size_t reverse = 0;
+                for (const auto& [a, b] : edges)
+                {
+                    forward += same(a, from) && same(b, to) ? 1 : 0;
+                    reverse += same(a, to) && same(b, from) ? 1 : 0;
+                }
+                closed &= forward == 1 && reverse == 1;
+            }
+        }
+        for (std::size_t vertex = first; vertex < first + count; vertex += 3)
+        {
+            const auto& box = boxes[prop.first_box + (prop.shape == PropShape::box ? (vertex - first) / 36 : 0)];
+            const auto inner = prop.shape == PropShape::jersey_barrier ? float3{box.centre.x, 0.3f, box.centre.z} : box.centre;
+            const auto a = mesh[vertex].position;
+            const auto b = mesh[vertex + 1].position;
+            const auto c = mesh[vertex + 2].position;
+            const auto winding = normalize(cross(b - a, c - a));
+            const auto centroid = (a + b + c) / 3.0f;
+            for (std::size_t corner = 0; corner < 3; ++corner)
+            {
+                const auto& normal = mesh[vertex + corner].normal;
+                outward &= approx(length(normal), 1, 1e-4f) && dot(normal, winding) > 0.999f && dot(normal, centroid - inner) > 0;
+            }
+        }
+        for (std::size_t vertex = first; vertex < first + count; ++vertex)
+        {
+            bool within = false;
+            for (std::uint32_t index = prop.first_box; index < prop.first_box + prop.box_count; ++index)
+            {
+                const auto& box = boxes[index];
+                const auto local = to_box(box, mesh[vertex].position - box.centre);
+                within |= std::abs(local.x) <= box.half_extent.x + 1e-3f && std::abs(local.y) <= box.half_extent.y + 1e-3f &&
+                    std::abs(local.z) <= box.half_extent.z + 1e-3f;
+            }
+            enclosed &= within;
+            materials &= mesh[vertex].material == static_cast<std::uint32_t>(prop.material) && mesh[vertex].shade > 0.3f;
+        }
+        first += count;
+    }
+    check(first == mesh.size(), "the mesh holds every prop in order");
+    check(closed, "every part is closed and consistently wound");
+    check(outward, "unit normals, facing out and matching the winding");
+    check(enclosed, "every vertex lies within its prop's collision boxes");
+    check(materials, "each vertex carries its prop's material and a positive shade");
 
     if (failures == 0) std::puts("environment tests passed");
     return failures == 0 ? 0 : 1;

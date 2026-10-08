@@ -27,3 +27,4 @@ static const uint prop_concrete = 0;
 static const uint prop_rock = 1;
 static const uint prop_wood = 2;
 static const uint prop_metal = 3;
+static const uint prop_vertex_stride = 32;

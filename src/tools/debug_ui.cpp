@@ -153,7 +153,7 @@ ImDrawData* DebugUi::build(const DiagnosticsSnapshot& snapshot, std::vector<UiCo
             {"fireball", 4}, {"sparks", 5}, {"debris", 6}, {"lights", particle_layout::lights_mask_bit},
             {"curl", particle_layout::curl_mask_bit}, {"vortex", particle_layout::vortex_mask_bit}, {"gusts", particle_layout::gusts_mask_bit},
             {"shading", particle_layout::shading_mask_bit}, {"shadow", particle_layout::shadow_mask_bit},
-            {"emission", particle_layout::emission_mask_bit}};
+            {"emission", particle_layout::emission_mask_bit}, {"props", particle_layout::props_mask_bit}};
         for (std::size_t index = 0; index < std::size(toggles); ++index)
         {
             const auto [name, mask_bit] = toggles[index];
@@ -178,9 +178,9 @@ ImDrawData* DebugUi::build(const DiagnosticsSnapshot& snapshot, std::vector<UiCo
         if (ImGui::Button("Step (N)")) commands.push_back({UiCommand::Kind::step});
         ImGui::EndDisabled();
         bool lines = snapshot.debug_lines;
-        if (ImGui::Checkbox("Effect lines (L)", &lines)) commands.push_back({UiCommand::Kind::toggle_debug_lines});
+        if (ImGui::Checkbox("Lines (L)", &lines)) commands.push_back({UiCommand::Kind::toggle_debug_lines});
         ImGui::SameLine();
-        ImGui::TextDisabled("Left click: explosion on the terrain");
+        ImGui::TextDisabled("Left click: explosion on the terrain or a prop");
         ImGui::End();
     }
     ImGui::Render();
