@@ -470,6 +470,37 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
                 return result;
             }
         }
+        else if (option.starts_with("--capture-sequence="))
+        {
+            if (!result.options.capture_sequence.empty())
+            {
+                result.error = "Specify --capture-sequence only once.";
+                return result;
+            }
+            result.options.capture_sequence = option.substr(std::string_view("--capture-sequence=").size());
+            if (result.options.capture_sequence.empty())
+            {
+                result.error = "Expected --capture-sequence=<folder>.";
+                return result;
+            }
+        }
+        else if (option.starts_with("--capture-from=") || option.starts_with("--capture-to="))
+        {
+            const bool from = option.starts_with("--capture-from=");
+            auto& setting = from ? result.options.capture_from : result.options.capture_to;
+            if (setting)
+            {
+                result.error = from ? "Specify --capture-from only once." : "Specify --capture-to only once.";
+                return result;
+            }
+            setting = parse_count(option.substr(option.find('=') + 1), 1, 100'000);
+            if (!setting)
+            {
+                result.error = from ? "Expected --capture-from=T with an integer from 1 to 100000." :
+                    "Expected --capture-to=T with an integer from 1 to 100000.";
+                return result;
+            }
+        }
         else if (option.starts_with("--capture-tick="))
         {
             if (result.options.capture_tick)
@@ -614,6 +645,35 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
     if (!result.options.counter_log.empty() && !profile_specified && !scenario_specified)
     {
         result.error = "--counter-log requires --scenario or --profile-tick.";
+    }
+    const bool sequence = !result.options.capture_sequence.empty();
+    if ((result.options.capture_from || result.options.capture_to) && !sequence)
+    {
+        result.error = "--capture-from and --capture-to require --capture-sequence.";
+    }
+    if (sequence && result.options.capture_from && result.options.capture_to && *result.options.capture_from > *result.options.capture_to)
+    {
+        result.error = "--capture-from must not be later than --capture-to.";
+    }
+    if (sequence && result.options.exit_after)
+    {
+        result.error = "--capture-sequence ends at --capture-to; it cannot be combined with --exit-after.";
+    }
+    if (sequence && (!result.options.counter_log.empty() || result.options.ui.value_or(false)))
+    {
+        result.error = "--capture-sequence prints no record and draws no overlay; it cannot be combined with --counter-log or --ui=on.";
+    }
+    if (sequence && profile_specified)
+    {
+        result.error = "--capture-sequence cannot be combined with --profile-tick: a frozen run draws one state.";
+    }
+    if (sequence && (capture_specified || result.options.capture_tick))
+    {
+        result.error = "Give --capture-sequence or --capture, not both.";
+    }
+    if (sequence && !scenario_specified)
+    {
+        result.error = "--capture-sequence requires --scenario or --benchmark.";
     }
     return result;
 }

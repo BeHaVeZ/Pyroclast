@@ -606,7 +606,9 @@ memory; M11 measured plain device-local memory as equally fast on the RTX 4090.)
 
 `--capture=FILE.png` (requires `--profile-tick`, or `--scenario` with `--capture-tick=N`) writes the first
 frame drawn at the profile tick, or the scenario frame that draws tick N, copied on the GPU before Present,
-then exits. `--exit-after=N` ends any run after N submitted
+then exits. `--capture-sequence=DIR` (with `--scenario` or `--benchmark`, optionally `--capture-from=T` and
+`--capture-to=T`) writes every frame of a scripted run as `DIR/tick-NNNNNN.png` instead, for videos; such a run prints
+no record. `--exit-after=N` ends any run after N submitted
 frames. The tools in `tools/` build on these:
 
 ```powershell

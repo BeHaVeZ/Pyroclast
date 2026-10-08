@@ -31,6 +31,9 @@ struct ApplicationOptions
     std::optional<std::uint32_t> exit_after;
     std::string capture_path;
     std::optional<std::uint32_t> capture_tick;
+    std::string capture_sequence;
+    std::optional<std::uint32_t> capture_from;
+    std::optional<std::uint32_t> capture_to;
     RangeView view = RangeView::overview;
     std::optional<std::array<float, 6>> camera;
     SceneFormat scene_format = SceneFormat::rgba16f;

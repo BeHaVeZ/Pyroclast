@@ -15,6 +15,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <limits>
 #include <memory>
@@ -25,7 +26,7 @@
 
 namespace
 {
-int save_capture(pyroclast::GraphicsDevice& device, const std::string& path)
+int save_capture(pyroclast::GraphicsDevice& device, const std::string& path, bool log = true)
 {
     auto image = device.read_capture();
     if (!image)
@@ -41,8 +42,26 @@ int save_capture(pyroclast::GraphicsDevice& device, const std::string& path)
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Save capture '%s' failed: %s", path.c_str(), SDL_GetError());
         return 1;
     }
-    SDL_Log("Captured frame: %s (%ux%u).", path.c_str(), image->width, image->height);
+    if (log) SDL_Log("Captured frame: %s (%ux%u).", path.c_str(), image->width, image->height);
     return 0;
+}
+
+bool prepare_sequence_folder(const std::string& path)
+{
+    std::error_code error;
+    const std::filesystem::path folder(path);
+    if (std::filesystem::exists(folder, error) && !std::filesystem::is_empty(folder, error))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Capture sequence folder '%s' is not empty.", path.c_str());
+        return false;
+    }
+    std::filesystem::create_directories(folder, error);
+    if (error)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Create capture sequence folder '%s' failed: %s", path.c_str(), error.message().c_str());
+        return false;
+    }
+    return true;
 }
 
 struct SdlCleanup final
@@ -429,6 +448,11 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
     std::vector<pyroclast::UiCommand> commands;
     auto previous_time = SDL_GetPerformanceCounter();
     const auto run_start = previous_time;
+    const std::uint32_t sequence_first = options.capture_from.value_or(1);
+    const std::uint32_t sequence_last = scenario ? options.capture_to.value_or(scenario->script().duration_ticks) : 0;
+    std::uint32_t sequence_frames = 0;
+    int sequence_width = 0;
+    int sequence_height = 0;
     const double counter_milliseconds = 1000.0 / static_cast<double>(SDL_GetPerformanceFrequency());
     std::optional<pyroclast::GpuMemory> memory_start;
     std::optional<float> display_hz;
@@ -580,8 +604,10 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                 const auto dropped_before = sandbox.effects.dropped();
                 const auto evicted_before = sandbox.effects.evicted();
                 const bool warming = scenario && scenario->warming();
-                const bool capture = !options.capture_path.empty() && !warming &&
-                    (options.capture_tick ? demo.tick() + 1 == *options.capture_tick : !demo.has_pending_steps());
+                const bool sequence_frame = !options.capture_sequence.empty() && !warming && demo.tick() + 1 >= sequence_first &&
+                    demo.tick() + 1 <= sequence_last;
+                const bool capture = sequence_frame || (!options.capture_path.empty() && !warming &&
+                    (options.capture_tick ? demo.tick() + 1 == *options.capture_tick : !demo.has_pending_steps()));
                 const auto submit_begin = SDL_GetPerformanceCounter();
                 const auto result = sandbox.renderer.render(renderer, demo, sandbox.effects, sandbox.range, camera, width, height, elapsed,
                     {capture, overlay, sandbox.views, sandbox.layer_mask, sandbox.wind, sandbox.marks, sandbox.scalability, sandbox.counters});
@@ -653,7 +679,30 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     if (!profile_tick || !demo.has_pending_steps())
                         baseline.record(milliseconds, renderer.completed_gpu_timings(), sandbox.effects.active().empty() ?
                             std::optional<std::uint32_t>(0) : sandbox.counters ? std::optional(sandbox.counters->alive) : std::nullopt);
-                    if (capture) return save_capture(renderer, options.capture_path);
+                    if (sequence_frame)
+                    {
+                        if (sequence_frames == 0)
+                        {
+                            sequence_width = width;
+                            sequence_height = height;
+                        }
+                        else if (width != sequence_width || height != sequence_height)
+                        {
+                            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The window changed size during the capture sequence.");
+                            return 1;
+                        }
+                        char name[32];
+                        std::snprintf(name, sizeof(name), "tick-%06u.png", demo.tick());
+                        if (save_capture(renderer, (std::filesystem::path(options.capture_sequence) / name).string(), false) != 0) return 1;
+                        ++sequence_frames;
+                        if (demo.tick() >= sequence_last)
+                        {
+                            SDL_Log("Capture sequence: %u frames, ticks %u-%u, in %s.", sequence_frames, sequence_first, sequence_last,
+                                options.capture_sequence.c_str());
+                            return 0;
+                        }
+                    }
+                    else if (capture) return save_capture(renderer, options.capture_path);
                     if (scenario && options.capture_tick && scenario->finished(sandbox))
                     {
                         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Scenario %s ended before tick %u.", options.scenario.c_str(),
@@ -713,6 +762,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
             "SDL initialization failed: %s", SDL_GetError());
         return 1;
     }
+    if (!options.capture_sequence.empty() && !prepare_sequence_folder(options.capture_sequence)) return 1;
 
     const std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> window(
         SDL_CreateWindow("Pyroclast", 1280, 720, SDL_WINDOW_RESIZABLE |
@@ -742,7 +792,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
     const pyroclast::GraphicsDeviceOptions device_options{
         .gpu_timing = options.gpu_timing || measured || ui != nullptr,
         .vsync = !measured,
-        .capture = !options.capture_path.empty(),
+        .capture = !options.capture_path.empty() || !options.capture_sequence.empty(),
         .gpu_validation = options.gpu_validation,
         .gpu_regions = options.gpu_regions,
         .adapter = options.adapter,
@@ -791,6 +841,19 @@ int run_application(const pyroclast::ApplicationOptions& options)
         }
         SDL_Log("Scenario %s: %zu events over %u ticks, one tick per frame; VSync off; timestamps on.", options.scenario.c_str(),
             script->events.size(), script->duration_ticks);
+        if (!options.capture_sequence.empty())
+        {
+            const auto first = options.capture_from.value_or(1);
+            const auto last = options.capture_to.value_or(script->duration_ticks);
+            if (last > script->duration_ticks || first > last)
+            {
+                SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Scenario %s runs %u ticks; the capture sequence's ticks %u-%u are outside it.",
+                    options.scenario.c_str(), script->duration_ticks, first, last);
+                return 1;
+            }
+            SDL_Log("Capture sequence: ticks %u-%u, %u frames, to %s; every captured frame waits for the GPU and writes a PNG, so this "
+                "run prints no record.", first, last, last - first + 1, options.capture_sequence.c_str());
+        }
         const bool benchmark = !options.benchmark.empty();
         scripted_frames = script->duration_ticks + (benchmark ? pyroclast::benchmark_warmup_frames : 0);
         if (benchmark)
@@ -887,6 +950,8 @@ int main(int argc, char** argv)
             "  --capture=FILE.png Write the first frame drawn at the profile tick, then exit (requires --profile-tick,\n"
             "                     or --scenario with --capture-tick).\n"
             "  --capture-tick=N   With --scenario and --capture: capture the frame that draws tick N, then exit.\n"
+            "  --capture-sequence=DIR  With --scenario or --benchmark: write every frame as DIR/tick-NNNNNN.png (DIR new or\n"
+            "                     empty), then exit without a record; --capture-from=T and --capture-to=T bound the ticks.\n"
             "  --exit-after=N     Exit after N submitted frames.\n"
             "  --view=NAME        Start the camera at a named pose: overview (default), ground, hill, aerial, range\n"
             "                     (the north yard's props) or yard (close to its walls).\n"
@@ -914,7 +979,7 @@ int main(int argc, char** argv)
             "                     boxes), regions (where the showcase places events, F8), wind (wind arrow, F9), or all.\n"
             "                     Not with --effect-lines or --scenario.\n"
             "  --smoke-lod=P      Thin smoke particles larger than P pixels in radius (0 < P <= 4096), fading every other one\n"
-            "                     out by 2P and compensating its neighbour (docs/optimizations/03).\n"
+            "                     out by 2P and compensating its neighbour.\n"
             "  --faint-floor=F    Do not draw smoke particles whose opacity is below F (0-1).\n"
             "  --coverage         Count each listed particle's screen coverage and whether it is off screen into the\n"
             "                     counter record (records gain \"coverage\"; counter logs gain its columns).\n"

@@ -362,6 +362,40 @@ int main()
         ++failures;
     }
 
+    {
+        const auto parsed = [](std::initializer_list<const char*> arguments) {
+            return pyroclast::parse_command_line(std::span(arguments.begin(), arguments.size()));
+        };
+        const auto plain = parsed({"--scenario=range", "--capture-sequence=d"});
+        const auto ranged = parsed({"--scenario=range", "--capture-sequence=d", "--capture-from=45", "--capture-to=360"});
+        const auto benchmark = parsed({"--benchmark=smoke-field", "--capture-sequence=d", "--capture-from=360", "--capture-to=360", "--ui=off"});
+        const bool accepted = plain.error.empty() && plain.options.capture_sequence == "d" && !plain.options.capture_from &&
+            !plain.options.capture_to && ranged.error.empty() && ranged.options.capture_from == 45u && ranged.options.capture_to == 360u &&
+            benchmark.error.empty() && benchmark.options.capture_from == 360u && pyroclast::parse_command_line({}).options.capture_sequence.empty();
+        const auto refused = [&parsed](std::initializer_list<const char*> arguments, std::string_view message) {
+            return parsed(arguments).error.find(message) != std::string::npos;
+        };
+        const bool rules = refused({"--capture-sequence=d"}, "requires --scenario or --benchmark") &&
+            refused({"--scenario=range", "--capture-sequence=d", "--capture=a.png", "--capture-tick=5"}, "not both") &&
+            refused({"--scenario=range", "--capture-sequence=d", "--profile-tick=10"}, "--profile-tick") &&
+            refused({"--scenario=range", "--capture-sequence=d", "--counter-log=a.csv"}, "--counter-log or --ui=on") &&
+            refused({"--scenario=range", "--capture-sequence=d", "--ui=on"}, "--counter-log or --ui=on") &&
+            refused({"--scenario=range", "--capture-sequence=d", "--exit-after=10"}, "--exit-after") &&
+            refused({"--scenario=range", "--capture-from=5"}, "require --capture-sequence") &&
+            refused({"--scenario=range", "--capture-to=5"}, "require --capture-sequence") &&
+            refused({"--scenario=range", "--capture-sequence=d", "--capture-from=50", "--capture-to=40"}, "not be later") &&
+            refused({"--scenario=range", "--capture-sequence=d", "--capture-from=0"}, "Expected --capture-from") &&
+            refused({"--scenario=range", "--capture-sequence=d", "--capture-to=100001"}, "Expected --capture-to") &&
+            refused({"--scenario=range", "--capture-sequence="}, "Expected --capture-sequence") &&
+            refused({"--scenario=range", "--capture-sequence=d", "--capture-sequence=e"}, "only once") &&
+            refused({"--scenario=range", "--capture-sequence=d", "--capture-from=1", "--capture-from=2"}, "only once");
+        if (!accepted || !rules)
+        {
+            std::fprintf(stderr, "FAIL: --capture-sequence rules (accepted %d, rules %d)\n", accepted, rules);
+            ++failures;
+        }
+    }
+
     bool tables = true;
     for (const auto& workload : pyroclast::benchmark_workloads)
     {
