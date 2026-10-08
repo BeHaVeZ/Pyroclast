@@ -46,16 +46,45 @@ int save_capture(pyroclast::GraphicsDevice& device, const std::string& path, boo
     return 0;
 }
 
-bool prepare_sequence_folder(const std::string& path)
+std::filesystem::path sequence_folder(const std::string& path)
+{
+    return std::filesystem::path(std::u8string(path.begin(), path.end()));
+}
+
+bool check_sequence_folder(const std::string& path)
 {
     std::error_code error;
-    const std::filesystem::path folder(path);
-    if (std::filesystem::exists(folder, error) && !std::filesystem::is_empty(folder, error))
+    const auto folder = sequence_folder(path);
+    const auto status = std::filesystem::status(folder, error);
+    if (status.type() == std::filesystem::file_type::none)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Read capture sequence folder '%s' failed: %s", path.c_str(), error.message().c_str());
+        return false;
+    }
+    if (!std::filesystem::exists(status)) return true;
+    if (!std::filesystem::is_directory(status))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Capture sequence path '%s' is not a folder.", path.c_str());
+        return false;
+    }
+    const bool empty = std::filesystem::is_empty(folder, error);
+    if (error)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Read capture sequence folder '%s' failed: %s", path.c_str(), error.message().c_str());
+        return false;
+    }
+    if (!empty)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Capture sequence folder '%s' is not empty.", path.c_str());
         return false;
     }
-    std::filesystem::create_directories(folder, error);
+    return true;
+}
+
+bool create_sequence_folder(const std::string& path)
+{
+    std::error_code error;
+    std::filesystem::create_directories(sequence_folder(path), error);
     if (error)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Create capture sequence folder '%s' failed: %s", path.c_str(), error.message().c_str());
@@ -654,6 +683,11 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     const double milliseconds = 1000.0 * static_cast<double>(SDL_GetPerformanceCounter() - start) /
                         static_cast<double>(SDL_GetPerformanceFrequency());
                     if (counter_log) counter_log->set_cpu_ms(milliseconds);
+                    if (!options.capture_sequence.empty() && sequence_width == 0)
+                    {
+                        sequence_width = width;
+                        sequence_height = height;
+                    }
                     if (warming)
                     {
                         if (scenario->end_warmup_frame())
@@ -681,19 +715,14 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                             std::optional<std::uint32_t>(0) : sandbox.counters ? std::optional(sandbox.counters->alive) : std::nullopt);
                     if (sequence_frame)
                     {
-                        if (sequence_frames == 0)
-                        {
-                            sequence_width = width;
-                            sequence_height = height;
-                        }
-                        else if (width != sequence_width || height != sequence_height)
+                        if (width != sequence_width || height != sequence_height)
                         {
                             SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The window changed size during the capture sequence.");
                             return 1;
                         }
                         char name[32];
-                        std::snprintf(name, sizeof(name), "tick-%06u.png", demo.tick());
-                        if (save_capture(renderer, (std::filesystem::path(options.capture_sequence) / name).string(), false) != 0) return 1;
+                        std::snprintf(name, sizeof(name), "/tick-%06u.png", demo.tick());
+                        if (save_capture(renderer, options.capture_sequence + name, false) != 0) return 1;
                         ++sequence_frames;
                         if (demo.tick() >= sequence_last)
                         {
@@ -762,7 +791,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
             "SDL initialization failed: %s", SDL_GetError());
         return 1;
     }
-    if (!options.capture_sequence.empty() && !prepare_sequence_folder(options.capture_sequence)) return 1;
+    if (!options.capture_sequence.empty() && !check_sequence_folder(options.capture_sequence)) return 1;
 
     const std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> window(
         SDL_CreateWindow("Pyroclast", 1280, 720, SDL_WINDOW_RESIZABLE |
@@ -889,6 +918,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
         counter_log->reserve(std::max({scripted_frames, static_cast<std::size_t>(options.exit_after.value_or(0)),
             options.profile_tick ? static_cast<std::size_t>(*options.profile_tick) + 720 : std::size_t{0}}));
     }
+    if (!options.capture_sequence.empty() && !create_sequence_folder(options.capture_sequence)) return 1;
     int exit_code = run_event_loop(window.get(), device, *sandbox, ui.get(), options, std::move(scenario), counter_log ? &*counter_log : nullptr);
     if (counter_log && !options.counter_log.empty())
     {
@@ -959,8 +989,8 @@ int main(int argc, char** argv)
             "  --scene-format=F   Scene target: rgba16f (default), r11g11b10f, or rgba8 (a cost reference; bands).\n"
             "  --scenario=NAME    Scripted run, one tick per frame, then a JSON summary: single, grid-10, grid-50,\n"
             "                     grid-100, barrage (80 impacts walking across the range), presets (all seven in a row)\n"
-            "                     range (seven presets among the north yard's props), bombardment (400 impacts\n"
-            "                     within 30 m, 20 a second: more than the 128 effect slots hold) or accumulation\n"
+            "                     range (seven explosions of six presets among the north yard's props), bombardment (400\n"
+            "                     impacts within 30 m, 20 a second: more than the 128 effect slots hold) or accumulation\n"
             "                     (impacts within 30 m as often as the 128 slots allow, for 30 s of steady state).\n"
             "  --benchmark=NAME   A named scenario, preset and pose, after 120 warm-up frames at tick 0: single,\n"
             "                     simultaneous-10, -50 or -100 (small-he groups), sustained-barrage (artillery-he),\n"
@@ -980,13 +1010,14 @@ int main(int argc, char** argv)
             "                     Not with --effect-lines or --scenario.\n"
             "  --smoke-lod=P      Thin smoke particles larger than P pixels in radius (0 < P <= 4096), fading every other one\n"
             "                     out by 2P and compensating its neighbour.\n"
-            "  --faint-floor=F    Do not draw smoke particles whose opacity is below F (0-1).\n"
+            "  --faint-floor=F    Do not draw smoke particles whose opacity is below F (0 < F < 1).\n"
             "  --coverage         Count each listed particle's screen coverage and whether it is off screen into the\n"
             "                     counter record (records gain \"coverage\"; counter logs gain its columns).\n"
             "  --counter-log=FILE With --scenario or --profile-tick: write a CSV row per frame at exit (tick, steps, effects\n"
             "                     started and dropped, the frame's live counts and GPU intervals).\n"
             "  --gpu-validation   Debug only: D3D12 GPU-based or Vulkan GPU-assisted validation (slow).\n"
-            "  --ui=on|off        Dear ImGui overlay (default on, off with --profile-tick). F1 hides it.\n"
+            "  --ui=on|off        Dear ImGui overlay (default on; off with --profile-tick, --scenario or --benchmark). F1\n"
+            "                     hides it.\n"
             "  --adapter=NAME     Use the GPU whose name contains NAME (case-insensitive); 'warp' is the D3D12 software rasterizer.\n"
             "  --help             Print usage and exit.\n"
             "Both renderers run the same GPU explosion effect.");
