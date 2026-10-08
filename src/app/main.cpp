@@ -414,7 +414,12 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
         if (!options.empty()) text += (text.empty() ? "" : ",") + std::string("\"scalability\":{") + options + "}";
         return text;
     };
-    baseline.set_extra(scalability_json);
+    const auto record_json = [&scalability_json, &renderer]() {
+        const auto mode = renderer.present_info().mode;
+        auto text = scalability_json();
+        return text + (text.empty() ? "" : ",") + "\"present_mode\":\"" + std::string(mode) + "\"";
+    };
+    baseline.set_extra(record_json);
     std::vector<pyroclast::UiCommand> commands;
     auto previous_time = SDL_GetPerformanceCounter();
     const auto run_start = previous_time;
@@ -654,7 +659,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                         {
                             if (scenario->benchmark().empty())
                             {
-                                return scenario->report(sandbox, options, renderer.adapter_name(), width, height, ui != nullptr, scalability_json());
+                                return scenario->report(sandbox, options, renderer.adapter_name(), width, height, ui != nullptr, record_json());
                             }
                             const auto summary = counter_log->summary();
                             if (counter_log->mismatches() != 0) scenario->invalidate("counter log samples did not match their frames");

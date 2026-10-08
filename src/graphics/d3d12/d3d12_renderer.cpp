@@ -380,7 +380,7 @@ RenderResult D3D12Renderer::render(const Frame& frame)
     ID3D12CommandList* lists[] = {command_list_.Get()};
     queue_->ExecuteCommandLists(1, lists);
     const auto present_begin = SDL_GetPerformanceCounter();
-    const HRESULT present_result = swapchain_->Present(vsync_ ? 1 : 0, 0);
+    const HRESULT present_result = swapchain_->Present(vsync_ ? 1 : 0, tearing_ ? DXGI_PRESENT_ALLOW_TEARING : 0);
     const auto present_end = SDL_GetPerformanceCounter();
     const double milliseconds = 1000.0 / static_cast<double>(SDL_GetPerformanceFrequency());
     submit_timings_ = {static_cast<double>(wait_end - wait_begin) * milliseconds, static_cast<double>(present_end - present_begin) * milliseconds};
@@ -416,7 +416,7 @@ bool D3D12Renderer::resize(int width, int height)
     }
     for (auto& buffer : backbuffers_) buffer.Reset();
     if (!check(swapchain_->ResizeBuffers(backbuffer_count, static_cast<UINT>(width),
-        static_cast<UINT>(height), backbuffer_format, 0), "Resize swapchain"))
+        static_cast<UINT>(height), backbuffer_format, tearing_ ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0), "Resize swapchain"))
     {
         return false;
     }

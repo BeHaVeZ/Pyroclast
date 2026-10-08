@@ -152,6 +152,11 @@ bool D3D12Renderer::create_swapchain(SDL_Window* window)
     description.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     description.BufferCount = backbuffer_count;
     description.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+    BOOL allow_tearing = FALSE;
+    tearing_ = !vsync_ && SUCCEEDED(factory_->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &allow_tearing, sizeof(allow_tearing))) &&
+        allow_tearing;
+    if (!vsync_ && !tearing_) SDL_Log("D3D12 tearing unsupported; presenting at interval 0 without tearing.");
+    description.Flags = tearing_ ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0;
 
     ComPtr<IDXGISwapChain1> swapchain;
     if (!check(factory_->CreateSwapChainForHwnd(queue_.Get(), hwnd, &description,

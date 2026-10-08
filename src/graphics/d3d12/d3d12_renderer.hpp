@@ -42,7 +42,7 @@ public:
     SubmitTimings last_submit_timings() const override { return submit_timings_; }
     PresentInfo present_info() const override
     {
-        return {vsync_ ? "flip-discard interval 1" : "flip-discard interval 0", backbuffer_count};
+        return {vsync_ ? "flip-discard interval 1" : tearing_ ? "flip-discard interval 0 tearing" : "flip-discard interval 0", backbuffer_count};
     }
     std::optional<GpuMemory> memory_usage() const override;
 
@@ -149,6 +149,7 @@ private:
     int height_ = 0;
     bool occluded_ = false;
     bool vsync_ = true;
+    bool tearing_ = false;
     Microsoft::WRL::ComPtr<ID3D12RootSignature> root_signature_;
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> shader_heap_;
     UINT shader_descriptor_stride_ = 0;

@@ -102,7 +102,7 @@ BENCHMARK_PREFIX = "benchmark:"
 FIELDS = ["renderer", "smoke", "explosions", "tick", "scenario", "run", "build", "args", "scene_format", "status",
           *METRICS, "gpu_draw_p95", "checksum"]
 # Appended after the original columns so older readers keep working.
-NEW_FIELDS = ["half_frames", "switches", "effects_evicted", "coverage_smoke", "offscreen", "scalability", "smoke_arg"]
+NEW_FIELDS = ["half_frames", "switches", "effects_evicted", "coverage_smoke", "offscreen", "scalability", "present_mode", "smoke_arg"]
 
 
 def is_scenario(case):
@@ -156,7 +156,8 @@ def record_values(record, scenario):
               "effects_evicted": record.get("effects_evicted"),
               "coverage_smoke": smoke_coverage.get("average") if isinstance(smoke_coverage, dict) else smoke_coverage,
               "offscreen": coverage.get("offscreen", record.get("offscreen")),
-              "scalability": json.dumps(record["scalability"], sort_keys=True, separators=(",", ":")) if "scalability" in record else None}
+              "scalability": json.dumps(record["scalability"], sort_keys=True, separators=(",", ":")) if "scalability" in record else None,
+              "present_mode": record.get("present_mode")}
     if scenario:
         draw = gpu["draw"]
         values.update(gpu_draw=draw["average"], gpu_draw_p95=draw["p95"], gpu_draw_p99=draw.get("p99"),
