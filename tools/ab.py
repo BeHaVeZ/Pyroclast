@@ -208,8 +208,8 @@ def launch(command, scenario, attempts=3, timeout=600, log=None, invalidated=Non
         write_log(log, result.stderr, result.stdout)
         records = [line for line in result.stdout.splitlines() if line.startswith("{")]
         record = json.loads(records[-1]) if records else {}
-        invalidated = scenario and record.get("valid") is False
-        if result.returncode != 0 and not invalidated:
+        marked_invalid = scenario and record.get("valid") is False
+        if result.returncode != 0 and not marked_invalid:
             return f"failed: exit {result.returncode}", None, record or None
         if scenario and record.get("valid") and (record.get("gpu_ms") or {}).get("draw"):
             return "ok", record_values(record, True), record

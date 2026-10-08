@@ -129,6 +129,20 @@ class RunTests(unittest.TestCase):
 
 
 class AbTests(unittest.TestCase):
+    def test_launch_keeps_invalidated_attempts(self):
+        record = json.dumps({"valid": False, "invalid_reason": "the window was minimized, unfocused or resized"})
+        command = [sys.executable, "-c", f"import sys; print({record!r}); sys.exit(1)"]
+        attempts = []
+        with contextlib.redirect_stdout(io.StringIO()):
+            status, values, last = ab.launch(command, True, attempts=3, timeout=60, invalidated=attempts)
+        self.assertEqual(status, "failed: no valid sample")
+        self.assertIsNone(values)
+        self.assertEqual(last["invalid_reason"], "the window was minimized, unfocused or resized")
+        self.assertEqual([entry["attempt"] for entry in attempts], [1, 2, 3])
+        self.assertTrue(all(entry["invalid_reason"] == last["invalid_reason"] and entry["returncode"] == 1 for entry in attempts))
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(ab.launch(command, True, attempts=2, timeout=60)[0], "failed: no valid sample")
+
     def test_benchmark_case_command(self):
         command = ab.command_line("bin", ("vulkan", "full", "benchmark:smoke-field", None), ["--gpu-regions"], counter_log="x.csv")
         self.assertEqual(command[1:], ["--renderer=vulkan", "--smoke-resolution=full", "--benchmark=smoke-field", "--gpu-regions",
