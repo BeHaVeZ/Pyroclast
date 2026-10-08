@@ -24,6 +24,20 @@ std::vector<ExplosionEvent> group_events(const Terrain& terrain, std::uint32_t c
     return events;
 }
 
+namespace
+{
+std::uint32_t longest_life(ExplosionPreset preset)
+{
+    return std::max(effect_ticks(preset, SurfaceType::dirt), effect_ticks(preset, SurfaceType::concrete));
+}
+}
+
+std::uint32_t accumulation_interval(ExplosionPreset preset)
+{
+    constexpr std::uint32_t slots = particle_layout::maximum_effects;
+    return (longest_life(preset) + slots - 1) / slots;
+}
+
 std::optional<Scenario> make_scenario(std::string_view name, const Environment& environment, ExplosionPreset preset)
 {
     if (!is_scenario_name(name)) return std::nullopt;
@@ -72,6 +86,16 @@ std::optional<Scenario> make_scenario(std::string_view name, const Environment& 
         {
             const auto offset = bombardment_offset(8000, index, 30);
             scenario.events.push_back({index * interval, ground_event(terrain, offset.x, offset.y, 4000 + index, preset)});
+        }
+    }
+    else if (name == "accumulation")
+    {
+        const auto interval = accumulation_interval(preset);
+        const auto impacts = (longest_life(preset) + accumulation_hold_ticks + interval - 1) / interval;
+        for (std::uint32_t index = 0; index < impacts; ++index)
+        {
+            const auto offset = bombardment_offset(accumulation_key, index, 30);
+            scenario.events.push_back({index * interval, ground_event(terrain, offset.x, offset.y, accumulation_first_seed + index, preset)});
         }
     }
     else if (name == "barrage")

@@ -369,7 +369,7 @@ int main()
     {
         for (const auto& event : group_events(environment.terrain(), count)) measure(event);
     }
-    for (const auto name : {"single", "grid-10", "grid-50", "grid-100", "barrage", "presets", "bombardment"})
+    for (const auto name : {"single", "grid-10", "grid-50", "grid-100", "barrage", "presets", "bombardment", "accumulation"})
     {
         for (const auto& scripted : make_scenario(name, environment)->events) measure(scripted.event);
     }
@@ -392,6 +392,7 @@ int main()
         scenario_fingerprint("barrage") == 0xa86c4b90ec96e8f4ull && scenario_fingerprint("presets") == 0x42f709503bf0f6c7ull,
         "the scripted event lists are M16's");
     check(scenario_fingerprint("bombardment") == 0x748a20614bf24c7eull, "the bombardment's event list is pinned");
+    check(scenario_fingerprint("accumulation") == 0xf69bd9dfcedbf4e7ull, "the accumulation's event list is pinned");
     check(fingerprint(group_events(environment.terrain(), 100), {}) == 0x9810dcdfc42fd365ull,
         "the startup group is M16's");
 

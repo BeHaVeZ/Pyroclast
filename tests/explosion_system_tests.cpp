@@ -218,6 +218,32 @@ int main()
         const auto evicting = windows(ExplosionPreset::heavy, SlotPolicy::evict_oldest, name);
         check(dropping == evicting && std::get<0>(dropping) == 0 && std::get<1>(evicting) == 0, "unsaturated scripts ignore the slot policy");
     }
+    bool accumulates = true;
+    for (std::uint32_t index = 0; index < preset_count; ++index)
+    {
+        const auto preset = static_cast<ExplosionPreset>(index);
+        const auto script = make_scenario("accumulation", environment, preset);
+        const auto life = std::max(effect_ticks(preset, SurfaceType::dirt), effect_ticks(preset, SurfaceType::concrete));
+        const auto interval = accumulation_interval(preset);
+        const auto impacts = (life + accumulation_hold_ticks + interval - 1) / interval;
+        ExplosionSystem accumulating(128);
+        std::size_t submitted = 0;
+        std::size_t most = 0;
+        for (std::uint32_t tick = 0; tick < script->duration_ticks; ++tick)
+        {
+            while (submitted < script->events.size() && script->events[submitted].tick <= tick) accumulating.submit(script->events[submitted++].event);
+            accumulating.start(tick);
+            most = std::max(most, accumulating.active().size());
+        }
+        const auto dropping = windows(preset, SlotPolicy::drop_new, "accumulation");
+        const auto evicting = windows(preset, SlotPolicy::evict_oldest, "accumulation");
+        accumulates &= script->events.size() == impacts && accumulating.started() == impacts && accumulating.dropped() == 0 &&
+            most == (life + interval - 1) / interval && most <= 128 && script->duration_ticks == (impacts - 1) * interval + life &&
+            dropping == evicting && std::get<1>(evicting) == 0;
+        std::printf("accumulation %s: life %u, every %u ticks, %u impacts, peak %zu effects, %u ticks\n", preset_name(preset).data(), life,
+            interval, impacts, most, script->duration_ticks);
+    }
+    check(accumulates, "accumulation never fills more slots than its interval allows, under either policy");
     ExplosionSystem crowded(128);
     for (std::uint32_t index = 0; index < 129; ++index) crowded.submit({{static_cast<float>(index), 0, 0}, {0, 1, 0}, index, ExplosionPreset::small_he, SurfaceType::dirt});
     crowded.start(0, SlotPolicy::evict_oldest);
