@@ -64,6 +64,7 @@ bool simulate(uint slot, uint local, uint record)
     uint mask = frame.light_state.y;
     bool shown = mask_enabled(mask, props_mask_bit);
     bool props = shown && mask_enabled(mask, collision_mask_bit);
+    bool deflect = props && layer.drag > 0 && mask_enabled(mask, deflection_mask_bit);
     bool ring = layer.spawn == spawn_ring;
     if (generation != state.y)
     {
@@ -120,6 +121,7 @@ bool simulate(uint slot, uint local, uint record)
                 float3 air = wind_at(position.y - terrain);
                 if (vortex) air += vortex_flow(flow, effect_origin, position.xyz, seconds);
                 if (curl) air += curl_noise(position.xyz * 0.125 - float3(0, seconds * 0.2, 0)) * (layer.turbulence * exp(-0.3 * position.w));
+                if (deflect && any(near != 0)) air = deflect_air(environment, near, position.xyz, radius, air);
                 velocity.xyz += (air - velocity.xyz) * (layer.drag * dt);
             }
             if (layer.buoyancy > 0) velocity.y += layer.buoyancy * layer_temperature(layer, position.w) * dt;

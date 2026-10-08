@@ -303,6 +303,7 @@ int main()
 
     static_assert(layout::prop_contact_limit + layout::prop_step_limit / 2 <= layout::environment_reach);
     static_assert(layout::prop_contact_limit + layout::prop_step_limit <= layout::environment_reach);
+    static_assert(layout::prop_contact_limit + layout::deflection_band <= layout::environment_reach);
     float curl = 0;
     for (int i = 0; i < 40; ++i)
     {

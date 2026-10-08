@@ -29,3 +29,5 @@ static const uint prop_wood = 2;
 static const uint prop_metal = 3;
 static const uint prop_vertex_stride = 32;
 static const float prop_spawn_backoff = 0.05f;
+static const float deflection_band = 1.5f;
+static const float deflection_lift = 0.5f;

@@ -70,6 +70,8 @@ int main()
             false, pyroclast::ExplosionPreset::small_he, pyroclast::particle_layout::full_mask & ~(1u << 14)},
         {"disable collision", {"--disable=collision"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {}, {}, {},
             false, pyroclast::ExplosionPreset::small_he, pyroclast::particle_layout::full_mask & ~(1u << 15)},
+        {"disable the props' interaction", {"--disable=props,collision,deflection"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false,
+            {}, false, {}, {}, {}, {}, false, pyroclast::ExplosionPreset::small_he, 0x3fffu},
         {"wind", {"--wind=6.5,-45,0.8"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {}, {}, {}, false,
             pyroclast::ExplosionPreset::small_he, pyroclast::particle_layout::full_mask, {6.5f, -45.0f, 0.8f}},
         {"wind too strong", {"--wind=41,0,0"}, d3d12, false, "Expected --wind"},

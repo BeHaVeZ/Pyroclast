@@ -233,3 +233,42 @@ float3 prop_clip_spawn(ByteAddressBuffer environment, float3 origin, float3 spaw
     }
     return earliest >= 1 ? spawn : origin + offset * max(earliest - prop_spawn_backoff / distance, 0);
 }
+
+float3 deflect_air(ByteAddressBuffer environment, uint2 boxes, float3 position, float radius, float3 air)
+{
+    for (uint word = 0; word < 2; ++word)
+    {
+        uint bits = word == 0 ? boxes.x : boxes.y;
+        [loop] while (bits != 0)
+        {
+            uint bit = firstbitlow(bits);
+            bits &= bits - 1;
+            PropBox box = load_prop_box(environment, word * 32 + bit);
+            float3 local = to_box(box, position - box.centre);
+            float3 beyond = abs(local) - box.half_extent;
+            float3 outside = max(beyond, 0);
+            float distance = length(outside);
+            if (distance >= radius + deflection_band) continue;
+            float3 away;
+            if (distance > 1e-4)
+            {
+                away = float3(local.x >= 0 ? outside.x : -outside.x, local.y >= 0 ? outside.y : -outside.y,
+                    local.z >= 0 ? outside.z : -outside.z) / distance;
+            }
+            else
+            {
+                uint axis = beyond.x >= beyond.y && beyond.x >= beyond.z ? 0 : beyond.y >= beyond.z ? 1 : 2;
+                away = with_component(float3(0, 0, 0), axis, component(local, axis) >= 0 ? 1 : -1);
+            }
+            float3 normal = from_box(box, away);
+            float weight = saturate(1 - max(distance - radius, 0) / deflection_band);
+            float into = dot(air, normal);
+            if (into < 0)
+            {
+                air -= normal * (into * weight);
+                air.y -= into * weight * deflection_lift * (1 - abs(normal.y));
+            }
+        }
+    }
+    return air;
+}
