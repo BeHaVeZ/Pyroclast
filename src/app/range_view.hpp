@@ -9,5 +9,6 @@ enum class RangeView
     hill,
     aerial,
     range,
+    yard,
 };
 }

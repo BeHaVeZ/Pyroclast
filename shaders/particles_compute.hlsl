@@ -1,8 +1,8 @@
 #include "effect_classes.hlsli"
+#include "environment.hlsli"
 #include "explosion.hlsli"
 #include "frame_constants.hlsli"
 #include "noise.hlsli"
-#include "terrain.hlsli"
 
 struct Parameters
 {
@@ -61,14 +61,23 @@ bool simulate(uint slot, uint local, uint record)
     float size = asfloat(particles.Load(address + particle_size_offset));
     uint generation = particles.Load(address + particle_generation_offset);
     float spin = asfloat(particles.Load(address + particle_spin_offset));
+    uint mask = frame.light_state.y;
+    bool shown = mask_enabled(mask, props_mask_bit);
+    bool props = shown && mask_enabled(mask, collision_mask_bit);
+    bool ring = layer.spawn == spawn_ring;
     if (generation != state.y)
     {
         generation = state.y;
         float3 origin = frame.effect_origins[slot].xyz;
         float3 normal = frame.effect_normals[slot].xyz;
+        if (ring && shown && normal.y < 0.7)
+        {
+            normal = float3(0, 1, 0);
+            origin = float3(origin.x, terrain_height(environment, origin.xz) + 0.5, origin.z);
+        }
         uint id = state.x * explosion_particles + local;
         float3 local_direction = particle_direction(id);
-        if (layer.spawn == spawn_ring)
+        if (ring)
         {
             float angle = particle_random(id, 8) * 6.2831853;
             local_direction = normalize(float3(cos(angle), 0.06 + 0.1 * particle_random(id, 9), sin(angle)));
@@ -79,6 +88,7 @@ bool simulate(uint slot, uint local, uint record)
         }
         float3 direction = around_normal(local_direction, normal);
         position.xyz = origin + direction * particle_random(id, 3) * layer.radius;
+        if (props) position.xyz = prop_clip_spawn(environment, origin, position.xyz);
         velocity.xyz = direction * (layer.speed_min + particle_random(id, 2) * layer.speed_range) + float3(0, layer.up_kick, 0);
         velocity.w = layer.lifetime_min + particle_random(id, 4) * layer.lifetime_range;
         size = layer.size_min + particle_random(id, 5) * layer.size_range;
@@ -88,7 +98,8 @@ bool simulate(uint slot, uint local, uint record)
     }
     bool smoke = smoke_like(layer_index);
     bool debris = layer_index == layer_debris;
-    uint mask = frame.light_state.y;
+    float radius = smoke ? min(size, prop_contact_limit) : debris ? 0.5 * size : 0;
+    uint2 open_bottom = props ? load_open_bottoms(environment) : uint2(0, 0);
     Flow flow = load_flow(classes, state.w);
     float3 effect_origin = frame.effect_origins[slot].xyz;
     bool vortex = smoke && flow.strength > 0 && mask_enabled(mask, vortex_mask_bit);
@@ -102,6 +113,7 @@ bool simulate(uint slot, uint local, uint record)
             position.w += dt;
             if (position.w < 0) continue;
             float terrain = terrain_height(environment, position.xz);
+            uint2 near = props ? nearby_boxes(environment, position.xyz, !ring) : uint2(0, 0);
             if (layer.drag > 0)
             {
                 float seconds = float(parameters.tick + step + 1 - state.z) / 60.0;
@@ -112,6 +124,7 @@ bool simulate(uint slot, uint local, uint record)
             }
             if (layer.buoyancy > 0) velocity.y += layer.buoyancy * layer_temperature(layer, position.w) * dt;
             if (layer.gravity > 0) velocity.y -= layer.gravity * dt;
+            float3 start = position.xyz;
             position.xyz += velocity.xyz * dt;
             terrain = terrain_height(environment, position.xz);
             float ground = terrain + (smoke ? size : debris ? size * 0.5 : 0);
@@ -123,20 +136,40 @@ bool simulate(uint slot, uint local, uint record)
                 velocity.y = bounce ? -velocity.y * layer.restitution : max(velocity.y, 0);
                 if (debris && dot(velocity.xyz, velocity.xyz) < 0.5) velocity.xyz = 0;
             }
+            float support = terrain;
+            if (props)
+            {
+                uint2 boxes = near | nearby_boxes(environment, position.xyz, !ring);
+                for (uint word = 0; word < 2; ++word)
+                {
+                    uint bits = word == 0 ? boxes.x : boxes.y;
+                    uint open = word == 0 ? open_bottom.x : open_bottom.y;
+                    [loop] while (bits != 0)
+                    {
+                        uint bit = firstbitlow(bits);
+                        bits &= bits - 1;
+                        PropBox box = load_prop_box(environment, word * 32 + bit);
+                        float3 normal = prop_contact(box, ((open >> bit) & 1) != 0, start, position.xyz, velocity.xyz, radius,
+                            layer.restitution, layer.friction);
+                        if (debris && normal.y > 0.7 && dot(velocity.xyz, velocity.xyz) < 0.5) velocity.xyz = 0;
+                        if (ring) support = max(support, prop_support(box, position.xyz, radius));
+                    }
+                }
+            }
             if (debris) spin += spin_rate * dt * saturate(length(velocity.xyz) * 0.25);
-            if (smoke && layer.spawn != spawn_ring)
+            if (smoke && !ring)
             {
                 float clearance = position.y - terrain;
                 if (clearance < 2 * size) velocity.y += (2 * size - clearance) * 1.5 * dt;
             }
-            if (layer.spawn == spawn_ring) position.y = min(position.y, terrain + size + 0.3 * position.w);
+            if (ring) position.y = min(position.y, support + size + 0.3 * position.w);
             if (position.w >= velocity.w) velocity.w = 0;
         }
     }
     particles.Store4(address + particle_position_offset, asuint(position));
     particles.Store4(address + particle_velocity_offset, asuint(velocity));
     particles.Store3(address + particle_size_offset, uint3(asuint(size), generation, asuint(spin)));
-    return velocity.w > 0 && position.w >= 0 && layer_enabled(frame.light_state.y, layer_index);
+    return velocity.w > 0 && position.w >= 0 && layer_enabled(mask, layer_index);
 }
 
 [numthreads(simulation_group_size, 1, 1)]

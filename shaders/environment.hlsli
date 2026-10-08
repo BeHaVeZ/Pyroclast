@@ -119,3 +119,117 @@ float prop_cover_shade(ByteAddressBuffer environment, float3 world, float3 norma
     }
     return cover;
 }
+
+uint2 nearby_boxes(ByteAddressBuffer environment, float3 position, bool cull)
+{
+    PropCell cell = load_prop_cell(environment, position.xz);
+    return cull && position.y > cell.ceiling ? uint2(0, 0) : cell.mask;
+}
+
+float component(float3 v, uint axis)
+{
+    return axis == 0 ? v.x : axis == 1 ? v.y : v.z;
+}
+
+float3 with_component(float3 v, uint axis, float value)
+{
+    return float3(axis == 0 ? value : v.x, axis == 1 ? value : v.y, axis == 2 ? value : v.z);
+}
+
+bool slab_entry(float3 start, float3 motion, float3 extent, out float enter, out uint axis)
+{
+    enter = -1;
+    axis = 3;
+    float leave = 1;
+    [unroll] for (uint a = 0; a < 3; ++a)
+    {
+        float m = component(motion, a);
+        float o = component(start, a);
+        float e = component(extent, a);
+        if (abs(m) < 1e-6)
+        {
+            if (abs(o) >= e) return false;
+            continue;
+        }
+        float toward = m > 0 ? 1 : -1;
+        float near_t = (-toward * e - o) / m;
+        float far_t = (toward * e - o) / m;
+        if (near_t > enter)
+        {
+            enter = near_t;
+            axis = a;
+        }
+        leave = min(leave, far_t);
+    }
+    return axis < 3 && enter >= 0 && enter <= 1 && enter <= leave;
+}
+
+float3 prop_contact(PropBox box, bool open_bottom, float3 start, inout float3 end, inout float3 velocity, float radius,
+    float restitution, float friction)
+{
+    float3 extent = box.half_extent + radius;
+    float3 from = to_box(box, start - box.centre);
+    float3 to = to_box(box, end - box.centre);
+    uint axis;
+    float side;
+    if (all(abs(from) < extent))
+    {
+        if (!all(abs(to) < extent)) return float3(0, 0, 0);
+        float3 depth = extent - abs(to);
+        float3 sides = float3(to.x >= 0 ? 1 : -1, to.y >= 0 ? 1 : -1, to.z >= 0 ? 1 : -1);
+        if (!open_bottom && to.y < 0)
+        {
+            depth.y = extent.y - to.y;
+            sides.y = 1;
+        }
+        axis = depth.x <= depth.y && depth.x <= depth.z ? 0 : depth.y <= depth.z ? 1 : 2;
+        side = component(sides, axis);
+    }
+    else
+    {
+        float enter;
+        if (!slab_entry(from, to - from, extent, enter, axis)) return float3(0, 0, 0);
+        side = component(to - from, axis) > 0 ? -1 : 1;
+    }
+    end = box.centre + from_box(box, with_component(to, axis, side * component(extent, axis)));
+    float3 normal = from_box(box, with_component(float3(0, 0, 0), axis, side));
+    float inward = dot(velocity, normal);
+    if (inward < 0)
+    {
+        float3 along = velocity - normal * inward;
+        velocity = restitution > 0 ? along * friction - normal * (inward * restitution) : along;
+    }
+    return normal;
+}
+
+float prop_support(PropBox box, float3 position, float radius)
+{
+    float3 local = to_box(box, position - box.centre);
+    bool over = abs(local.x) <= box.half_extent.x + radius && abs(local.z) <= box.half_extent.z + radius && local.y >= box.half_extent.y;
+    return over ? box.centre.y + box.half_extent.y : -1e30;
+}
+
+float3 prop_clip_spawn(ByteAddressBuffer environment, float3 origin, float3 spawn)
+{
+    uint2 boxes = load_prop_cell(environment, origin.xz).mask | load_prop_cell(environment, spawn.xz).mask;
+    float3 offset = spawn - origin;
+    float distance = length(offset);
+    if (all(boxes == 0) || distance < 1e-6) return spawn;
+    float earliest = 1;
+    for (uint word = 0; word < 2; ++word)
+    {
+        uint bits = word == 0 ? boxes.x : boxes.y;
+        [loop] while (bits != 0)
+        {
+            uint bit = firstbitlow(bits);
+            bits &= bits - 1;
+            PropBox box = load_prop_box(environment, word * 32 + bit);
+            float3 from = to_box(box, origin - box.centre);
+            if (all(abs(from) < box.half_extent)) continue;
+            float enter;
+            uint axis;
+            if (slab_entry(from, to_box(box, offset), box.half_extent, enter, axis)) earliest = min(earliest, enter);
+        }
+    }
+    return earliest >= 1 ? spawn : origin + offset * max(earliest - prop_spawn_backoff / distance, 0);
+}

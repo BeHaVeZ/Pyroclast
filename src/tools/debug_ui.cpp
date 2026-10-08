@@ -153,7 +153,8 @@ ImDrawData* DebugUi::build(const DiagnosticsSnapshot& snapshot, std::vector<UiCo
             {"fireball", 4}, {"sparks", 5}, {"debris", 6}, {"lights", particle_layout::lights_mask_bit},
             {"curl", particle_layout::curl_mask_bit}, {"vortex", particle_layout::vortex_mask_bit}, {"gusts", particle_layout::gusts_mask_bit},
             {"shading", particle_layout::shading_mask_bit}, {"shadow", particle_layout::shadow_mask_bit},
-            {"emission", particle_layout::emission_mask_bit}, {"props", particle_layout::props_mask_bit}};
+            {"emission", particle_layout::emission_mask_bit}, {"props", particle_layout::props_mask_bit},
+            {"collision", particle_layout::collision_mask_bit}};
         for (std::size_t index = 0; index < std::size(toggles); ++index)
         {
             const auto [name, mask_bit] = toggles[index];

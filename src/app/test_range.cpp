@@ -87,6 +87,10 @@ Camera TestRange::view(RangeView name) const
         camera.position = {-44, 10, -8};
         camera.look_at({0, 1, -52});
         break;
+    case RangeView::yard:
+        camera.position = {-8, 2.5f, -33};
+        camera.look_at({-4, 2, -53});
+        break;
     }
     return camera;
 }
