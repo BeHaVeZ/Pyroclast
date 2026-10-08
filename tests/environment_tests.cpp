@@ -255,8 +255,14 @@ int main()
     const auto outside = environment.cell(-64.5f, 0);
     const auto far = environment.cell(0, 64.0f);
     const auto invalid = environment.cell(std::numeric_limits<float>::quiet_NaN(), 0);
+    constexpr float nan = std::numeric_limits<float>::quiet_NaN();
     check(outside.mask_low == 0 && far.mask_low == 0 && invalid.mask_low == 0 && outside.ceiling == Environment::empty_ceiling &&
-        !grid_index(64.0f, 0) && grid_index(-64.0f, 63.99f).has_value(), "points outside the grid, and NaN, read an empty cell");
+        !grid_index(64.0f, 0) && !grid_index(-64.01f, 0) && !grid_index(0, 64.0f) && !grid_index(0, -64.01f) && !grid_index(nan, 0) &&
+        !grid_index(0, nan) && grid_index(-64.0f, 63.99f).has_value(), "points outside the grid, and NaN, read an empty cell");
+    const auto tank_edge = environment.cell(63.9f, 26);
+    const auto past_tank = environment.cell(64.1f, 26);
+    check((tank_edge.mask_low | tank_edge.mask_high) != 0 && past_tank.mask_low == 0 && past_tank.mask_high == 0,
+        "the cell beside an occupied edge cell, just outside the grid, is empty");
 
     bool flat = true;
     bool bounded = true;
@@ -368,7 +374,7 @@ int main()
         for (const auto& scripted : make_scenario(name, environment)->events) measure(scripted.event);
     }
     std::printf("nearest scripted explosion %.2f m from a prop\n", nearest);
-    check(nearest >= clearance, "scripted and startup explosions keep 6 m from every prop");
+    check(nearest >= clearance, "the startup groups and the M16 scenarios keep 6 m from every prop");
 
     const auto scenario_fingerprint = [&environment](const char* name) {
         const auto scenario = make_scenario(name, environment, ExplosionPreset::artillery_he);

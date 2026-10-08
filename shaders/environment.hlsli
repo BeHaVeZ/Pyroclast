@@ -175,11 +175,11 @@ float3 prop_contact(PropBox box, bool open_bottom, float3 start, inout float3 en
     if (all(abs(from) < extent))
     {
         if (!all(abs(to) < extent)) return float3(0, 0, 0);
-        float3 depth = extent - abs(to);
-        float3 sides = float3(to.x >= 0 ? 1 : -1, to.y >= 0 ? 1 : -1, to.z >= 0 ? 1 : -1);
-        if (!open_bottom && to.y < 0)
+        float3 depth = extent - abs(from);
+        float3 sides = float3(from.x >= 0 ? 1 : -1, from.y >= 0 ? 1 : -1, from.z >= 0 ? 1 : -1);
+        if (!open_bottom && from.y < 0)
         {
-            depth.y = extent.y - to.y;
+            depth.y = extent.y - from.y;
             sides.y = 1;
         }
         axis = depth.x <= depth.y && depth.x <= depth.z ? 0 : depth.y <= depth.z ? 1 : 2;
@@ -207,6 +207,23 @@ float prop_support(PropBox box, float3 position, float radius)
     float3 local = to_box(box, position - box.centre);
     bool over = abs(local.x) <= box.half_extent.x + radius && abs(local.z) <= box.half_extent.z + radius && local.y >= box.half_extent.y;
     return over ? box.centre.y + box.half_extent.y : -1e30;
+}
+
+float prop_floor(ByteAddressBuffer environment, float3 position)
+{
+    float floor_height = terrain_height(environment, position.xz);
+    uint2 boxes = load_prop_cell(environment, position.xz).mask;
+    for (uint word = 0; word < 2; ++word)
+    {
+        uint bits = word == 0 ? boxes.x : boxes.y;
+        [loop] while (bits != 0)
+        {
+            uint bit = firstbitlow(bits);
+            bits &= bits - 1;
+            floor_height = max(floor_height, prop_support(load_prop_box(environment, word * 32 + bit), position, 0));
+        }
+    }
+    return floor_height;
 }
 
 float3 prop_clip_spawn(ByteAddressBuffer environment, float3 origin, float3 spawn)

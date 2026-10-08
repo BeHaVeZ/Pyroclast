@@ -73,7 +73,7 @@ bool simulate(uint slot, uint local, uint record)
         if (ring && props && normal.y < 0.7)
         {
             normal = float3(0, 1, 0);
-            origin = float3(origin.x, terrain_height(environment, origin.xz) + 0.5, origin.z);
+            origin.y = prop_floor(environment, origin) + 0.5;
         }
         uint id = state.x * explosion_particles + local;
         float3 local_direction = particle_direction(id);

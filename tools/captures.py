@@ -7,7 +7,7 @@
   python tools/captures.py cross-api <dir> [--max-level 2] [--max-outliers 9] [--min-within-one 0.999]
 
 --scenarios captures scripted runs instead of fixed states: each scenario at each tick (--capture-tick, the
-frame that draws that tick), over the renderers, smoke resolutions and views, named
+frame that draws that tick; 1 or more, default 6,45,180,360), over the renderers, smoke resolutions and views, named
 <renderer>-<smoke>-scenario-<name>-<tick>[-<view>]. --explosions and --presets do not apply.
 
 --args appends flags to every launch without changing the file names, so a capture set taken with a
@@ -48,7 +48,7 @@ def run_environment():
 def capture_cases(arguments):
     """(file name, workload flags) for every capture asked for."""
     renderers, views, smokes = arguments.renderers.split(","), arguments.views.split(","), arguments.smoke.split(",")
-    ticks = arguments.ticks.split(",")
+    ticks = (arguments.ticks or ("6,45,180,360" if arguments.scenarios else "0,60,180,480")).split(",")
     if arguments.scenarios:
         for renderer, view, smoke, scenario, tick in itertools.product(renderers, views, smokes, arguments.scenarios.split(","), ticks):
             name = f"{renderer}-{smoke}-scenario-{scenario}-{tick}" + ("" if view == "overview" else f"-{view}")
@@ -150,7 +150,7 @@ def main():
     run.add_argument("--renderers", default="d3d12,vulkan")
     run.add_argument("--smoke", default="full,half")
     run.add_argument("--explosions", default="1,100")
-    run.add_argument("--ticks", default="0,60,180,480")
+    run.add_argument("--ticks", default="", help="default 0,60,180,480 (fixed states) or 6,45,180,360 (--scenarios)")
     run.add_argument("--views", default="overview", help="camera poses (--view) to capture from")
     run.add_argument("--presets", default="small-he", help="explosion presets (--preset) to capture")
     run.add_argument("--args", default="", help="flags appended to every launch; not part of the file names")

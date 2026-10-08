@@ -1,5 +1,5 @@
 # Drives one Pyroclast window through the interactive lifecycle and checks native validation:
-# pause/clear/trigger/single steps, a click on the terrain, effect lines, 30 odd-size resizes, three
+# pause/clear/trigger/single steps, a click on the terrain or a prop, effect lines, 30 odd-size resizes, three
 # minimize/restore cycles, a running trigger, a normal close, and separately a start in a minimized
 # window that is later restored.
 # Passes when every launch exits 0, logs no ERROR/WARN lines (Vulkan loader notices excepted), in
@@ -119,8 +119,8 @@ function Run-Interactive {
         Send-Key $window 76 0x26      # L: effect lines
         # A left click in the window. SDL places the button at the real cursor, which a posted message cannot
         # move (and moving it would disturb the user), so the check below only requires the click to arrive:
-        # it either places an explosion or reports that no terrain is under the cursor. Unit tests cover
-        # where the ray lands.
+        # it either places an explosion or reports that nothing (before M17: no terrain) is under the cursor.
+        # Unit tests cover where the ray lands.
         $centre = [IntPtr]((325 -shl 16) -bor 490)
         [void][LifecycleWindow]::PostMessage($window, 0x200, [IntPtr]::Zero, $centre)   # WM_MOUSEMOVE
         Start-Sleep -Milliseconds 20
@@ -155,7 +155,8 @@ function Run-Interactive {
             'Particle simulation: running', "$backend swapchain resized") {
             if (-not $text.Contains($expected)) { throw "The application never logged '$expected'; input or resizes did not arrive." }
         }
-        if (-not ($text.Contains('Explosion at (') -or $text.Contains('No terrain under the cursor.'))) {
+        if (-not ($text.Contains('Explosion at (') -or $text.Contains('Nothing under the cursor.') -or
+                $text.Contains('No terrain under the cursor.'))) {
             throw 'The left click never reached the application.'
         }
     } finally {

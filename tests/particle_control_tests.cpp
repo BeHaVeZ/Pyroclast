@@ -19,6 +19,7 @@ public:
         if (!initial.empty())
         {
             environment_uploaded |= initial.size() == pyroclast::terrain_layout::environment_bytes;
+            prop_vertices_uploaded |= initial.size() == (18 * 36 + 7 * 84 + 4 * 132) * pyroclast::terrain_layout::prop_vertex_stride;
             if (initial.size() == pyroclast::particle_layout::maximum_effect_classes * sizeof(pyroclast::EffectClass))
             {
                 uploaded_classes.resize(pyroclast::particle_layout::maximum_effect_classes);
@@ -153,6 +154,7 @@ public:
     std::vector<pyroclast::EffectClass> uploaded_classes;
     std::vector<std::pair<const pyroclast::ComputePipeline*, pyroclast::Shader>> compute_shaders;
     bool environment_uploaded = false;
+    bool prop_vertices_uploaded = false;
     bool expect_lines = false;
     std::uint32_t prop_vertices = 0;
     std::uint32_t boxes = 0;
@@ -196,8 +198,8 @@ int main()
     constexpr auto hdr = TargetFormat::r11g11b10_float;
     static_assert(hdr != ExplosionRenderer::smoke_format);
     constexpr ParticleTargets targets{hdr, ExplosionRenderer::smoke_format};
-    check(range.initialize(device, hdr) && device.environment_uploaded && device.terrain && device.sky && device.props && device.colliders,
-        "the range uploads its environment and creates the props' and collision boxes' pipelines");
+    check(range.initialize(device, hdr) && device.environment_uploaded && device.prop_vertices_uploaded && device.terrain && device.sky &&
+        device.props && device.colliders, "the range uploads its environment and the props' vertices, and creates their pipelines");
     check(range.prop_vertex_count() == 18 * 36 + 7 * 84 + 4 * 132 && range.environment().box_count() == 36, "the props' mesh");
     device.prop_vertices = range.prop_vertex_count();
     device.boxes = range.environment().box_count();
