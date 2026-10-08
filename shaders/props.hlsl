@@ -1,6 +1,6 @@
+#include "environment.hlsli"
 #include "frame_constants.hlsli"
 #include "lights.hlsli"
-#include "terrain.hlsli"
 
 ByteAddressBuffer vertices : register(t0);
 ByteAddressBuffer environment : register(t1);
@@ -59,6 +59,8 @@ float4 ps_main(PixelInput input) : SV_Target
         albedo = float3(0.16, 0.18, 0.12);
     }
     albedo *= input.shade;
+    float height = input.world.y - terrain_height(environment, input.world.xz);
+    albedo *= lerp(0.55, 1, saturate(height / 0.8)) * prop_cover_shade(environment, input.world, normal);
     float sun = saturate(dot(normal, frame.sun_direction.xyz));
     float3 bounce = frame.ground_color.rgb + frame.sun_color.rgb * saturate(frame.sun_direction.y) * float3(0.13, 0.115, 0.085);
     float3 sky = lerp(frame.horizon_color.rgb, frame.sky_color.rgb, saturate(normal.y));

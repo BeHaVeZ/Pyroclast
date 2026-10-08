@@ -1,6 +1,6 @@
+#include "environment.hlsli"
 #include "frame_constants.hlsli"
 #include "lights.hlsli"
-#include "terrain.hlsli"
 
 ByteAddressBuffer environment : register(t0);
 
@@ -50,6 +50,7 @@ float4 ps_main(PixelInput input) : SV_Target
     float3 concrete = float3(0.30, 0.29, 0.27) * (1 - 0.35 * grid_line(input.world.xz - pad_centre, 6));
     albedo = lerp(albedo, concrete, pad);
     albedo *= 1 - 0.25 * grid_line(input.world.xz, 10) - 0.35 * grid_line(input.world.xz, 50);
+    if (((frame.light_state.y >> props_mask_bit) & 1) != 0) albedo *= prop_ground_shade(environment, input.world);
     float sun = saturate(dot(normal, frame.sun_direction.xyz));
     float3 ambient = lerp(frame.ground_color.rgb, frame.sky_color.rgb, normal.y * 0.5 + 0.5);
     float3 color = albedo * (frame.sun_color.rgb * sun + ambient + point_lights(input.world, normal, true));
