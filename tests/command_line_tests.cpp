@@ -195,6 +195,31 @@ int main()
         }
     }
 
+    const char* views_list[] = {"--debug-views=regions,wind"};
+    const auto with_views = pyroclast::parse_command_line(views_list);
+    const char* views_all[] = {"--debug-views=all"};
+    const auto all_views = pyroclast::parse_command_line(views_all);
+    if (!with_views.error.empty() || with_views.options.debug_views.effect_bounds || with_views.options.debug_views.collision_boxes ||
+        !with_views.options.debug_views.spawn_regions || !with_views.options.debug_views.wind_arrow || !all_views.error.empty() ||
+        !all_views.options.debug_views.effect_bounds || !all_views.options.debug_views.collision_boxes ||
+        !all_views.options.debug_views.spawn_regions || !all_views.options.debug_views.wind_arrow)
+    {
+        std::fputs("FAIL: --debug-views lists and all\n", stderr);
+        ++failures;
+    }
+    const char* views_unknown[] = {"--debug-views=regions,grid"};
+    const char* views_twice[] = {"--debug-views=wind", "--debug-views=bounds"};
+    const char* views_lines[] = {"--debug-views=wind", "--effect-lines"};
+    const char* views_scenario[] = {"--debug-views=wind", "--scenario=range"};
+    if (pyroclast::parse_command_line(views_unknown).error.find("Expected --debug-views") == std::string::npos ||
+        pyroclast::parse_command_line(views_twice).error.find("only once") == std::string::npos ||
+        pyroclast::parse_command_line(views_lines).error.find("not both") == std::string::npos ||
+        pyroclast::parse_command_line(views_scenario).error.find("--debug-views cannot be combined") == std::string::npos)
+    {
+        std::fputs("FAIL: --debug-views errors\n", stderr);
+        ++failures;
+    }
+
     const char* scenario_capture[] = {"--scenario=range", "--capture=r.png", "--capture-tick=45"};
     const auto captured = pyroclast::parse_command_line(scenario_capture);
     if (!captured.error.empty() || captured.options.capture_tick != 45u || captured.options.capture_path != "r.png" ||

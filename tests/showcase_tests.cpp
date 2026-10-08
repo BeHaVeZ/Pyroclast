@@ -93,6 +93,22 @@ int main()
     check(movement_free, "movement keys and F1 are not bound");
 
     check(command(SDLK_G) && command(SDLK_G)->kind == Kind::toggle_walk, "G switches walk and fly");
+    check(command(SDLK_F8) && command(SDLK_F8)->kind == Kind::toggle_debug_view && command(SDLK_F8)->value == 2 && command(SDLK_F9) &&
+        command(SDLK_F9)->value == 3, "F8 and F9 toggle the spawn regions and the wind arrow");
+    check(command(SDLK_3) && command(SDLK_3)->kind == Kind::select_preset && command(SDLK_3)->value == 2 && command(SDLK_KP_7) &&
+        command(SDLK_KP_7)->value == 6 && !command(SDLK_8), "1-7 and the keypad select the presets");
+    check(command(SDLK_C)->kind == Kind::set_count && command(SDLK_F)->kind == Kind::fire && command(SDLK_B)->kind == Kind::barrage &&
+        command(SDLK_V)->kind == Kind::toggle_bombardment, "C, F, B and V act at the crosshair");
+    bool reachable = true;
+    for (const auto kind : {Kind::trigger, Kind::clear, Kind::toggle_pause, Kind::step, Kind::toggle_debug_lines, Kind::select_preset,
+             Kind::toggle_slow_motion, Kind::toggle_walk, Kind::recall_bookmark, Kind::store_bookmark, Kind::set_count, Kind::fire,
+             Kind::barrage, Kind::toggle_bombardment, Kind::toggle_debug_view})
+    {
+        bool found = false;
+        for (const auto& binding : key_bindings()) found |= binding.command.kind == kind;
+        reachable &= found;
+    }
+    check(reachable, "every command but the sliders' has a key");
     bool bookmark_keys = true;
     const SDL_Keycode function_keys[] = {SDLK_F2, SDLK_F3, SDLK_F4, SDLK_F5, SDLK_F6, SDLK_F7};
     for (std::uint32_t index = 0; index < 6; ++index)
@@ -399,6 +415,44 @@ int main()
         check(flushed && flushed->events == 2 && flushed->first_tick == 41 && pressure.dropped_since_clear() == 0 &&
             pressure.peak_since_clear() == 0 && !pressure.record(42, 5.0, 3, 14),
             "Clear hands back the unreported drops and rebases the counts and the peak");
+    }
+
+    {
+        Showcase showcase;
+        const auto overview = test_range.view(RangeView::overview);
+        const auto aim = world.raycast(crosshair_ray(overview), std::numeric_limits<float>::infinity(), true);
+        std::vector<ShowcaseMark> marks;
+        showcase_marks(DebugViews{}, showcase, aim, overview, world, true, marks);
+        check(aim && marks.empty(), "with the views off there are no marks");
+        DebugViews regions{};
+        regions.spawn_regions = true;
+        showcase_marks(regions, showcase, aim, overview, world, true, marks);
+        check(marks.size() == 1 && marks[0].kind == ShowcaseMark::ring && mark_vertices(marks[0]) == 2 * 32 + 2,
+            "spawn regions at count 1: a ring at the aim");
+        marks.clear();
+        showcase.count = 100;
+        showcase_marks(regions, showcase, aim, overview, world, true, marks);
+        check(marks.size() == 2 && marks[1].kind == ShowcaseMark::draped_circle && marks[1].radius == cluster_radius(100) &&
+            marks[1].segments <= 128 && marks[1].centre.x == aim->point.x, "at count 100 the cluster's footprint is draped around the aim");
+        ExplosionSystem effects(128);
+        showcase.start_barrage(world, true, overview, 0);
+        showcase.toggle_bombardment(world, true, overview, 0);
+        marks.clear();
+        showcase_marks(regions, showcase, aim, overview, world, true, marks);
+        check(marks.size() == 6 && marks[2].kind == ShowcaseMark::draped_rectangle && marks[2].radius == 64 && marks[2].half_width == 12 &&
+            marks[2].segments <= 128 && marks[2].side_segments > marks[2].segments / 4 && marks[3].kind == ShowcaseMark::ring &&
+            marks[4].kind == ShowcaseMark::draped_circle && marks[4].radius == showcase.bombardment_radius && marks[5].kind == ShowcaseMark::ring,
+            "a running barrage shows its corridor and next impact, a bombardment its disc and next impact");
+        DebugViews wind{};
+        wind.wind_arrow = true;
+        marks.clear();
+        showcase_marks(wind, showcase, aim, overview, world, true, marks);
+        check(marks.size() == 1 && marks[0].kind == ShowcaseMark::wind_arrow && marks[0].lift == 15 && mark_vertices(marks[0]) == 8 &&
+            marks[0].centre.x == aim->point.x, "the wind arrow stands at the aim");
+        marks.clear();
+        showcase_marks(wind, showcase, std::nullopt, overview, world, true, marks);
+        check(marks.size() == 1 && std::abs(marks[0].centre.y - world.terrain().height(marks[0].centre.x, marks[0].centre.z)) < 1e-4f,
+            "without an aim the wind arrow stands on the terrain ahead");
     }
 
     if (failures == 0) std::puts("showcase tests passed");

@@ -143,6 +143,8 @@ function Run-Interactive {
         Start-Sleep -Milliseconds 300
         Send-Key $window 0x42 0x30    # B: barrage
         Send-Key $window 0x56 0x2F    # V: bombardment
+        Send-Key $window 0x77 0x42    # F8: spawn regions, on through the resizes below
+        Send-Key $window 0x78 0x43    # F9: wind arrow
         for ($tick = 0; $tick -lt 30; ++$tick) { Send-Key $window 78 0x31 }   # N: impacts release while stepping
         Send-Key $window 0x54 0x14    # T: 0.25x
         Send-Key $window 0x54 0x14    # T: 1x
@@ -178,7 +180,7 @@ function Run-Interactive {
             'Spawned 10 artillery-he around (', 'Spawn count: 100', 'Spawned 100 artillery-he around (',
             'effect slots are busy', 'Barrage started at (', 'Bombardment started at (', 'Simulation speed: 0.25x',
             'Simulation speed: 1x', 'Camera: walk', 'Camera: fly', 'Camera bookmark 2 (ground) recalled', 'Bombardment stopped after',
-            'Barrage stopped after') {
+            'Barrage stopped after', 'spawn regions on', 'wind arrow on') {
             if (-not $text.Contains($expected)) { throw "The application never logged '$expected'; input or resizes did not arrive." }
         }
         if (-not ($text.Contains('Explosion at (') -or $text.Contains('Nothing under the cursor.') -or

@@ -23,7 +23,9 @@ struct Sandbox
     ExplosionRenderer renderer;
     std::vector<ExplosionEvent> group;
     CameraRig camera;
-    bool debug_lines = false;
+    DebugViews views;
+    std::optional<SurfaceHit> aim;
+    std::vector<ShowcaseMark> marks;
     Showcase showcase;
     SlotPressure pressure;
     std::uint32_t layer_mask = particle_layout::full_mask;
@@ -38,6 +40,7 @@ struct Sandbox
     void clear();
     void spawn(const Ray& ray);
     void release_due();
+    void build_marks();
     void report_drops(const SlotPressure::Report& report, bool before_clear = false) const;
 };
 

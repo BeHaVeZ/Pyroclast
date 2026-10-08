@@ -161,7 +161,7 @@ public:
             static_cast<int>(scenario_.name.size()), scenario_.name.data(), valid_ ? "true" : "false", pyroclast::build_configuration,
             pyroclast::renderer_name(options.renderer), gpu.c_str(), width, height, options.half_smoke ? "half" : "full",
             pyroclast::scene_format_name(options.scene_format), pyroclast::view_name(options.view), overlay ? "true" : "false",
-            sandbox.debug_lines ? "true" : "false", options.gpu_regions ? "true" : "false",
+            sandbox.views.effect_bounds ? "true" : "false", options.gpu_regions ? "true" : "false",
             static_cast<int>(pyroclast::preset_name(options.preset).size()), pyroclast::preset_name(options.preset).data(),
             sandbox.layer_mask, static_cast<double>(sandbox.wind.speed), static_cast<double>(sandbox.wind.direction_degrees),
             static_cast<double>(sandbox.wind.gustiness), scenario_.duration_ticks, frames,
@@ -374,7 +374,8 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                         renderer.completed_gpu_timings(), static_cast<std::uint32_t>(sandbox.group.size()),
                         static_cast<std::uint32_t>(sandbox.effects.active().size()), sandbox.effects.capacity(),
                         sandbox.effects.started(), sandbox.effects.dropped(), demo.tick(),
-                        sandbox.effects.active().empty() ? std::nullopt : sandbox.counters, sandbox.debug_lines, demo.paused(),
+                        sandbox.effects.active().empty() ? std::nullopt : sandbox.counters,
+                        sandbox.views.effect_bounds || sandbox.views.collision_boxes, demo.paused(),
                         options.half_smoke,
                         pyroclast::scene_format_name(options.scene_format), pyroclast::TestRange::exposure,
                         {camera.position.x, camera.position.y, camera.position.z},
@@ -386,17 +387,19 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                         sandbox.showcase.bombardment_interval, sandbox.showcase.bombardment_radius,
                         sandbox.pressure.dropped_since_clear(), sandbox.pressure.dropped_recent(demo.tick()),
                         sandbox.pressure.peak_since_clear(), sandbox.effects.pending(),
-                        pyroclast::effect_ticks(sandbox.showcase.preset, pyroclast::SurfaceType::dirt)};
+                        pyroclast::effect_ticks(sandbox.showcase.preset, pyroclast::SurfaceType::dirt), sandbox.views.effect_bounds,
+                        sandbox.views.collision_boxes, sandbox.views.spawn_regions, sandbox.views.wind_arrow};
                     commands.clear();
                     overlay = ui->build(snapshot, commands);
                     if (!unattended) for (const auto command : commands) pyroclast::apply(command, sandbox);
                 }
                 if (scenario) scenario->submit_due(sandbox);
                 else if (!unattended) sandbox.release_due();
+                sandbox.build_marks();
                 const bool capture = !options.capture_path.empty() &&
                     (options.capture_tick ? demo.tick() + 1 == *options.capture_tick : !demo.has_pending_steps());
                 const auto result = sandbox.renderer.render(renderer, demo, sandbox.effects, sandbox.range, camera, width, height, elapsed,
-                    {capture, overlay, sandbox.debug_lines, sandbox.layer_mask, sandbox.wind});
+                    {capture, overlay, sandbox.views, sandbox.layer_mask, sandbox.wind, sandbox.marks});
                 if (result == pyroclast::RenderResult::failed) return 1;
                 if (!unattended)
                 {
@@ -521,7 +524,10 @@ int run_application(const pyroclast::ApplicationOptions& options)
     {
         return 1;
     }
-    sandbox->debug_lines = options.effect_lines;
+    sandbox->views.effect_bounds = options.effect_lines || options.debug_views.effect_bounds;
+    sandbox->views.collision_boxes = options.effect_lines || options.debug_views.collision_boxes;
+    sandbox->views.spawn_regions = options.debug_views.spawn_regions;
+    sandbox->views.wind_arrow = options.debug_views.wind_arrow;
     sandbox->showcase.preset = options.preset;
     sandbox->layer_mask = options.layer_mask;
     sandbox->wind = options.wind;
@@ -603,6 +609,9 @@ int main(int argc, char** argv)
             "  --wind=S,D,G       Wind speed 0-40 m/s, heading in degrees from +x towards +z, gustiness 0-1 (default 3,0,0.3).\n"
             "  --effect-lines     Start with each effect's origin, normal and reach, and the props' collision boxes,\n"
             "                     drawn as lines (L toggles).\n"
+            "  --debug-views=LIST Start with debug views on: comma-separated bounds (effect bounds), boxes (collision\n"
+            "                     boxes), regions (where the showcase places events, F8), wind (wind arrow, F9), or all.\n"
+            "                     Not with --effect-lines or --scenario.\n"
             "  --gpu-validation   Debug only: D3D12 GPU-based or Vulkan GPU-assisted validation (slow).\n"
             "  --ui=on|off        Dear ImGui overlay (default on, off with --profile-tick). F1 hides it.\n"
             "  --adapter=NAME     Use the GPU whose name contains NAME (case-insensitive); 'warp' is the D3D12 software rasterizer.\n"

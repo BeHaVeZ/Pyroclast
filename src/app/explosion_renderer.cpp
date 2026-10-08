@@ -14,7 +14,9 @@ bool ExplosionRenderer::initialize(GraphicsDevice& device, bool half_resolution_
     present_ = device.create_graphics_pipeline({Shader::tonemap_vertex, Shader::tonemap_pixel, BlendMode::opaque});
     lines_ = device.create_graphics_pipeline(
         {Shader::debug_lines_vertex, Shader::debug_lines_pixel, BlendMode::opaque, DepthMode::test, scene_format, Topology::lines});
-    if (!scene_ || !depth_ || !present_ || !lines_)
+    showcase_lines_ = device.create_graphics_pipeline(
+        {Shader::showcase_lines_vertex, Shader::debug_lines_pixel, BlendMode::opaque, DepthMode::test, scene_format, Topology::lines});
+    if (!scene_ || !depth_ || !present_ || !lines_ || !showcase_lines_)
     {
         return false;
     }
@@ -92,13 +94,19 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     const Draw present{*present_, {}, {}, 3, 1, "Tonemap"};
     const Draw lines{*lines_, {}, {work.effects}, 32, std::max(work.effects, 1u), "Effect lines"};
     const bool simulate = work.effects != 0;
-    const bool show_lines = options.debug_lines && simulate;
+    const bool show_lines = options.views.effect_bounds && simulate;
     std::vector<Draw> scene_draws;
     if (props) scene_draws.push_back(opaque.props);
     scene_draws.push_back(opaque.terrain);
     if (simulate) scene_draws.push_back(work.debris);
     scene_draws.push_back(opaque.sky);
-    if (props && options.debug_lines) scene_draws.push_back(opaque.colliders);
+    if (props && options.views.collision_boxes) scene_draws.push_back(opaque.colliders);
+    Bindings environment{};
+    environment.read[0] = &range.environment_buffer();
+    for (const auto& mark : options.marks)
+    {
+        scene_draws.push_back({*showcase_lines_, environment, mark_constants(mark), mark_vertices(mark), 1, "Showcase lines"});
+    }
     std::vector<Pass> passes{{scene_.get(), {}, scene_draws, "Scene", false, depth_.get(), true}};
     std::vector<Draw> over_scene;
     if (show_lines) over_scene.push_back(lines);

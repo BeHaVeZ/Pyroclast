@@ -45,6 +45,8 @@ constexpr std::array bindings{
     KeyBinding{SDLK_F, false, {Kind::fire, 0}, "fire"},
     KeyBinding{SDLK_B, false, {Kind::barrage}, "barrage"},
     KeyBinding{SDLK_V, false, {Kind::toggle_bombardment}, "bombardment"},
+    KeyBinding{SDLK_F8, false, {Kind::toggle_debug_view, 2}, "spawn regions"},
+    KeyBinding{SDLK_F9, false, {Kind::toggle_debug_view, 3}, "wind arrow"},
 };
 }
 

@@ -54,6 +54,7 @@ set(PYROCLAST_SHADERS
     props_vertex:props:vs:vs_main
     props_pixel:props:ps:ps_main
     collider_lines_vertex:collider_lines:vs:vs_main
+    showcase_lines_vertex:showcase_lines:vs:vs_main
 )
 
 # Vulkan bindings come from the shared binding layout, so C++ (binding_layout.hpp) and SPIR-V agree.

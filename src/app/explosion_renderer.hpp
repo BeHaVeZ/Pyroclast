@@ -1,6 +1,7 @@
 #pragma once
 
 #include "camera.hpp"
+#include "showcase_marks.hpp"
 #include "test_range.hpp"
 #include "../simulation/explosion_system.hpp"
 #include "../simulation/particle_system.hpp"
@@ -17,9 +18,10 @@ public:
     {
         bool capture = false;
         ImDrawData* overlay = nullptr;
-        bool debug_lines = false;
+        DebugViews views;
         std::uint32_t layer_mask = particle_layout::full_mask;
         WindSettings wind;
+        std::span<const ShowcaseMark> marks;
     };
     RenderResult render(GraphicsDevice& device, ParticleSystem& particles, ExplosionSystem& effects, const TestRange& range,
         const Camera& camera, int width, int height, double elapsed_seconds, const FrameOptions& options);
@@ -30,6 +32,7 @@ private:
     std::unique_ptr<RenderTarget> depth_;
     std::unique_ptr<GraphicsPipeline> present_;
     std::unique_ptr<GraphicsPipeline> lines_;
+    std::unique_ptr<GraphicsPipeline> showcase_lines_;
     std::unique_ptr<RenderTarget> smoke_target_;
     std::unique_ptr<GraphicsPipeline> composite_;
     std::uint32_t lights_ = 0;

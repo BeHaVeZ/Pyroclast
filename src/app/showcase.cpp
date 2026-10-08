@@ -186,6 +186,109 @@ std::uint32_t Showcase::next_count() const
     return current == counts.end() || current + 1 == counts.end() ? counts.front() : *(current + 1);
 }
 
+namespace
+{
+constexpr float3 aim_colour{1.4f, 1.4f, 1.4f};
+constexpr float3 footprint_colour{1.6f, 1.3f, 0.2f};
+constexpr float3 corridor_colour{1.6f, 0.6f, 0.2f};
+constexpr float3 disc_colour{1.2f, 0.4f, 1.4f};
+constexpr float3 next_colour{1.6f, 0.3f, 0.3f};
+constexpr float3 wind_colour{0.3f, 0.9f, 1.6f};
+constexpr std::uint32_t maximum_segments = 128;
+
+std::uint32_t pieces(float length)
+{
+    return std::clamp(static_cast<std::uint32_t>(std::ceil(length / Terrain::spacing)), 1u, maximum_segments);
+}
+
+ShowcaseMark ring_mark(float3 centre, float3 normal, float radius, float3 colour)
+{
+    ShowcaseMark mark;
+    mark.kind = ShowcaseMark::ring;
+    mark.segments = 32;
+    mark.radius = radius;
+    mark.centre = centre;
+    mark.axis = normal;
+    mark.colour = colour;
+    return mark;
+}
+
+ShowcaseMark circle_mark(float2 centre, float radius, float3 colour)
+{
+    ShowcaseMark mark;
+    mark.kind = ShowcaseMark::draped_circle;
+    mark.segments = std::max(pieces(6.2831853f * radius), 16u);
+    mark.radius = radius;
+    mark.lift = 0.2f;
+    mark.centre = {centre.x, 0, centre.y};
+    mark.colour = colour;
+    return mark;
+}
+
+void next_impact(const ImpactSequence& sequence, const Environment& environment, bool props, std::vector<ShowcaseMark>& marks)
+{
+    const auto position = impact_position(sequence, sequence.next);
+    if (const auto event = drop_event(environment, position.x, position.y, 0, sequence.preset, props))
+    {
+        marks.push_back(ring_mark(event->position, event->normal, 1.5f, next_colour));
+    }
+}
+}
+
+void showcase_marks(const DebugViews& views, const Showcase& showcase, const std::optional<SurfaceHit>& aim, const Camera& camera,
+    const Environment& environment, bool props, std::vector<ShowcaseMark>& marks)
+{
+    if (views.spawn_regions)
+    {
+        if (aim)
+        {
+            marks.push_back(ring_mark(aim->point + aim->normal * 0.05f, aim->normal, 1, aim_colour));
+            if (showcase.count > 1) marks.push_back(circle_mark({aim->point.x, aim->point.z}, cluster_radius(showcase.count), footprint_colour));
+        }
+        if (showcase.barrage)
+        {
+            const auto& barrage = *showcase.barrage;
+            constexpr float along = 64;
+            constexpr float across = 12;
+            const auto total = pieces(4 * (along + across));
+            ShowcaseMark mark;
+            mark.kind = ShowcaseMark::draped_rectangle;
+            mark.side_segments = std::clamp(static_cast<std::uint32_t>(std::lround(total * along / (2 * (along + across)))), 1u, total / 2 - 1);
+            mark.segments = 2 * (total / 2);
+            mark.radius = along;
+            mark.half_width = across;
+            mark.lift = 0.2f;
+            mark.centre = {barrage.centre.x, 0, barrage.centre.y};
+            mark.axis = {barrage.along.x, 0, barrage.along.y};
+            mark.colour = corridor_colour;
+            marks.push_back(mark);
+            next_impact(barrage, environment, props, marks);
+        }
+        if (showcase.bombardment)
+        {
+            marks.push_back(circle_mark(showcase.bombardment->centre, showcase.bombardment->radius, disc_colour));
+            next_impact(*showcase.bombardment, environment, props, marks);
+        }
+    }
+    if (views.wind_arrow)
+    {
+        float3 anchor;
+        if (aim) anchor = aim->point;
+        else
+        {
+            const float3 ahead{std::sin(camera.yaw), 0, -std::cos(camera.yaw)};
+            anchor = camera.position + ahead * 25;
+            anchor.y = environment.terrain().height(anchor.x, anchor.z);
+        }
+        ShowcaseMark mark;
+        mark.kind = ShowcaseMark::wind_arrow;
+        mark.lift = 15;
+        mark.centre = anchor;
+        mark.colour = wind_colour;
+        marks.push_back(mark);
+    }
+}
+
 std::optional<SlotPressure::Report> SlotPressure::record(std::uint32_t tick, double wall_seconds, std::uint32_t active,
     std::uint64_t dropped)
 {

@@ -58,6 +58,10 @@ struct DiagnosticsSnapshot
     std::uint32_t peak_since_clear = 0;
     std::size_t queued_events = 0;
     std::uint32_t preset_ticks = 0;
+    bool effect_bounds = false;
+    bool collision_boxes = false;
+    bool spawn_regions = false;
+    bool wind_arrow = false;
 };
 
 struct UiCommand
@@ -82,6 +86,7 @@ struct UiCommand
         barrage,
         toggle_bombardment,
         set_bombardment,
+        toggle_debug_view,
     };
     Kind kind;
     std::uint32_t value = 0;

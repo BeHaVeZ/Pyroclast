@@ -1,5 +1,6 @@
 #pragma once
 
+#include "debug_views.hpp"
 #include "range_view.hpp"
 #include "../graphics/graphics_api.hpp"
 #include "../simulation/explosion_presets.hpp"
@@ -33,6 +34,7 @@ struct ApplicationOptions
     SceneFormat scene_format = SceneFormat::rgba16f;
     std::string scenario;
     bool effect_lines = false;
+    DebugViews debug_views;
     ExplosionPreset preset = ExplosionPreset::small_he;
     std::uint32_t layer_mask = particle_layout::full_mask;
     WindSettings wind;

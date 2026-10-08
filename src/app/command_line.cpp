@@ -65,6 +65,7 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
     bool smoke_specified = false;
     bool scene_format_specified = false;
     bool scenario_specified = false;
+    bool debug_views_specified = false;
     bool preset_specified = false;
     bool disable_specified = false;
     bool wind_specified = false;
@@ -98,6 +99,35 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
         else if (option == "--effect-lines")
         {
             if (!set_once(result.options.effect_lines, "--effect-lines")) return result;
+        }
+        else if (option.starts_with("--debug-views="))
+        {
+            if (debug_views_specified)
+            {
+                result.error = "Specify --debug-views only once.";
+                return result;
+            }
+            debug_views_specified = true;
+            const auto list = option.substr(std::string_view("--debug-views=").size());
+            auto& views = result.options.debug_views;
+            std::size_t start = 0;
+            while (true)
+            {
+                const auto comma = list.find(',', start);
+                const auto name = list.substr(start, comma == std::string_view::npos ? std::string_view::npos : comma - start);
+                if (name == "bounds") views.effect_bounds = true;
+                else if (name == "boxes") views.collision_boxes = true;
+                else if (name == "regions") views.spawn_regions = true;
+                else if (name == "wind") views.wind_arrow = true;
+                else if (name == "all") views = {true, true, true, true};
+                else
+                {
+                    result.error = "Expected --debug-views=bounds, boxes, regions, wind or all, comma-separated.";
+                    return result;
+                }
+                if (comma == std::string_view::npos) break;
+                start = comma + 1;
+            }
         }
         else if (option == "--gpu-validation")
         {
@@ -385,6 +415,14 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
     if (result.options.capture_tick && !(scenario_specified && capture_specified))
     {
         result.error = "--capture-tick requires --scenario and --capture.";
+    }
+    if (debug_views_specified && result.options.effect_lines)
+    {
+        result.error = "Give --effect-lines or --debug-views, not both.";
+    }
+    if (debug_views_specified && scenario_specified)
+    {
+        result.error = "--debug-views cannot be combined with --scenario; use --effect-lines.";
     }
     if (scenario_specified && (explosions_specified || profile_specified))
     {

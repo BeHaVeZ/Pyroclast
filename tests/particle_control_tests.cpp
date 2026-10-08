@@ -50,6 +50,8 @@ public:
             description.blend == BlendMode::opaque && description.depth == DepthMode::test_write) props = pipeline.get();
         if (description.vertex_shader == Shader::collider_lines_vertex && description.pixel_shader == Shader::debug_lines_pixel &&
             description.depth == DepthMode::test && description.topology == pyroclast::Topology::lines) colliders = pipeline.get();
+        if (description.vertex_shader == Shader::showcase_lines_vertex && description.pixel_shader == Shader::debug_lines_pixel &&
+            description.depth == DepthMode::test && description.topology == pyroclast::Topology::lines) showcase_lines = pipeline.get();
         return pipeline;
     }
     std::unique_ptr<pyroclast::ComputePipeline> create_compute_pipeline(pyroclast::Shader shader) override
@@ -104,7 +106,8 @@ public:
             expected.push_back(terrain);
             if (!frame.dispatches.empty()) expected.push_back(debris);
             expected.push_back(sky);
-            if (props_shown && expect_lines) expected.push_back(colliders);
+            if (props_shown && expect_boxes) expected.push_back(colliders);
+            for (std::size_t mark = 0; mark < expect_marks.size(); ++mark) expected.push_back(showcase_lines);
             bool same = pass.draws.size() == expected.size();
             for (std::size_t index = 0; same && index < expected.size(); ++index) same = &pass.draws[index].pipeline == expected[index];
             if (same && props_shown)
@@ -113,11 +116,18 @@ public:
                 same = drawn.vertex_count == prop_vertices && drawn.instance_count == 1 && drawn.bindings.read[0] &&
                     drawn.bindings.read[0] != environment && drawn.bindings.read[1] == environment;
             }
-            if (same && props_shown && expect_lines)
+            if (same && props_shown && expect_boxes)
             {
-                const auto& drawn = pass.draws.back();
+                const auto& drawn = pass.draws[pass.draws.size() - 1 - expect_marks.size()];
                 same = drawn.vertex_count == 24 && drawn.instance_count == boxes && drawn.constants[0] == boxes &&
                     drawn.bindings.read[0] == environment;
+            }
+            for (std::size_t mark = 0; same && mark < expect_marks.size(); ++mark)
+            {
+                const auto& drawn = pass.draws[pass.draws.size() - expect_marks.size() + mark];
+                same = drawn.vertex_count == pyroclast::mark_vertices(expect_marks[mark]) && drawn.instance_count == 1 &&
+                    drawn.constants == pyroclast::mark_constants(expect_marks[mark]) && drawn.bindings.read[0] == environment &&
+                    !drawn.bindings.read[1];
             }
             return same && pass.target == scene && !pass.load && pass.depth == depth && pass.depth_write && inputs(pass, nullptr);
         };
@@ -155,7 +165,8 @@ public:
     std::vector<std::pair<const pyroclast::ComputePipeline*, pyroclast::Shader>> compute_shaders;
     bool environment_uploaded = false;
     bool prop_vertices_uploaded = false;
-    bool expect_lines = false;
+    bool expect_boxes = false;
+    std::vector<pyroclast::ShowcaseMark> expect_marks;
     std::uint32_t prop_vertices = 0;
     std::uint32_t boxes = 0;
     const pyroclast::Buffer* environment = nullptr;
@@ -182,6 +193,7 @@ public:
     const pyroclast::GraphicsPipeline* lines = nullptr;
     const pyroclast::GraphicsPipeline* props = nullptr;
     const pyroclast::GraphicsPipeline* colliders = nullptr;
+    const pyroclast::GraphicsPipeline* showcase_lines = nullptr;
     pyroclast::RenderResult result = pyroclast::RenderResult::submitted;
 };
 }
@@ -364,14 +376,40 @@ int main()
         near(rebuild(drawn.sun_billboard), sun) && near(rebuild(drawn.up_billboard), {0, 1, 0}) &&
         dot(towards, camera.position - (camera.position + camera.forward())) > 0,
         "the frame carries its tick, the gusting wind, and the sun and up directions in billboard space");
-    device.expect_lines = true;
-    check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, {false, nullptr, true}) == RenderResult::submitted &&
-        device.valid_frame && device.lined_passes, "effect lines are drawn before the particles, the collision boxes after the sky");
-    auto hidden = ExplosionRenderer::FrameOptions{false, nullptr, true};
+    ExplosionRenderer::FrameOptions lined{};
+    lined.views = {true, true, false, false};
+    device.expect_boxes = true;
+    check(device.showcase_lines && full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, lined) ==
+        RenderResult::submitted && device.valid_frame && device.lined_passes,
+        "effect bounds are drawn before the particles, the collision boxes after the sky");
+    auto hidden = lined;
     hidden.layer_mask &= ~(1u << layout::props_mask_bit);
     check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, hidden) == RenderResult::submitted &&
         device.valid_frame && device.lined_passes, "hidden props: the range without them");
-    device.expect_lines = false;
+    ExplosionRenderer::FrameOptions boxes_only{};
+    boxes_only.views.collision_boxes = true;
+    check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, boxes_only) == RenderResult::submitted &&
+        device.valid_frame && device.full_resolution_passes, "the collision boxes alone add only their draw");
+    device.expect_boxes = false;
+    ExplosionRenderer::FrameOptions bounds_only{};
+    bounds_only.views.effect_bounds = true;
+    check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, bounds_only) == RenderResult::submitted &&
+        device.valid_frame && device.lined_passes, "the effect bounds alone add only their draw");
+    std::vector<ShowcaseMark> marks(2);
+    marks[0].segments = 32;
+    marks[0].radius = 1;
+    marks[1].kind = ShowcaseMark::wind_arrow;
+    marks[1].lift = 15;
+    ExplosionRenderer::FrameOptions marked{};
+    marked.views.spawn_regions = true;
+    marked.marks = marks;
+    device.expect_marks = marks;
+    check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, marked) == RenderResult::submitted &&
+        device.valid_frame && device.full_resolution_passes, "each showcase mark is one line draw after the sky, over the environment");
+    marked.layer_mask &= ~(1u << layout::props_mask_bit);
+    check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, marked) == RenderResult::submitted &&
+        device.valid_frame && device.full_resolution_passes, "hidden props keep the marks");
+    device.expect_marks.clear();
     device.result = RenderResult::skipped;
     const auto before_skip = rendered.tick();
     check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::skipped &&

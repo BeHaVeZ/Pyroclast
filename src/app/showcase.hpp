@@ -1,12 +1,14 @@
 #pragma once
 
 #include "camera.hpp"
+#include "showcase_marks.hpp"
 #include "../simulation/impact_patterns.hpp"
 
 #include <array>
 #include <cstdint>
 #include <optional>
 #include <string_view>
+#include <vector>
 
 namespace pyroclast
 {
@@ -41,6 +43,9 @@ public:
     void stop();
     std::uint32_t next_count() const;
 };
+
+void showcase_marks(const DebugViews& views, const Showcase& showcase, const std::optional<SurfaceHit>& aim, const Camera& camera,
+    const Environment& environment, bool props, std::vector<ShowcaseMark>& marks);
 
 class SlotPressure final
 {

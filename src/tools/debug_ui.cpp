@@ -244,10 +244,16 @@ ImDrawData* DebugUi::build(const DiagnosticsSnapshot& snapshot, std::vector<UiCo
         ImGui::SameLine();
         bool slow = snapshot.time_scale != 1;
         if (ImGui::Checkbox("Slow motion 0.25x (T)", &slow)) commands.push_back({UiCommand::Kind::toggle_slow_motion});
-        bool lines = snapshot.debug_lines;
-        if (ImGui::Checkbox("Lines (L)", &lines)) commands.push_back({UiCommand::Kind::toggle_debug_lines});
-        ImGui::SameLine();
-        ImGui::TextDisabled("Left click: explosion on the terrain or a prop");
+        ImGui::SeparatorText("Debug views");
+        const std::pair<const char*, bool> debug_views[] = {{"Effect bounds", snapshot.effect_bounds}, {"Collision boxes", snapshot.collision_boxes},
+            {"Spawn regions (F8)", snapshot.spawn_regions}, {"Wind arrow (F9)", snapshot.wind_arrow}};
+        for (std::uint32_t index = 0; index < std::size(debug_views); ++index)
+        {
+            bool shown = debug_views[index].second;
+            if (index % 2 != 0) ImGui::SameLine();
+            if (ImGui::Checkbox(debug_views[index].first, &shown)) commands.push_back({UiCommand::Kind::toggle_debug_view, index});
+        }
+        ImGui::TextDisabled("L toggles bounds and boxes. Left click: explosion at the cursor");
         ImGui::End();
     }
     ImGui::Render();

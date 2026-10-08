@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <limits>
 
 namespace pyroclast
 {
@@ -59,9 +60,28 @@ void Sandbox::report_drops(const SlotPressure::Report& report, bool before_clear
         ticks, effects.capacity(), static_cast<unsigned long long>(pressure.dropped_since_clear()));
 }
 
+void Sandbox::build_marks()
+{
+    marks.clear();
+    if (!views.spawn_regions && !views.wind_arrow) return;
+    const auto& environment = range.environment();
+    aim = environment.raycast(crosshair_ray(camera.camera()), std::numeric_limits<float>::infinity(), props_shown());
+    showcase_marks(views, showcase, aim, camera.camera(), environment, props_shown(), marks);
+}
+
 void Sandbox::release_due()
 {
     showcase.release_due(particles.tick(), range.environment(), props_shown(), effects);
+}
+
+namespace
+{
+void log_views(const DebugViews& views)
+{
+    const auto state = [](bool on) { return on ? "on" : "off"; };
+    SDL_Log("Debug views: effect bounds %s, collision boxes %s, spawn regions %s, wind arrow %s.", state(views.effect_bounds),
+        state(views.collision_boxes), state(views.spawn_regions), state(views.wind_arrow));
+}
 }
 
 void apply(UiCommand command, Sandbox& sandbox)
@@ -80,7 +100,14 @@ void apply(UiCommand command, Sandbox& sandbox)
         break;
     case Kind::toggle_pause: sandbox.particles.toggle_pause(); break;
     case Kind::step: sandbox.particles.step(); break;
-    case Kind::toggle_debug_lines: sandbox.debug_lines = !sandbox.debug_lines; break;
+    case Kind::toggle_debug_lines:
+    {
+        const bool on = !(sandbox.views.effect_bounds || sandbox.views.collision_boxes);
+        sandbox.views.effect_bounds = on;
+        sandbox.views.collision_boxes = on;
+        log_views(sandbox.views);
+        break;
+    }
     case Kind::select_preset:
         if (command.value < preset_count)
         {
@@ -148,6 +175,17 @@ void apply(UiCommand command, Sandbox& sandbox)
             sandbox.particles.tick());
         break;
     case Kind::set_bombardment: sandbox.showcase.set_bombardment(command.value, command.scalar, sandbox.particles.tick()); break;
+    case Kind::toggle_debug_view:
+    {
+        bool* const views[] = {&sandbox.views.effect_bounds, &sandbox.views.collision_boxes, &sandbox.views.spawn_regions,
+            &sandbox.views.wind_arrow};
+        if (command.value < std::size(views))
+        {
+            *views[command.value] = !*views[command.value];
+            log_views(sandbox.views);
+        }
+        break;
+    }
     }
 }
 }
