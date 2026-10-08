@@ -3,6 +3,9 @@
 
 #include <SDL3/SDL.h>
 
+#include <algorithm>
+#include <cstdio>
+
 namespace pyroclast
 {
 std::optional<ParticleCounters> Sandbox::poll_counters(const GraphicsDevice& device)
@@ -38,29 +41,27 @@ void Sandbox::clear()
 
 void Sandbox::spawn(const Ray& ray)
 {
-    const auto& environment = range.environment();
-    const auto aimed = aimed_event(environment, ray, next_seed, click_preset, props_shown());
-    if (!aimed)
+    showcase.fire(range.environment(), props_shown(), ray, showcase.count, "cursor", effects);
+}
+
+void Sandbox::report_drops(const SlotPressure::Report& report, bool before_clear) const
+{
+    char ticks[48];
+    if (report.first_tick == report.last_tick) std::snprintf(ticks, sizeof(ticks), "tick %u", report.last_tick);
+    else std::snprintf(ticks, sizeof(ticks), "ticks %u-%u", report.first_tick, report.last_tick);
+    if (before_clear)
     {
-        SDL_Log("Nothing under the cursor.");
+        SDL_Log("%llu events dropped at %s before the clear: all %u effect slots were busy.", static_cast<unsigned long long>(report.events),
+            ticks, effects.capacity());
         return;
     }
-    ++next_seed;
-    effects.submit(aimed->event);
-    const auto& hit = aimed->hit;
-    const auto preset = preset_name(click_preset);
-    const auto surface = surface_name(hit.surface);
-    if (hit.prop)
-    {
-        const auto& prop = environment.props()[*hit.prop];
-        const auto material = material_name(prop.material);
-        SDL_Log("Explosion at (%.1f, %.1f, %.1f): %.*s on the %.*s (%.*s: %.*s response).", hit.point.x, hit.point.y,
-            hit.point.z, static_cast<int>(preset.size()), preset.data(), static_cast<int>(prop.name.size()), prop.name.data(),
-            static_cast<int>(material.size()), material.data(), static_cast<int>(surface.size()), surface.data());
-        return;
-    }
-    SDL_Log("Explosion at (%.1f, %.1f, %.1f): %.*s on %.*s.", hit.point.x, hit.point.y, hit.point.z,
-        static_cast<int>(preset.size()), preset.data(), static_cast<int>(surface.size()), surface.data());
+    SDL_Log("%llu events dropped at %s: all %u effect slots are busy (%llu since clear).", static_cast<unsigned long long>(report.events),
+        ticks, effects.capacity(), static_cast<unsigned long long>(pressure.dropped_since_clear()));
+}
+
+void Sandbox::release_due()
+{
+    showcase.release_due(particles.tick(), range.environment(), props_shown(), effects);
 }
 
 void apply(UiCommand command, Sandbox& sandbox)
@@ -68,13 +69,25 @@ void apply(UiCommand command, Sandbox& sandbox)
     using Kind = UiCommand::Kind;
     switch (command.kind)
     {
-    case Kind::trigger: sandbox.trigger_group(); break;
-    case Kind::clear: sandbox.clear(); break;
+    case Kind::trigger:
+        sandbox.showcase.stop();
+        sandbox.trigger_group();
+        break;
+    case Kind::clear:
+        sandbox.showcase.stop();
+        if (const auto report = sandbox.pressure.clear(sandbox.effects.dropped())) sandbox.report_drops(*report, true);
+        sandbox.clear();
+        break;
     case Kind::toggle_pause: sandbox.particles.toggle_pause(); break;
     case Kind::step: sandbox.particles.step(); break;
     case Kind::toggle_debug_lines: sandbox.debug_lines = !sandbox.debug_lines; break;
     case Kind::select_preset:
-        if (command.value < preset_count) sandbox.click_preset = static_cast<ExplosionPreset>(command.value);
+        if (command.value < preset_count)
+        {
+            sandbox.showcase.preset = static_cast<ExplosionPreset>(command.value);
+            const auto name = preset_name(sandbox.showcase.preset);
+            SDL_Log("Selected preset: %.*s", static_cast<int>(name.size()), name.data());
+        }
         break;
     case Kind::toggle_layer: sandbox.layer_mask ^= 1u << (command.value & 31); break;
     case Kind::set_wind:
@@ -112,6 +125,29 @@ void apply(UiCommand command, Sandbox& sandbox)
         }
         break;
     case Kind::set_camera_speed: sandbox.camera.set_speed(command.scalar); break;
+    case Kind::set_count:
+    {
+        const auto& counts = Showcase::counts;
+        const bool listed = std::find(counts.begin(), counts.end(), command.value) != counts.end();
+        if (command.value == 0 || listed)
+        {
+            sandbox.showcase.count = listed ? command.value : sandbox.showcase.next_count();
+            SDL_Log("Spawn count: %u", sandbox.showcase.count);
+        }
+        break;
+    }
+    case Kind::fire:
+        sandbox.showcase.fire(sandbox.range.environment(), sandbox.props_shown(), crosshair_ray(sandbox.camera.camera()),
+            command.value != 0 ? command.value : sandbox.showcase.count, "crosshair", sandbox.effects);
+        break;
+    case Kind::barrage:
+        sandbox.showcase.start_barrage(sandbox.range.environment(), sandbox.props_shown(), sandbox.camera.camera(), sandbox.particles.tick());
+        break;
+    case Kind::toggle_bombardment:
+        sandbox.showcase.toggle_bombardment(sandbox.range.environment(), sandbox.props_shown(), sandbox.camera.camera(),
+            sandbox.particles.tick());
+        break;
+    case Kind::set_bombardment: sandbox.showcase.set_bombardment(command.value, command.scalar, sandbox.particles.tick()); break;
     }
 }
 }

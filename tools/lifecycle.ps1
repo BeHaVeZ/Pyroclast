@@ -1,5 +1,6 @@
 # Drives one Pyroclast window through the interactive lifecycle and checks native validation:
-# pause/clear/trigger/single steps, a click on the terrain or a prop, effect lines, 30 odd-size resizes, three
+# pause/clear/trigger/single steps, a click on the terrain or a prop, effect lines, the showcase's keys (preset,
+# count, fire at the crosshair, slot saturation, barrage, bombardment, slow motion, walk, a bookmark), 30 odd-size resizes, three
 # minimize/restore cycles, a running trigger, a normal close, and separately a start in a minimized
 # window that is later restored.
 # Passes when every launch exits 0, logs no ERROR/WARN lines (Vulkan loader notices excepted), in
@@ -130,6 +131,27 @@ function Run-Interactive {
         Start-Sleep -Milliseconds 20
         for ($tick = 0; $tick -lt 60; ++$tick) { Send-Key $window 78 0x31 }   # N: single steps
         Start-Sleep -Milliseconds 300
+        # The showcase, still paused. Keys aim at the crosshair, the screen centre, so they need no cursor: the
+        # startup pose's crosshair meets the range (unit-tested).
+        Send-Key $window 0x33 0x04    # 3: artillery-he
+        Send-Key $window 0x43 0x2E    # C: count 10
+        Send-Key $window 0x46 0x21    # F: fire 10
+        Send-Key $window 0x43 0x2E    # C: count 50
+        Send-Key $window 0x43 0x2E    # C: count 100
+        Send-Key $window 0x46 0x21    # F: fire 100
+        Send-Key $window 0x46 0x21    # F: fire 100 more; 210 events cannot all find one of 128 slots
+        Start-Sleep -Milliseconds 300
+        Send-Key $window 0x42 0x30    # B: barrage
+        Send-Key $window 0x56 0x2F    # V: bombardment
+        for ($tick = 0; $tick -lt 30; ++$tick) { Send-Key $window 78 0x31 }   # N: impacts release while stepping
+        Send-Key $window 0x54 0x14    # T: 0.25x
+        Send-Key $window 0x54 0x14    # T: 1x
+        Send-Key $window 0x47 0x22    # G: walk
+        Send-Key $window 0x47 0x22    # G: fly
+        Send-Key $window 0x72 0x3D    # F3: bookmark 2, the ground view
+        Send-Key $window 0x56 0x2F    # V: stop the bombardment
+        Send-Key $window 82 0x13      # R: clear, stopping the barrage
+        Start-Sleep -Milliseconds 300
         for ($iteration = 0; $iteration -lt 30; ++$iteration) {
             $width = 700 + 15 * ($iteration % 10) + ($iteration % 3)
             $height = 450 + 10 * ($iteration % 10) + ($iteration % 2)
@@ -152,7 +174,11 @@ function Run-Interactive {
         $text = (Get-Content -LiteralPath $log) -join "`n"
         $backend = if ($Renderer -eq 'd3d12') { 'D3D12' } else { 'Vulkan' }
         foreach ($expected in 'Particle simulation: paused', 'Particle pool cleared.', 'Explosion group triggered',
-            'Particle simulation: running', "$backend swapchain resized") {
+            'Particle simulation: running', "$backend swapchain resized", 'Selected preset: artillery-he', 'Spawn count: 10',
+            'Spawned 10 artillery-he around (', 'Spawn count: 100', 'Spawned 100 artillery-he around (',
+            'effect slots are busy', 'Barrage started at (', 'Bombardment started at (', 'Simulation speed: 0.25x',
+            'Simulation speed: 1x', 'Camera: walk', 'Camera: fly', 'Camera bookmark 2 (ground) recalled', 'Bombardment stopped after',
+            'Barrage stopped after') {
             if (-not $text.Contains($expected)) { throw "The application never logged '$expected'; input or resizes did not arrive." }
         }
         if (-not ($text.Contains('Explosion at (') -or $text.Contains('Nothing under the cursor.') -or

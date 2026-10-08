@@ -1,9 +1,11 @@
 #include "app/camera_controls.hpp"
 #include "app/key_bindings.hpp"
+#include "app/showcase.hpp"
 #include "app/test_range.hpp"
 #include "simulation/explosion_scenarios.hpp"
 #include "simulation/impact_patterns.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -11,6 +13,7 @@
 #include <limits>
 #include <set>
 #include <utility>
+#include <vector>
 
 namespace
 {
@@ -205,6 +208,198 @@ int main()
     walker.update(run, 1.0f, world, true);
     check(std::abs(walker.camera().position.z - before.z) <= 5 * 0.1f + 1e-4f, "a stall walks at most 0.1 s worth");
     check(walker.toggle_walk(world, true) && walker.mode() == CameraMode::fly, "G returns to flight");
+
+    const auto open = drop_event(world, 3.5f, 7.25f, 9, ExplosionPreset::heavy, true);
+    check(open && same_event(*open, ground_event(world.terrain(), 3.5f, 7.25f, 9, ExplosionPreset::heavy)),
+        "on open ground a dropped event is the ground's");
+    const auto crate_drop = drop_event(world, -2, -50, 9, ExplosionPreset::small_he, true);
+    check(crate_drop && std::abs(crate_drop->position.y - 2.9f) < 1e-3f && crate_drop->surface == SurfaceType::dirt &&
+        !world.inside(crate_drop->position), "a drop onto the crate stack lands on its top with wood's response");
+    const auto roof_drop = drop_event(world, 9.5f, -55, 9, ExplosionPreset::small_he, true);
+    check(roof_drop && std::abs(roof_drop->position.y - 3.35f) < 1e-3f && roof_drop->surface == SurfaceType::concrete,
+        "a drop onto the hut lands on its roof");
+    const auto bare_drop = drop_event(world, -2, -50, 9, ExplosionPreset::small_he, false);
+    check(bare_drop && same_event(*bare_drop, ground_event(world.terrain(), -2, -50, 9, ExplosionPreset::small_he)),
+        "with props hidden a drop reaches the ground");
+    check(!drop_event(world, 257, 0, 9, ExplosionPreset::small_he, true) && !drop_event(world, 0, -300, 9, ExplosionPreset::small_he, true),
+        "nothing is dropped beyond the terrain");
+
+    bool within = true;
+    float closest = std::numeric_limits<float>::max();
+    for (const std::uint32_t count : {10u, 50u, 100u})
+    {
+        for (std::uint32_t a = 0; a < count; ++a)
+        {
+            const auto p = cluster_offset(77, a);
+            within &= std::sqrt(p.x * p.x + p.y * p.y) <= cluster_radius(count) + 1e-4f;
+            for (std::uint32_t b = a + 1; b < count; ++b)
+            {
+                const auto q = cluster_offset(77, b);
+                closest = std::min(closest, std::sqrt((p.x - q.x) * (p.x - q.x) + (p.y - q.y) * (p.y - q.y)));
+            }
+        }
+    }
+    std::printf("cluster radius 10/50/100: %.1f/%.1f/%.1f m, closest pair %.2f m\n", static_cast<double>(cluster_radius(10)),
+        static_cast<double>(cluster_radius(50)), static_cast<double>(cluster_radius(100)), static_cast<double>(closest));
+    check(cluster_offset(77, 0).x == 0 && cluster_offset(77, 0).y == 0 && within && closest >= 3, "clusters keep their radius and spacing");
+    check(cluster_offset(77, 5).x != cluster_offset(79, 5).x, "another key moves a cluster");
+
+    const Ray down{{0, 50, 0}, {0, -1, 0}};
+    {
+        Showcase showcase;
+        showcase.preset = ExplosionPreset::artillery_he;
+        ExplosionSystem effects(128);
+        const auto fired = showcase.fire(world, true, down, 10, "crosshair", effects);
+        effects.start(0);
+        const auto aimed = aimed_event(world, down, Showcase::first_seed, ExplosionPreset::artillery_he, true);
+        const auto slots = effects.slots();
+        check(fired && fired->queued == 10 && fired->off_range == 0 && effects.active().size() == 10 && aimed &&
+            slots[0].seed == Showcase::first_seed && slots[0].origin.x == aimed->event.position.x &&
+            slots[0].origin.y == aimed->event.position.y && slots[9].seed == Showcase::first_seed + 9 &&
+            showcase.next_seed == Showcase::first_seed + 10, "fire x10: the aimed event, then nine around it, seeds in order");
+        const auto edge = showcase.fire(world, true, {{254, 50, 0}, {0, -1, 0}}, 50, "crosshair", effects);
+        check(edge && edge->off_range > 0 && edge->queued + edge->off_range == 50 && showcase.next_seed == Showcase::first_seed + 10 + edge->queued,
+            "near the edge, points off the range are skipped and take no seed");
+        check(!showcase.fire(world, true, {{0, 50, 0}, {0, 1, 0}}, 10, "crosshair", effects), "firing at the sky does nothing");
+        ExplosionSystem full(128);
+        showcase.fire(world, true, down, 100, "crosshair", full);
+        showcase.fire(world, true, down, 100, "crosshair", full);
+        full.start(0);
+        check(full.active().size() == 128 && full.dropped() == 72, "two salvos of 100 start 128 and drop 72");
+        showcase.fire(world, true, down, 100, "crosshair", full);
+        full.start(1);
+        check(full.active().size() == 128 && full.dropped() == 172, "with every slot busy a salvo drops entirely");
+    }
+    {
+        Showcase showcase;
+        check(showcase.next_count() == 10, "C counts 1 -> 10");
+        showcase.count = 100;
+        check(showcase.next_count() == 1, "C counts 100 -> 1");
+    }
+
+    const auto newly_started = [](const ExplosionSystem& effects, std::uint32_t tick) {
+        std::vector<EffectSlot> started;
+        for (const auto slot : effects.active())
+        {
+            if (effects.slots()[slot].start_tick == tick) started.push_back(effects.slots()[slot]);
+        }
+        return started;
+    };
+    {
+        ImpactSequence sequence;
+        sequence.preset = ExplosionPreset::artillery_he;
+        sequence.count = barrage_impacts;
+        std::uint32_t seed = 1000;
+        ExplosionSystem effects(128);
+        std::vector<std::pair<std::uint32_t, EffectSlot>> released;
+        for (std::uint32_t tick = 0; tick < 1300; ++tick)
+        {
+            release_due(sequence, tick, world, false, seed, effects);
+            effects.start(tick);
+            for (const auto& slot : newly_started(effects, tick)) released.push_back({tick, slot});
+        }
+        bool same = barrage && released.size() == barrage->events.size() && finished(sequence);
+        for (std::size_t index = 0; same && index < released.size(); ++index)
+        {
+            const auto& [tick, slot] = released[index];
+            const auto& scripted = barrage->events[index];
+            same = tick == scripted.tick && slot.origin.x == scripted.event.position.x && slot.origin.y == scripted.event.position.y &&
+                slot.origin.z == scripted.event.position.z && slot.normal.y == scripted.event.normal.y && slot.seed == scripted.event.seed &&
+                slot.effect_class == effect_class_index(scripted.event.preset, scripted.event.surface);
+        }
+        check(same, "a barrage at the origin along +x with key 0 releases the barrage scenario's events exactly");
+        ImpactSequence turned = sequence;
+        turned.along = {0, 1};
+        turned.centre = {-5, 20};
+        const auto a = impact_position(sequence, 7);
+        const auto b = impact_position(turned, 7);
+        check(std::abs(b.x - (-5 - a.y)) < 1e-4f && std::abs(b.y - (20 + a.x)) < 1e-4f, "a barrage turns and moves with its aim");
+    }
+    const auto release_by = [&](ImpactSequence sequence, std::uint32_t step, bool repeat) {
+        std::uint32_t seed = 500;
+        ExplosionSystem effects(1024);
+        std::vector<std::pair<float, std::uint32_t>> order;
+        for (std::uint32_t tick = 0; tick <= 720; tick += step)
+        {
+            release_due(sequence, tick, world, true, seed, effects);
+            if (repeat) release_due(sequence, tick, world, true, seed, effects);
+            effects.start(tick);
+            auto started = newly_started(effects, tick);
+            std::sort(started.begin(), started.end(), [](const EffectSlot& a, const EffectSlot& b) { return a.seed < b.seed; });
+            for (const auto& slot : started) order.push_back({slot.origin.x, slot.seed});
+        }
+        return order;
+    };
+    ImpactSequence storm;
+    storm.kind = ImpactSequence::Kind::bombardment;
+    storm.centre = {-30, 0};
+    storm.radius = 30;
+    storm.interval = 3;
+    storm.key = 1234;
+    ImpactSequence walk_line;
+    walk_line.centre = {0, -30};
+    walk_line.count = barrage_impacts;
+    walk_line.key = 4321;
+    bool grouping = true;
+    for (const auto& sequence : {storm, walk_line})
+    {
+        const auto reference = release_by(sequence, 1, false);
+        grouping &= !reference.empty() && release_by(sequence, 2, false) == reference && release_by(sequence, 3, false) == reference &&
+            release_by(sequence, 4, false) == reference && release_by(sequence, 1, true) == reference;
+    }
+    check(grouping, "barrage and bombardment release the same events whatever the ticks per frame");
+    {
+        bool inside_disc = true;
+        for (std::uint32_t k = 0; k < 400; ++k)
+        {
+            const auto p = impact_position(storm, k);
+            inside_disc &= std::sqrt((p.x + 30) * (p.x + 30) + p.y * p.y) <= 30 + 1e-3f;
+        }
+        ImpactSequence other = storm;
+        other.key = 99;
+        check(inside_disc && !finished(storm) && impact_position(other, 3).x != impact_position(storm, 3).x,
+            "a bombardment stays in its disc, never finishes, and its key changes its scatter");
+    }
+    const auto saturate = [&](std::uint32_t interval) {
+        ImpactSequence sequence = storm;
+        sequence.interval = interval;
+        std::uint32_t seed = 1;
+        ExplosionSystem effects(128);
+        std::size_t peak = 0;
+        for (std::uint32_t tick = 0; tick < 3000; ++tick)
+        {
+            release_due(sequence, tick, world, true, seed, effects);
+            effects.start(tick);
+            peak = std::max(peak, effects.active().size());
+        }
+        return std::pair{peak, effects.dropped()};
+    };
+    const auto steady = saturate(15);
+    const auto flood = saturate(3);
+    std::printf("bombardment small-he: every 15 ticks peak %zu dropped %llu; every 3 ticks peak %zu dropped %llu\n", steady.first,
+        static_cast<unsigned long long>(steady.second), flood.first, static_cast<unsigned long long>(flood.second));
+    check(steady.first == effect_ticks(ExplosionPreset::small_he, SurfaceType::dirt) / 15 && steady.second == 0,
+        "a bombardment every 15 ticks keeps lifetime / 15 effects and drops nothing");
+    check(flood.first == 128 && flood.second > 0, "a bombardment every 3 ticks fills the 128 slots and drops the rest");
+
+    {
+        SlotPressure pressure;
+        check(!pressure.record(10, 0.0, 20, 0) && pressure.peak_since_clear() == 20, "no drops, no report");
+        const auto first = pressure.record(11, 0.1, 128, 5);
+        check(first && first->events == 5 && first->first_tick == 11 && pressure.dropped_since_clear() == 5 &&
+            pressure.dropped_recent(11) == 5, "the first drops are reported");
+        check(!pressure.record(11, 0.5, 128, 8) && !pressure.record(11, 0.9, 128, 9), "within a second the report waits");
+        check(pressure.dropped_recent(11) == 9, "drops at one paused tick all count as recent");
+        const auto later = pressure.record(40, 1.2, 128, 12);
+        check(later && later->events == 7 && later->first_tick == 11 && later->last_tick == 40 && pressure.dropped_recent(40) == 12 &&
+            pressure.dropped_recent(80) == 3 && pressure.dropped_recent(200) == 0,
+            "a second later the accumulated drops are reported with their ticks; recent drops age out after 60 ticks");
+        check(!pressure.record(41, 1.3, 128, 14), "new drops wait for the next second");
+        const auto flushed = pressure.clear(14);
+        check(flushed && flushed->events == 2 && flushed->first_tick == 41 && pressure.dropped_since_clear() == 0 &&
+            pressure.peak_since_clear() == 0 && !pressure.record(42, 5.0, 3, 14),
+            "Clear hands back the unreported drops and rebases the counts and the peak");
+    }
 
     if (failures == 0) std::puts("showcase tests passed");
     return failures == 0 ? 0 : 1;

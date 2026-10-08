@@ -2,6 +2,7 @@
 
 #include "camera_controls.hpp"
 #include "explosion_renderer.hpp"
+#include "showcase.hpp"
 #include "test_range.hpp"
 #include "../simulation/explosion_system.hpp"
 #include "../simulation/particle_system.hpp"
@@ -23,8 +24,8 @@ struct Sandbox
     std::vector<ExplosionEvent> group;
     CameraRig camera;
     bool debug_lines = false;
-    std::uint32_t next_seed = 100000;
-    ExplosionPreset click_preset = ExplosionPreset::small_he;
+    Showcase showcase;
+    SlotPressure pressure;
     std::uint32_t layer_mask = particle_layout::full_mask;
     WindSettings wind;
     std::optional<ParticleCounters> counters;
@@ -36,6 +37,8 @@ struct Sandbox
     void trigger_group();
     void clear();
     void spawn(const Ray& ray);
+    void release_due();
+    void report_drops(const SlotPressure::Report& report, bool before_clear = false) const;
 };
 
 void apply(UiCommand command, Sandbox& sandbox);

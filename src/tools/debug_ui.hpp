@@ -48,6 +48,16 @@ struct DiagnosticsSnapshot
     WindSettings wind;
     float time_scale = 1;
     std::uint64_t capped_frames = 0;
+    std::uint32_t spawn_count = 1;
+    std::optional<std::uint32_t> barrage_progress;
+    std::optional<std::uint32_t> bombardment_impacts;
+    std::uint32_t bombardment_interval = 15;
+    float bombardment_radius = 30;
+    std::uint64_t dropped_since_clear = 0;
+    std::uint64_t dropped_recent = 0;
+    std::uint32_t peak_since_clear = 0;
+    std::size_t queued_events = 0;
+    std::uint32_t preset_ticks = 0;
 };
 
 struct UiCommand
@@ -67,6 +77,11 @@ struct UiCommand
         recall_bookmark,
         store_bookmark,
         set_camera_speed,
+        set_count,
+        fire,
+        barrage,
+        toggle_bombardment,
+        set_bombardment,
     };
     Kind kind;
     std::uint32_t value = 0;

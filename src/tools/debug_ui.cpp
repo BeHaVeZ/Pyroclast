@@ -136,19 +136,81 @@ ImDrawData* DebugUi::build(const DiagnosticsSnapshot& snapshot, std::vector<UiCo
             row("Speed (wheel)", "%.0f m/s", snapshot.camera_speed);
             ImGui::EndTable();
         }
-        ImGui::SeparatorText("Effects");
-        const auto selected = preset_name(snapshot.click_preset);
-        if (ImGui::BeginCombo("Click preset", std::string(selected).c_str()))
+        ImGui::SeparatorText("Explosions");
+        for (std::uint32_t index = 0; index < preset_count; ++index)
         {
-            for (std::uint32_t index = 0; index < preset_count; ++index)
+            const auto preset = static_cast<ExplosionPreset>(index);
+            const auto label = std::to_string(index + 1) + " " + std::string(preset_name(preset));
+            if (index % 4 != 0) ImGui::SameLine();
+            if (ImGui::RadioButton(label.c_str(), preset == snapshot.click_preset)) commands.push_back({UiCommand::Kind::select_preset, index});
+        }
+        for (const std::uint32_t count : {1u, 10u, 50u, 100u})
+        {
+            if (count != 1) ImGui::SameLine();
+            const auto label = "x" + std::to_string(count);
+            if (ImGui::RadioButton(label.c_str(), snapshot.spawn_count == count)) commands.push_back({UiCommand::Kind::set_count, count});
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("(C)");
+        if (ImGui::Button("Fire (F)")) commands.push_back({UiCommand::Kind::fire, 0});
+        for (const std::uint32_t count : {1u, 10u, 50u, 100u})
+        {
+            ImGui::SameLine();
+            const auto label = "Spawn " + std::to_string(count);
+            if (ImGui::Button(label.c_str())) commands.push_back({UiCommand::Kind::fire, count});
+        }
+        if (ImGui::Button("Barrage (B)")) commands.push_back({UiCommand::Kind::barrage});
+        ImGui::SameLine();
+        if (snapshot.barrage_progress) ImGui::Text("%u of 80 impacts", *snapshot.barrage_progress);
+        else ImGui::TextDisabled("80 impacts, 4 a second, across the view");
+        if (ImGui::Button(snapshot.bombardment_impacts ? "Stop bombardment (V)" : "Bombardment (V)"))
+        {
+            commands.push_back({UiCommand::Kind::toggle_bombardment});
+        }
+        ImGui::SameLine();
+        if (snapshot.bombardment_impacts) ImGui::Text("%u impacts", *snapshot.bombardment_impacts);
+        else ImGui::TextDisabled("around the crosshair until stopped");
+        constexpr std::uint32_t intervals[] = {60, 30, 15, 10, 6, 4, 3, 2, 1};
+        int selected_interval = 2;
+        for (int index = 0; index < static_cast<int>(std::size(intervals)); ++index)
+        {
+            if (intervals[index] == snapshot.bombardment_interval) selected_interval = index;
+        }
+        const auto rate_label = std::to_string(60 / snapshot.bombardment_interval) + " impacts/s";
+        ImGui::SetNextItemWidth(140);
+        if (ImGui::BeginCombo("Rate", rate_label.c_str()))
+        {
+            for (int index = 0; index < static_cast<int>(std::size(intervals)); ++index)
             {
-                const auto preset = static_cast<ExplosionPreset>(index);
-                if (ImGui::Selectable(std::string(preset_name(preset)).c_str(), preset == snapshot.click_preset))
+                const auto label = std::to_string(60 / intervals[index]) + " impacts/s";
+                if (ImGui::Selectable(label.c_str(), index == selected_interval))
                 {
-                    commands.push_back({UiCommand::Kind::select_preset, index});
+                    commands.push_back({UiCommand::Kind::set_bombardment, intervals[index], {}, snapshot.bombardment_radius});
                 }
             }
             ImGui::EndCombo();
+        }
+        ImGui::SameLine();
+        float radius = snapshot.bombardment_radius;
+        ImGui::SetNextItemWidth(140);
+        ImGui::SliderFloat("Radius (m)", &radius, 5, 60, "%.0f", ImGuiSliderFlags_AlwaysClamp);
+        if (ImGui::IsItemDeactivatedAfterEdit())
+        {
+            commands.push_back({UiCommand::Kind::set_bombardment, snapshot.bombardment_interval, {}, radius});
+        }
+        if (snapshot.preset_ticks != 0)
+        {
+            ImGui::TextDisabled("Expected about %u of %u slots at this rate; at most %.1f impacts/s sustained",
+                snapshot.preset_ticks / snapshot.bombardment_interval, snapshot.effect_slots,
+                static_cast<double>(snapshot.effect_slots) * 60.0 / static_cast<double>(snapshot.preset_ticks));
+        }
+        if (ImGui::BeginTable("load", 2, ImGuiTableFlags_SizingStretchProp))
+        {
+            row("Slots", "%u of %u busy, peak %u since clear, %zu queued", snapshot.active_effects, snapshot.effect_slots,
+                snapshot.peak_since_clear, snapshot.queued_events);
+            row("Dropped", "%llu since clear, %llu in the last 60 ticks", static_cast<unsigned long long>(snapshot.dropped_since_clear),
+                static_cast<unsigned long long>(snapshot.dropped_recent));
+            ImGui::EndTable();
         }
         constexpr std::pair<const char*, std::uint32_t> toggles[] = {{"dust", 0}, {"smoke", 1}, {"plume", 2}, {"flash", 3},
             {"fireball", 4}, {"sparks", 5}, {"debris", 6}, {"lights", particle_layout::lights_mask_bit},

@@ -379,18 +379,34 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                         pyroclast::scene_format_name(options.scene_format), pyroclast::TestRange::exposure,
                         {camera.position.x, camera.position.y, camera.position.z},
                         camera.yaw * 180 / std::numbers::pi_v<float>, camera.pitch * 180 / std::numbers::pi_v<float>, sandbox.camera.speed(),
-                        sandbox.click_preset, sandbox.layer_mask, sandbox.renderer.lights(), sandbox.wind,
-                        static_cast<float>(demo.time_scale()), demo.capped_frames()};
+                        sandbox.showcase.preset, sandbox.layer_mask, sandbox.renderer.lights(), sandbox.wind,
+                        static_cast<float>(demo.time_scale()), demo.capped_frames(), sandbox.showcase.count,
+                        sandbox.showcase.barrage ? std::optional(sandbox.showcase.barrage->next) : std::nullopt,
+                        sandbox.showcase.bombardment ? std::optional(sandbox.showcase.bombardment->released) : std::nullopt,
+                        sandbox.showcase.bombardment_interval, sandbox.showcase.bombardment_radius,
+                        sandbox.pressure.dropped_since_clear(), sandbox.pressure.dropped_recent(demo.tick()),
+                        sandbox.pressure.peak_since_clear(), sandbox.effects.pending(),
+                        pyroclast::effect_ticks(sandbox.showcase.preset, pyroclast::SurfaceType::dirt)};
                     commands.clear();
                     overlay = ui->build(snapshot, commands);
                     if (!unattended) for (const auto command : commands) pyroclast::apply(command, sandbox);
                 }
                 if (scenario) scenario->submit_due(sandbox);
+                else if (!unattended) sandbox.release_due();
                 const bool capture = !options.capture_path.empty() &&
                     (options.capture_tick ? demo.tick() + 1 == *options.capture_tick : !demo.has_pending_steps());
                 const auto result = sandbox.renderer.render(renderer, demo, sandbox.effects, sandbox.range, camera, width, height, elapsed,
                     {capture, overlay, sandbox.debug_lines, sandbox.layer_mask, sandbox.wind});
                 if (result == pyroclast::RenderResult::failed) return 1;
+                if (!unattended)
+                {
+                    const double now = static_cast<double>(SDL_GetPerformanceCounter()) / static_cast<double>(SDL_GetPerformanceFrequency());
+                    if (const auto report = sandbox.pressure.record(demo.tick(), now,
+                            static_cast<std::uint32_t>(sandbox.effects.active().size()), sandbox.effects.dropped()))
+                    {
+                        sandbox.report_drops(*report);
+                    }
+                }
                 const auto counters = sandbox.poll_counters(renderer);
                 if (scenario && counters) scenario->count(*counters);
                 if (result == pyroclast::RenderResult::submitted)
@@ -506,7 +522,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
         return 1;
     }
     sandbox->debug_lines = options.effect_lines;
-    sandbox->click_preset = options.preset;
+    sandbox->showcase.preset = options.preset;
     sandbox->layer_mask = options.layer_mask;
     sandbox->wind = options.wind;
     const auto preset = pyroclast::preset_name(options.preset);
