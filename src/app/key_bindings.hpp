@@ -20,5 +20,7 @@ struct KeyBinding
 
 std::span<const KeyBinding> key_bindings();
 
+std::string_view controls_summary();
+
 std::optional<UiCommand> key_command(SDL_Keycode key, SDL_Keymod modifiers);
 }

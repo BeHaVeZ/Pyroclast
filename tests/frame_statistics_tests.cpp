@@ -50,5 +50,24 @@ int main()
         ++failures;
     }
 
+    pyroclast::TickRate rate;
+    if (rate.rate() != 0)
+    {
+        std::fputs("FAIL: no rate before two samples\n", stderr);
+        ++failures;
+    }
+    for (int frame = 0; frame <= 240; ++frame) rate.add(frame / 60.0, static_cast<std::uint32_t>(frame / 4));
+    if (std::abs(rate.rate() - 15.0) > 0.3)
+    {
+        std::fprintf(stderr, "FAIL: 0.25x at 60 frames a second is 15 ticks a second (got %f)\n", rate.rate());
+        ++failures;
+    }
+    for (int frame = 241; frame <= 480; ++frame) rate.add(frame / 60.0, static_cast<std::uint32_t>(60 + (frame - 240)));
+    if (std::abs(rate.rate() - 60.0) > 0.5)
+    {
+        std::fprintf(stderr, "FAIL: real time is 60 ticks a second over the last second (got %f)\n", rate.rate());
+        ++failures;
+    }
+
     return failures == 0 ? 0 : 1;
 }

@@ -40,7 +40,9 @@ struct Sandbox
     void clear();
     void spawn(const Ray& ray);
     void release_due();
+    void update_aim(bool needed);
     void build_marks();
+    void fill_snapshot(DiagnosticsSnapshot& snapshot) const;
     void report_drops(const SlotPressure::Report& report, bool before_clear = false) const;
 };
 

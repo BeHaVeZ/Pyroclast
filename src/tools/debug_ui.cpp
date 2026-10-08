@@ -5,6 +5,8 @@
 #include <imgui_impl_sdl3.h>
 
 #include <algorithm>
+#include <cmath>
+#include <cstdio>
 #include <numeric>
 #include <string>
 
@@ -60,6 +62,347 @@ void row(const char* name, const char* format, auto... values)
     ImGui::TableNextColumn();
     ImGui::Text(format, values...);
 }
+
+int length(std::string_view text)
+{
+    return static_cast<int>(text.size());
+}
+
+void plot(const char* label, const char* id, std::span<const float> samples, int offset)
+{
+    if (samples.empty()) return;
+    const float average = std::accumulate(samples.begin(), samples.end(), 0.0f) / static_cast<float>(samples.size());
+    const auto [low, high] = std::minmax_element(samples.begin(), samples.end());
+    ImGui::Text("%s %.2f ms (min %.2f, max %.2f, last %zu)", label, average, *low, *high, samples.size());
+    ImGui::PlotLines(id, samples.data(), static_cast<int>(samples.size()), offset, nullptr, 0.0f, std::max(*high, 1.0f), ImVec2(340, 40));
+}
+
+constexpr ImGuiWindowFlags panel_flags = ImGuiWindowFlags_AlwaysAutoResize;
+constexpr float panel_width = 380;
+
+void engine_window(const DiagnosticsSnapshot& snapshot)
+{
+    const auto& system = snapshot.system;
+    const auto& frame = snapshot.frame;
+    const auto& clock = snapshot.clock;
+    const auto& load = snapshot.load;
+    ImGui::SetNextWindowPos(ImVec2(12, 12), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSizeConstraints(ImVec2(panel_width, 0), ImVec2(panel_width + 60, ImGui::GetIO().DisplaySize.y - 24));
+    ImGui::Begin("Pyroclast (F1 hides)", nullptr, panel_flags);
+    if (ImGui::BeginTable("system", 2, ImGuiTableFlags_SizingStretchProp))
+    {
+        row("Renderer", "%.*s (%.*s)", length(system.renderer), system.renderer.data(), length(system.build), system.build.data());
+        row("GPU", "%.*s", length(system.adapter), system.adapter.data());
+        row("Resolution", "%d x %d, VSync %s", system.width, system.height, system.vsync ? "on" : "off");
+        row("Scene target", "%.*s, exposure %.2f, smoke %s", length(system.scene_format), system.scene_format.data(), system.exposure,
+            system.half_resolution_smoke ? "half" : "full");
+        ImGui::EndTable();
+    }
+
+    ImGui::SeparatorText("Frame");
+    plot("CPU frame interval", "##cpu", frame.cpu_ms, frame.cpu_offset);
+    plot("GPU compute + draw", "##gpu", frame.gpu_ms, frame.gpu_offset);
+    if (frame.gpu)
+    {
+        const auto& gpu = *frame.gpu;
+        ImGui::Text("GPU compute interval %.3f ms, draw interval %.3f ms", gpu.compute_ms, gpu.draw_ms);
+        if (gpu.region_count != 0 && ImGui::BeginTable("regions", 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_RowBg))
+        {
+            for (std::uint32_t index = 0; index < gpu.region_count; ++index) row(gpu.regions[index].label, "%.3f ms", gpu.regions[index].milliseconds);
+            ImGui::EndTable();
+        }
+    }
+    else
+    {
+        ImGui::TextDisabled("No GPU timestamp sample yet");
+    }
+    ImGui::Text("Showcase CPU %.2f ms (aim, impacts, marks)", frame.showcase_cpu_ms);
+
+    ImGui::SeparatorText("Clock");
+    if (ImGui::BeginTable("clock", 2, ImGuiTableFlags_SizingStretchProp))
+    {
+        row("Tick", "%u (%.1f s simulated)", clock.tick, static_cast<double>(clock.tick) / 60.0);
+        row("State", "%s", clock.paused ? "paused" : clock.time_scale == 1 ? "running 1x" : "running 0.25x");
+        row("Steps last frame", "%u", clock.steps);
+        row("Simulation rate", "%.1f ticks/s (60 is real time)", static_cast<double>(clock.ticks_per_second));
+        row("Capped frames", "%llu (catch-up clipped at 4 steps)", static_cast<unsigned long long>(clock.capped_frames));
+        ImGui::EndTable();
+    }
+
+    if (ImGui::CollapsingHeader("Load", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        const float used = load.effect_slots != 0 ? static_cast<float>(load.active_effects) / static_cast<float>(load.effect_slots) : 0.0f;
+        const ImVec4 colour = load.active_effects >= load.effect_slots ? ImVec4(0.85f, 0.2f, 0.2f, 1) :
+            used >= 0.75f ? ImVec4(0.9f, 0.65f, 0.15f, 1) : ImVec4(0.3f, 0.7f, 0.3f, 1);
+        char slots[64];
+        std::snprintf(slots, sizeof(slots), "%u of %u effect slots", load.active_effects, load.effect_slots);
+        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, colour);
+        ImGui::ProgressBar(used, ImVec2(panel_width - 16, 0), slots);
+        ImGui::PopStyleColor();
+        if (ImGui::BeginTable("load", 2, ImGuiTableFlags_SizingStretchProp))
+        {
+            row("Startup group", "%u (Space)", load.explosions);
+            row("Peak since clear", "%u, %zu queued", load.peak_since_clear, load.queued);
+            row("Started, dropped", "%llu, %llu", static_cast<unsigned long long>(load.started), static_cast<unsigned long long>(load.dropped));
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted("Dropped");
+            ImGui::TableNextColumn();
+            if (load.dropped_recent != 0) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.35f, 0.35f, 1));
+            ImGui::Text("%llu since clear, %llu last 60 ticks", static_cast<unsigned long long>(load.dropped_since_clear),
+                static_cast<unsigned long long>(load.dropped_recent));
+            if (load.dropped_recent != 0) ImGui::PopStyleColor();
+            for (std::uint32_t index = 0; index < preset_count; ++index)
+            {
+                if (load.active_by_preset[index] == 0) continue;
+                const auto name = preset_name(static_cast<ExplosionPreset>(index));
+                row("  active", "%u %.*s", load.active_by_preset[index], length(name), name.data());
+            }
+            row("Simulated records", "%u of %u", load.simulated_records, load.pool_capacity);
+            if (load.particles)
+            {
+                const auto& counts = *load.particles;
+                row("Alive particles", "%u (%.0f%% of simulated)", counts.alive,
+                    load.simulated_records != 0 ? 100.0 * counts.alive / load.simulated_records : 0.0);
+                row("  smoke/light/debris", "%u, %u, %u (tick %u)", counts.smoke, counts.light, counts.debris, counts.tick);
+            }
+            else row("Alive particles", "none");
+            row("Temporary lights", "%u of %u", load.lights, particle_layout::maximum_lights);
+            ImGui::EndTable();
+        }
+    }
+    ImGui::End();
+}
+
+void showcase_window(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>& commands)
+{
+    const auto& showcase = snapshot.showcase;
+    const auto& camera = snapshot.camera;
+    const auto& wind = snapshot.wind;
+    const auto& views = snapshot.views;
+    const auto& io = ImGui::GetIO();
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 12, 12), ImGuiCond_FirstUseEver, ImVec2(1, 0));
+    ImGui::SetNextWindowSizeConstraints(ImVec2(panel_width, 0), ImVec2(panel_width + 60, io.DisplaySize.y - 24));
+    ImGui::Begin("Showcase", nullptr, panel_flags);
+
+    if (showcase.aim)
+    {
+        const auto& aim = *showcase.aim;
+        if (aim.prop.empty())
+        {
+            ImGui::Text("Crosshair: (%.1f, %.1f, %.1f), %.0f m, on %.*s", aim.point.x, aim.point.y, aim.point.z, aim.distance,
+                length(aim.surface), aim.surface.data());
+        }
+        else
+        {
+            ImGui::Text("Crosshair: the %.*s (%.*s: %.*s response), %.0f m", length(aim.prop), aim.prop.data(), length(aim.material),
+                aim.material.data(), length(aim.surface), aim.surface.data(), aim.distance);
+        }
+    }
+    else ImGui::TextDisabled("Crosshair: nothing to aim at");
+
+    ImGui::SeparatorText("Explosion");
+    for (std::uint32_t index = 0; index < preset_count; ++index)
+    {
+        const auto preset = static_cast<ExplosionPreset>(index);
+        const auto label = std::to_string(index + 1) + " " + std::string(preset_name(preset));
+        if (index % 3 != 0) ImGui::SameLine();
+        if (ImGui::RadioButton(label.c_str(), preset == showcase.preset)) commands.push_back({UiCommand::Kind::select_preset, index});
+    }
+    for (const std::uint32_t count : {1u, 10u, 50u, 100u})
+    {
+        if (count != 1) ImGui::SameLine();
+        const auto label = "x" + std::to_string(count);
+        if (ImGui::RadioButton(label.c_str(), showcase.count == count)) commands.push_back({UiCommand::Kind::set_count, count});
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("(C)");
+    ImGui::BeginDisabled(!showcase.aim);
+    if (ImGui::Button("Fire (F)")) commands.push_back({UiCommand::Kind::fire, 0});
+    for (const std::uint32_t count : {1u, 10u, 50u, 100u})
+    {
+        ImGui::SameLine();
+        const auto label = "Spawn " + std::to_string(count);
+        if (ImGui::Button(label.c_str())) commands.push_back({UiCommand::Kind::fire, count});
+    }
+    ImGui::EndDisabled();
+
+    ImGui::SeparatorText("Stress");
+    ImGui::BeginDisabled(!showcase.aim);
+    if (ImGui::Button("Barrage (B)")) commands.push_back({UiCommand::Kind::barrage});
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (showcase.barrage_progress)
+    {
+        const auto done = *showcase.barrage_progress;
+        char progress[48];
+        std::snprintf(progress, sizeof(progress), "%u of 80, %.1f s left", done, (80 - std::min(done, 80u)) * 15 / 60.0);
+        ImGui::ProgressBar(static_cast<float>(done) / 80.0f, ImVec2(-1, 0), progress);
+    }
+    else ImGui::TextDisabled("80 impacts, 4 a second, across the view");
+    ImGui::BeginDisabled(!showcase.aim && !showcase.bombardment_impacts);
+    if (ImGui::Button(showcase.bombardment_impacts ? "Stop bombardment (V)" : "Bombardment (V)"))
+    {
+        commands.push_back({UiCommand::Kind::toggle_bombardment});
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (showcase.bombardment_impacts) ImGui::Text("%u impacts", *showcase.bombardment_impacts);
+    else ImGui::TextDisabled("around the crosshair until stopped");
+    constexpr std::uint32_t intervals[] = {60, 30, 15, 10, 6, 4, 3, 2, 1};
+    const auto rate_label = std::to_string(60 / showcase.bombardment_interval) + " impacts/s";
+    ImGui::SetNextItemWidth(130);
+    if (ImGui::BeginCombo("Rate", rate_label.c_str()))
+    {
+        for (const auto interval : intervals)
+        {
+            const auto label = std::to_string(60 / interval) + " impacts/s";
+            if (ImGui::Selectable(label.c_str(), interval == showcase.bombardment_interval))
+            {
+                commands.push_back({UiCommand::Kind::set_bombardment, interval, {}, showcase.bombardment_radius});
+            }
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::SameLine();
+    float radius = showcase.bombardment_radius;
+    ImGui::SetNextItemWidth(110);
+    ImGui::SliderFloat("Radius", &radius, 5, 60, "%.0f m", ImGuiSliderFlags_AlwaysClamp);
+    if (ImGui::IsItemDeactivatedAfterEdit()) commands.push_back({UiCommand::Kind::set_bombardment, showcase.bombardment_interval, {}, radius});
+    if (showcase.preset_ticks != 0)
+    {
+        ImGui::TextDisabled("Expected ~%u of %u slots; %.1f impacts/s sustainable", showcase.preset_ticks / showcase.bombardment_interval,
+            snapshot.load.effect_slots, static_cast<double>(snapshot.load.effect_slots) * 60.0 / static_cast<double>(showcase.preset_ticks));
+    }
+    if (ImGui::Button("Group (Space)")) commands.push_back({UiCommand::Kind::trigger});
+    ImGui::SameLine();
+    if (ImGui::Button("Clear (R)")) commands.push_back({UiCommand::Kind::clear});
+
+    ImGui::SeparatorText("Time");
+    if (ImGui::Button(snapshot.clock.paused ? "Resume (P)" : "Pause (P)")) commands.push_back({UiCommand::Kind::toggle_pause});
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!snapshot.clock.paused);
+    if (ImGui::Button("Step (N)")) commands.push_back({UiCommand::Kind::step});
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    bool slow = snapshot.clock.time_scale != 1;
+    if (ImGui::Checkbox("Slow motion 0.25x (T)", &slow)) commands.push_back({UiCommand::Kind::toggle_slow_motion});
+
+    ImGui::SeparatorText("Wind");
+    auto settings = wind.settings;
+    constexpr auto clamp = ImGuiSliderFlags_AlwaysClamp;
+    bool changed = ImGui::SliderFloat("Speed (m/s)", &settings.speed, 0, maximum_wind_speed, "%.1f", clamp);
+    changed |= ImGui::SliderFloat("Heading (deg)", &settings.direction_degrees, -180, 180, "%.0f", clamp);
+    changed |= ImGui::SliderFloat("Gustiness", &settings.gustiness, 0, 1, "%.2f", clamp);
+    if (changed) commands.push_back({UiCommand::Kind::set_wind, 0, settings});
+    {
+        auto* draw = ImGui::GetWindowDrawList();
+        const ImVec2 corner = ImGui::GetCursorScreenPos();
+        constexpr float size = 56;
+        const ImVec2 centre(corner.x + size * 0.5f, corner.y + size * 0.5f);
+        draw->AddCircle(centre, size * 0.45f, IM_COL32(150, 150, 150, 255));
+        const float strength = std::sqrt(wind.right * wind.right + wind.forward * wind.forward);
+        if (strength > 1e-3f)
+        {
+            const float scale = size * 0.42f / std::max(strength, 1e-3f) * std::min(1.0f, 0.2f + strength / 20.0f);
+            const ImVec2 tip(centre.x + wind.right * scale, centre.y - wind.forward * scale);
+            draw->AddLine(centre, tip, IM_COL32(80, 200, 255, 255), 2);
+            draw->AddCircleFilled(tip, 3, IM_COL32(80, 200, 255, 255));
+        }
+        draw->AddText(ImVec2(centre.x + wind.north_right * size * 0.4f - 4, centre.y - wind.north_forward * size * 0.4f - 7),
+            IM_COL32(220, 220, 220, 255), "N");
+        ImGui::Dummy(ImVec2(size, size));
+        ImGui::SameLine();
+        ImGui::BeginGroup();
+        ImGui::Text("Now %.1f m/s towards %.0f deg", wind.now_speed, wind.now_heading);
+        ImGui::TextDisabled("(+x is 0, +z is 90; gusts %s)", (snapshot.layer_mask >> particle_layout::gusts_mask_bit) & 1 ? "on" : "off");
+        bool arrow = views.wind_arrow;
+        if (ImGui::Checkbox("Wind arrow (F9)", &arrow)) commands.push_back({UiCommand::Kind::toggle_debug_view, 3});
+        ImGui::EndGroup();
+    }
+
+    if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        if (ImGui::RadioButton("Fly", !camera.walking) && camera.walking) commands.push_back({UiCommand::Kind::toggle_walk});
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Walk (G)", camera.walking) && !camera.walking) commands.push_back({UiCommand::Kind::toggle_walk});
+        ImGui::SameLine();
+        float speed = camera.speed;
+        ImGui::SetNextItemWidth(150);
+        if (ImGui::SliderFloat("Speed (wheel)", &speed, 1, camera.walking ? 20.0f : 400.0f, "%.0f m/s",
+                ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_Logarithmic))
+        {
+            commands.push_back({UiCommand::Kind::set_camera_speed, 0, {}, speed});
+        }
+        ImGui::Text("Position %.1f, %.1f, %.1f m; heading %.0f, elevation %.0f deg", camera.position[0], camera.position[1],
+            camera.position[2], camera.yaw, camera.pitch);
+        for (std::uint32_t index = 0; index < camera.bookmarks.size(); ++index)
+        {
+            ImGui::PushID(static_cast<int>(index));
+            const auto go = "Go F" + std::to_string(index + 2);
+            if (ImGui::Button(go.c_str())) commands.push_back({UiCommand::Kind::recall_bookmark, index});
+            ImGui::SameLine();
+            if (ImGui::Button("Store (Ctrl)")) commands.push_back({UiCommand::Kind::store_bookmark, index});
+            ImGui::SameLine();
+            if (camera.stored[index]) ImGui::TextUnformatted("stored");
+            else ImGui::TextDisabled("%.*s", length(camera.bookmarks[index]), camera.bookmarks[index].data());
+            ImGui::PopID();
+        }
+    }
+
+    ImGui::SeparatorText("Debug views");
+    const std::pair<const char*, bool> toggles[] = {{"Effect bounds", views.effect_bounds}, {"Collision boxes", views.collision_boxes},
+        {"Spawn regions (F8)", views.spawn_regions}, {"Wind arrow (F9)", views.wind_arrow}};
+    for (std::uint32_t index = 0; index < std::size(toggles); ++index)
+    {
+        bool shown = toggles[index].second;
+        if (index % 2 != 0) ImGui::SameLine();
+        if (ImGui::Checkbox(toggles[index].first, &shown)) commands.push_back({UiCommand::Kind::toggle_debug_view, index});
+    }
+    ImGui::TextDisabled("L toggles bounds and boxes together");
+
+    if (ImGui::CollapsingHeader("Layers and features"))
+    {
+        constexpr std::pair<const char*, std::uint32_t> layers[] = {{"dust", 0}, {"smoke", 1}, {"plume", 2}, {"flash", 3},
+            {"fireball", 4}, {"sparks", 5}, {"debris", 6}, {"lights", particle_layout::lights_mask_bit},
+            {"curl", particle_layout::curl_mask_bit}, {"vortex", particle_layout::vortex_mask_bit}, {"gusts", particle_layout::gusts_mask_bit},
+            {"shading", particle_layout::shading_mask_bit}, {"shadow", particle_layout::shadow_mask_bit},
+            {"emission", particle_layout::emission_mask_bit}, {"props", particle_layout::props_mask_bit},
+            {"collision", particle_layout::collision_mask_bit}, {"deflection", particle_layout::deflection_mask_bit}};
+        for (std::size_t index = 0; index < std::size(layers); ++index)
+        {
+            const auto [name, mask_bit] = layers[index];
+            bool shown = ((snapshot.layer_mask >> mask_bit) & 1) != 0;
+            if (index % 4 != 0) ImGui::SameLine();
+            if (ImGui::Checkbox(name, &shown)) commands.push_back({UiCommand::Kind::toggle_layer, mask_bit});
+        }
+    }
+    ImGui::End();
+}
+
+void crosshair(const DiagnosticsSnapshot& snapshot)
+{
+    const auto& io = ImGui::GetIO();
+    auto* draw = ImGui::GetBackgroundDrawList();
+    const ImVec2 centre(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f);
+    const auto colour = snapshot.showcase.aim ? IM_COL32(255, 255, 255, 220) : IM_COL32(255, 80, 80, 220);
+    draw->AddLine(ImVec2(centre.x - 9, centre.y), ImVec2(centre.x - 3, centre.y), colour, 2);
+    draw->AddLine(ImVec2(centre.x + 3, centre.y), ImVec2(centre.x + 9, centre.y), colour, 2);
+    draw->AddLine(ImVec2(centre.x, centre.y - 9), ImVec2(centre.x, centre.y - 3), colour, 2);
+    draw->AddLine(ImVec2(centre.x, centre.y + 3), ImVec2(centre.x, centre.y + 9), colour, 2);
+    char label[160];
+    const auto preset = preset_name(snapshot.showcase.preset);
+    if (snapshot.showcase.aim)
+    {
+        const auto& aim = *snapshot.showcase.aim;
+        const auto where = aim.prop.empty() ? aim.surface : aim.prop;
+        std::snprintf(label, sizeof(label), "%.*s x%u | %.*s | %.0f m", length(preset), preset.data(), snapshot.showcase.count,
+            length(where), where.data(), aim.distance);
+    }
+    else std::snprintf(label, sizeof(label), "%.*s x%u | nothing to aim at", length(preset), preset.data(), snapshot.showcase.count);
+    const auto size = ImGui::CalcTextSize(label);
+    draw->AddText(ImVec2(centre.x - size.x * 0.5f, centre.y + 14), colour, label);
+}
 }
 
 ImDrawData* DebugUi::build(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>& commands)
@@ -68,193 +411,9 @@ ImDrawData* DebugUi::build(const DiagnosticsSnapshot& snapshot, std::vector<UiCo
     ImGui::NewFrame();
     if (visible_)
     {
-        ImGui::SetNextWindowPos(ImVec2(12, 12), ImGuiCond_FirstUseEver);
-        ImGui::Begin("Pyroclast (F1 hides)", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        if (ImGui::BeginTable("system", 2, ImGuiTableFlags_SizingStretchProp))
-        {
-            row("Renderer", "%.*s (%.*s)", static_cast<int>(snapshot.renderer.size()), snapshot.renderer.data(),
-                static_cast<int>(snapshot.build.size()), snapshot.build.data());
-            row("GPU", "%.*s", static_cast<int>(snapshot.adapter.size()), snapshot.adapter.data());
-            row("Resolution", "%d x %d, VSync %s", snapshot.width, snapshot.height, snapshot.vsync ? "on" : "off");
-            ImGui::EndTable();
-        }
-
-        ImGui::SeparatorText("Frame");
-        const auto& frames = snapshot.frame_ms;
-        if (!frames.empty())
-        {
-            const float average = std::accumulate(frames.begin(), frames.end(), 0.0f) / static_cast<float>(frames.size());
-            const auto [low, high] = std::minmax_element(frames.begin(), frames.end());
-            ImGui::Text("CPU frame interval %.2f ms (min %.2f, max %.2f, last %zu)", average, *low, *high, frames.size());
-            ImGui::PlotLines("##frames", frames.data(), static_cast<int>(frames.size()), snapshot.frame_ms_offset,
-                nullptr, 0.0f, std::max(*high, 1.0f), ImVec2(380, 48));
-        }
-        if (snapshot.gpu)
-        {
-            const auto& gpu = *snapshot.gpu;
-            ImGui::Text("GPU compute interval %.3f ms, draw interval %.3f ms", gpu.compute_ms, gpu.draw_ms);
-            if (gpu.region_count != 0 && ImGui::BeginTable("regions", 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_RowBg))
-            {
-                for (std::uint32_t index = 0; index < gpu.region_count; ++index)
-                {
-                    row(gpu.regions[index].label, "%.3f ms", gpu.regions[index].milliseconds);
-                }
-                ImGui::EndTable();
-            }
-        }
-        else
-        {
-            ImGui::TextDisabled("No GPU timestamp sample yet");
-        }
-
-        ImGui::SeparatorText("Simulation");
-        if (ImGui::BeginTable("simulation", 2, ImGuiTableFlags_SizingStretchProp))
-        {
-            row("Startup group", "%u (Space)", snapshot.explosions);
-            row("Effects", "%u of %u slots, %llu started, %llu dropped", snapshot.active_effects, snapshot.effect_slots,
-                static_cast<unsigned long long>(snapshot.effects_started), static_cast<unsigned long long>(snapshot.effects_dropped));
-            row("Simulation tick", "%u", snapshot.tick);
-            if (snapshot.particles)
-            {
-                const auto& counts = *snapshot.particles;
-                row("Alive particles", "%u (smoke %u, light %u, debris %u) at tick %u", counts.alive, counts.smoke, counts.light,
-                    counts.debris, counts.tick);
-            }
-            else row("Alive particles", "none");
-            row("Smoke resolution", "%s", snapshot.half_resolution_smoke ? "half" : "full");
-            row("Scene target", "%.*s, exposure %.2f", static_cast<int>(snapshot.scene_format.size()), snapshot.scene_format.data(),
-                snapshot.exposure);
-            row("State", "%s", snapshot.paused ? "paused" : snapshot.time_scale == 1 ? "running 1x" : "running 0.25x");
-            row("Capped frames", "%llu (catch-up clipped at 4 steps)", static_cast<unsigned long long>(snapshot.capped_frames));
-            ImGui::EndTable();
-        }
-        ImGui::SeparatorText("Camera");
-        if (ImGui::BeginTable("camera", 2, ImGuiTableFlags_SizingStretchProp))
-        {
-            row("Position", "%.1f, %.1f, %.1f m", snapshot.camera_position[0], snapshot.camera_position[1], snapshot.camera_position[2]);
-            row("Heading, elevation", "%.0f, %.0f deg", snapshot.camera_yaw, snapshot.camera_pitch);
-            row("Speed (wheel)", "%.0f m/s", snapshot.camera_speed);
-            ImGui::EndTable();
-        }
-        ImGui::SeparatorText("Explosions");
-        for (std::uint32_t index = 0; index < preset_count; ++index)
-        {
-            const auto preset = static_cast<ExplosionPreset>(index);
-            const auto label = std::to_string(index + 1) + " " + std::string(preset_name(preset));
-            if (index % 4 != 0) ImGui::SameLine();
-            if (ImGui::RadioButton(label.c_str(), preset == snapshot.click_preset)) commands.push_back({UiCommand::Kind::select_preset, index});
-        }
-        for (const std::uint32_t count : {1u, 10u, 50u, 100u})
-        {
-            if (count != 1) ImGui::SameLine();
-            const auto label = "x" + std::to_string(count);
-            if (ImGui::RadioButton(label.c_str(), snapshot.spawn_count == count)) commands.push_back({UiCommand::Kind::set_count, count});
-        }
-        ImGui::SameLine();
-        ImGui::TextDisabled("(C)");
-        if (ImGui::Button("Fire (F)")) commands.push_back({UiCommand::Kind::fire, 0});
-        for (const std::uint32_t count : {1u, 10u, 50u, 100u})
-        {
-            ImGui::SameLine();
-            const auto label = "Spawn " + std::to_string(count);
-            if (ImGui::Button(label.c_str())) commands.push_back({UiCommand::Kind::fire, count});
-        }
-        if (ImGui::Button("Barrage (B)")) commands.push_back({UiCommand::Kind::barrage});
-        ImGui::SameLine();
-        if (snapshot.barrage_progress) ImGui::Text("%u of 80 impacts", *snapshot.barrage_progress);
-        else ImGui::TextDisabled("80 impacts, 4 a second, across the view");
-        if (ImGui::Button(snapshot.bombardment_impacts ? "Stop bombardment (V)" : "Bombardment (V)"))
-        {
-            commands.push_back({UiCommand::Kind::toggle_bombardment});
-        }
-        ImGui::SameLine();
-        if (snapshot.bombardment_impacts) ImGui::Text("%u impacts", *snapshot.bombardment_impacts);
-        else ImGui::TextDisabled("around the crosshair until stopped");
-        constexpr std::uint32_t intervals[] = {60, 30, 15, 10, 6, 4, 3, 2, 1};
-        int selected_interval = 2;
-        for (int index = 0; index < static_cast<int>(std::size(intervals)); ++index)
-        {
-            if (intervals[index] == snapshot.bombardment_interval) selected_interval = index;
-        }
-        const auto rate_label = std::to_string(60 / snapshot.bombardment_interval) + " impacts/s";
-        ImGui::SetNextItemWidth(140);
-        if (ImGui::BeginCombo("Rate", rate_label.c_str()))
-        {
-            for (int index = 0; index < static_cast<int>(std::size(intervals)); ++index)
-            {
-                const auto label = std::to_string(60 / intervals[index]) + " impacts/s";
-                if (ImGui::Selectable(label.c_str(), index == selected_interval))
-                {
-                    commands.push_back({UiCommand::Kind::set_bombardment, intervals[index], {}, snapshot.bombardment_radius});
-                }
-            }
-            ImGui::EndCombo();
-        }
-        ImGui::SameLine();
-        float radius = snapshot.bombardment_radius;
-        ImGui::SetNextItemWidth(140);
-        ImGui::SliderFloat("Radius (m)", &radius, 5, 60, "%.0f", ImGuiSliderFlags_AlwaysClamp);
-        if (ImGui::IsItemDeactivatedAfterEdit())
-        {
-            commands.push_back({UiCommand::Kind::set_bombardment, snapshot.bombardment_interval, {}, radius});
-        }
-        if (snapshot.preset_ticks != 0)
-        {
-            ImGui::TextDisabled("Expected about %u of %u slots at this rate; at most %.1f impacts/s sustained",
-                snapshot.preset_ticks / snapshot.bombardment_interval, snapshot.effect_slots,
-                static_cast<double>(snapshot.effect_slots) * 60.0 / static_cast<double>(snapshot.preset_ticks));
-        }
-        if (ImGui::BeginTable("load", 2, ImGuiTableFlags_SizingStretchProp))
-        {
-            row("Slots", "%u of %u busy, peak %u since clear, %zu queued", snapshot.active_effects, snapshot.effect_slots,
-                snapshot.peak_since_clear, snapshot.queued_events);
-            row("Dropped", "%llu since clear, %llu in the last 60 ticks", static_cast<unsigned long long>(snapshot.dropped_since_clear),
-                static_cast<unsigned long long>(snapshot.dropped_recent));
-            ImGui::EndTable();
-        }
-        constexpr std::pair<const char*, std::uint32_t> toggles[] = {{"dust", 0}, {"smoke", 1}, {"plume", 2}, {"flash", 3},
-            {"fireball", 4}, {"sparks", 5}, {"debris", 6}, {"lights", particle_layout::lights_mask_bit},
-            {"curl", particle_layout::curl_mask_bit}, {"vortex", particle_layout::vortex_mask_bit}, {"gusts", particle_layout::gusts_mask_bit},
-            {"shading", particle_layout::shading_mask_bit}, {"shadow", particle_layout::shadow_mask_bit},
-            {"emission", particle_layout::emission_mask_bit}, {"props", particle_layout::props_mask_bit},
-            {"collision", particle_layout::collision_mask_bit}, {"deflection", particle_layout::deflection_mask_bit}};
-        for (std::size_t index = 0; index < std::size(toggles); ++index)
-        {
-            const auto [name, mask_bit] = toggles[index];
-            bool shown = ((snapshot.layer_mask >> mask_bit) & 1) != 0;
-            if (index % 4 != 0) ImGui::SameLine();
-            if (ImGui::Checkbox(name, &shown)) commands.push_back({UiCommand::Kind::toggle_layer, mask_bit});
-        }
-        ImGui::Text("Temporary lights: %u", snapshot.lights);
-        auto wind = snapshot.wind;
-        constexpr auto clamp = ImGuiSliderFlags_AlwaysClamp;
-        bool changed = ImGui::SliderFloat("Wind speed (m/s)", &wind.speed, 0, 20, "%.1f", clamp);
-        changed |= ImGui::SliderFloat("Wind heading (deg)", &wind.direction_degrees, -180, 180, "%.0f", clamp);
-        changed |= ImGui::SliderFloat("Gustiness", &wind.gustiness, 0, 1, "%.2f", clamp);
-        if (changed) commands.push_back({UiCommand::Kind::set_wind, 0, wind});
-        if (ImGui::Button("Trigger (Space)")) commands.push_back({UiCommand::Kind::trigger});
-        ImGui::SameLine();
-        if (ImGui::Button("Clear (R)")) commands.push_back({UiCommand::Kind::clear});
-        ImGui::SameLine();
-        if (ImGui::Button(snapshot.paused ? "Resume (P)" : "Pause (P)")) commands.push_back({UiCommand::Kind::toggle_pause});
-        ImGui::SameLine();
-        ImGui::BeginDisabled(!snapshot.paused);
-        if (ImGui::Button("Step (N)")) commands.push_back({UiCommand::Kind::step});
-        ImGui::EndDisabled();
-        ImGui::SameLine();
-        bool slow = snapshot.time_scale != 1;
-        if (ImGui::Checkbox("Slow motion 0.25x (T)", &slow)) commands.push_back({UiCommand::Kind::toggle_slow_motion});
-        ImGui::SeparatorText("Debug views");
-        const std::pair<const char*, bool> debug_views[] = {{"Effect bounds", snapshot.effect_bounds}, {"Collision boxes", snapshot.collision_boxes},
-            {"Spawn regions (F8)", snapshot.spawn_regions}, {"Wind arrow (F9)", snapshot.wind_arrow}};
-        for (std::uint32_t index = 0; index < std::size(debug_views); ++index)
-        {
-            bool shown = debug_views[index].second;
-            if (index % 2 != 0) ImGui::SameLine();
-            if (ImGui::Checkbox(debug_views[index].first, &shown)) commands.push_back({UiCommand::Kind::toggle_debug_view, index});
-        }
-        ImGui::TextDisabled("L toggles bounds and boxes. Left click: explosion at the cursor");
-        ImGui::End();
+        crosshair(snapshot);
+        engine_window(snapshot);
+        showcase_window(snapshot, commands);
     }
     ImGui::Render();
     return visible_ ? ImGui::GetDrawData() : nullptr;

@@ -66,6 +66,8 @@ struct FrameHistory
         next = (next + 1) % milliseconds.size();
         count = std::min(count + 1, milliseconds.size());
     }
+    std::span<const float> samples() const { return {milliseconds.data(), count}; }
+    int offset() const { return count < milliseconds.size() ? 0 : static_cast<int>(next); }
 };
 
 using pyroclast::Sandbox;
@@ -252,6 +254,11 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
         SDL_Log("Startup sample skipped while the overlay is on; launch with --ui=off to take it.");
     }
     FrameHistory history;
+    FrameHistory gpu_history;
+    std::uint64_t last_gpu_sample = 0;
+    pyroclast::TickRate tick_rate;
+    std::uint32_t last_steps = 0;
+    double showcase_ms = 0;
     std::vector<pyroclast::UiCommand> commands;
     auto previous_time = SDL_GetPerformanceCounter();
     std::uint32_t submitted_frames = 0;
@@ -364,38 +371,33 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     baseline.disable();
                 }
                 const auto& camera = sandbox.camera.camera();
+                const auto showcase_start = SDL_GetPerformanceCounter();
+                sandbox.update_aim((ui && ui->visible()) || sandbox.views.spawn_regions || sandbox.views.wind_arrow);
+                auto showcase_ticks = SDL_GetPerformanceCounter() - showcase_start;
                 ImDrawData* overlay = nullptr;
                 if (ui)
                 {
-                    const pyroclast::DiagnosticsSnapshot snapshot{pyroclast::renderer_name(options.renderer), renderer.adapter_name(),
-                        pyroclast::build_configuration, width, height, !profile_tick.has_value() && !scenario,
-                        std::span<const float>(history.milliseconds.data(), history.count),
-                        history.count < history.milliseconds.size() ? 0 : static_cast<int>(history.next),
-                        renderer.completed_gpu_timings(), static_cast<std::uint32_t>(sandbox.group.size()),
-                        static_cast<std::uint32_t>(sandbox.effects.active().size()), sandbox.effects.capacity(),
-                        sandbox.effects.started(), sandbox.effects.dropped(), demo.tick(),
-                        sandbox.effects.active().empty() ? std::nullopt : sandbox.counters,
-                        sandbox.views.effect_bounds || sandbox.views.collision_boxes, demo.paused(),
-                        options.half_smoke,
-                        pyroclast::scene_format_name(options.scene_format), pyroclast::TestRange::exposure,
-                        {camera.position.x, camera.position.y, camera.position.z},
-                        camera.yaw * 180 / std::numbers::pi_v<float>, camera.pitch * 180 / std::numbers::pi_v<float>, sandbox.camera.speed(),
-                        sandbox.showcase.preset, sandbox.layer_mask, sandbox.renderer.lights(), sandbox.wind,
-                        static_cast<float>(demo.time_scale()), demo.capped_frames(), sandbox.showcase.count,
-                        sandbox.showcase.barrage ? std::optional(sandbox.showcase.barrage->next) : std::nullopt,
-                        sandbox.showcase.bombardment ? std::optional(sandbox.showcase.bombardment->released) : std::nullopt,
-                        sandbox.showcase.bombardment_interval, sandbox.showcase.bombardment_radius,
-                        sandbox.pressure.dropped_since_clear(), sandbox.pressure.dropped_recent(demo.tick()),
-                        sandbox.pressure.peak_since_clear(), sandbox.effects.pending(),
-                        pyroclast::effect_ticks(sandbox.showcase.preset, pyroclast::SurfaceType::dirt), sandbox.views.effect_bounds,
-                        sandbox.views.collision_boxes, sandbox.views.spawn_regions, sandbox.views.wind_arrow};
+                    pyroclast::DiagnosticsSnapshot snapshot;
+                    snapshot.system = {.renderer = pyroclast::renderer_name(options.renderer), .adapter = renderer.adapter_name(),
+                        .build = pyroclast::build_configuration, .width = width, .height = height,
+                        .vsync = !profile_tick.has_value() && !scenario, .scene_format = pyroclast::scene_format_name(options.scene_format),
+                        .exposure = pyroclast::TestRange::exposure, .half_resolution_smoke = options.half_smoke};
+                    snapshot.frame = {.cpu_ms = history.samples(), .cpu_offset = history.offset(), .gpu_ms = gpu_history.samples(),
+                        .gpu_offset = gpu_history.offset(), .gpu = renderer.completed_gpu_timings(), .showcase_cpu_ms = showcase_ms};
+                    sandbox.fill_snapshot(snapshot);
+                    snapshot.clock.steps = last_steps;
+                    snapshot.clock.ticks_per_second = static_cast<float>(tick_rate.rate());
                     commands.clear();
                     overlay = ui->build(snapshot, commands);
                     if (!unattended) for (const auto command : commands) pyroclast::apply(command, sandbox);
                 }
+                const auto release_start = SDL_GetPerformanceCounter();
                 if (scenario) scenario->submit_due(sandbox);
                 else if (!unattended) sandbox.release_due();
                 sandbox.build_marks();
+                showcase_ticks += SDL_GetPerformanceCounter() - release_start;
+                showcase_ms = 1000.0 * static_cast<double>(showcase_ticks) / static_cast<double>(SDL_GetPerformanceFrequency());
+                const auto tick_before = demo.tick();
                 const bool capture = !options.capture_path.empty() &&
                     (options.capture_tick ? demo.tick() + 1 == *options.capture_tick : !demo.has_pending_steps());
                 const auto result = sandbox.renderer.render(renderer, demo, sandbox.effects, sandbox.range, camera, width, height, elapsed,
@@ -409,6 +411,14 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     {
                         sandbox.report_drops(*report);
                     }
+                }
+                last_steps = demo.tick() - tick_before;
+                const double wall = static_cast<double>(SDL_GetPerformanceCounter()) / static_cast<double>(SDL_GetPerformanceFrequency());
+                tick_rate.add(wall, demo.tick());
+                if (const auto gpu = renderer.completed_gpu_timings(); gpu && gpu->sample_id != last_gpu_sample)
+                {
+                    last_gpu_sample = gpu->sample_id;
+                    gpu_history.add(gpu->compute_ms + gpu->draw_ms);
                 }
                 const auto counters = sandbox.poll_counters(renderer);
                 if (scenario && counters) scenario->count(*counters);
@@ -554,11 +564,9 @@ int run_application(const pyroclast::ApplicationOptions& options)
         sandbox->particles.prepare_profile(*options.profile_tick);
         SDL_Log("Fixed-state profile: tick=%u; VSync off; timestamps on; zero integration steps after preparation.", *options.profile_tick);
     }
-    SDL_SetWindowTitle(window.get(), ui ?
-        "Pyroclast | WASD/QE, right mouse: fly | left click: explosion | Space: group | R: clear | P: pause | N: step | L: lines | F1: overlay" :
-        "Pyroclast | WASD/QE, right mouse: fly | left click: explosion | Space: group | R: clear | P: pause | N: step | L: lines");
-    SDL_Log("Explosion demo ready. Space: trigger, R: clear, P: pause, N: single step, L: effect lines; left click places an explosion; "
-        "WASD/QE with the right mouse button flies the camera.");
+    const std::string title = "Pyroclast | " + std::string(pyroclast::controls_summary()) + (ui ? " | F1: overlay" : "");
+    SDL_SetWindowTitle(window.get(), title.c_str());
+    SDL_Log("Explosion demo ready. %.*s.", static_cast<int>(pyroclast::controls_summary().size()), pyroclast::controls_summary().data());
     const int exit_code = run_event_loop(window.get(), device, *sandbox, ui.get(), options, std::move(scenario));
     const bool idle = device.wait_idle();
     sandbox.reset();

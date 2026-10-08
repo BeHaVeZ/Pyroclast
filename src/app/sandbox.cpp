@@ -4,6 +4,7 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <limits>
 
@@ -60,13 +61,94 @@ void Sandbox::report_drops(const SlotPressure::Report& report, bool before_clear
         ticks, effects.capacity(), static_cast<unsigned long long>(pressure.dropped_since_clear()));
 }
 
+void Sandbox::update_aim(bool needed)
+{
+    aim.reset();
+    if (needed) aim = range.environment().raycast(crosshair_ray(camera.camera()), std::numeric_limits<float>::infinity(), props_shown());
+}
+
 void Sandbox::build_marks()
 {
     marks.clear();
     if (!views.spawn_regions && !views.wind_arrow) return;
-    const auto& environment = range.environment();
-    aim = environment.raycast(crosshair_ray(camera.camera()), std::numeric_limits<float>::infinity(), props_shown());
-    showcase_marks(views, showcase, aim, camera.camera(), environment, props_shown(), marks);
+    showcase_marks(views, showcase, aim, camera.camera(), range.environment(), props_shown(), marks);
+}
+
+void Sandbox::fill_snapshot(DiagnosticsSnapshot& snapshot) const
+{
+    const auto tick = particles.tick();
+    snapshot.clock.tick = tick;
+    snapshot.clock.paused = particles.paused();
+    snapshot.clock.time_scale = static_cast<float>(particles.time_scale());
+    snapshot.clock.capped_frames = particles.capped_frames();
+
+    auto& load = snapshot.load;
+    load.explosions = static_cast<std::uint32_t>(group.size());
+    load.active_effects = static_cast<std::uint32_t>(effects.active().size());
+    load.effect_slots = effects.capacity();
+    load.started = effects.started();
+    load.dropped = effects.dropped();
+    load.dropped_since_clear = pressure.dropped_since_clear();
+    load.dropped_recent = pressure.dropped_recent(tick);
+    load.peak_since_clear = pressure.peak_since_clear();
+    load.queued = effects.pending();
+    for (const auto slot : effects.active()) ++load.active_by_preset[static_cast<std::uint32_t>(effects.slots()[slot].preset)];
+    load.simulated_records = load.active_effects * ParticleSystem::slab_records;
+    load.pool_capacity = ParticleSystem::capacity;
+    if (!effects.active().empty()) load.particles = counters;
+    load.lights = renderer.lights();
+
+    auto& shown = snapshot.showcase;
+    shown.preset = showcase.preset;
+    shown.count = showcase.count;
+    shown.preset_ticks = effect_ticks(showcase.preset, SurfaceType::dirt);
+    if (aim)
+    {
+        DiagnosticsSnapshot::Aim target;
+        target.point = aim->point;
+        target.distance = length(aim->point - camera.camera().position);
+        target.surface = surface_name(aim->surface);
+        if (aim->prop)
+        {
+            const auto& prop = range.environment().props()[*aim->prop];
+            target.prop = prop.name;
+            target.material = material_name(prop.material);
+        }
+        shown.aim = target;
+    }
+    if (showcase.barrage) shown.barrage_progress = showcase.barrage->next;
+    if (showcase.bombardment) shown.bombardment_impacts = showcase.bombardment->released;
+    shown.bombardment_interval = showcase.bombardment_interval;
+    shown.bombardment_radius = showcase.bombardment_radius;
+
+    const auto& view = camera.camera();
+    auto& rig = snapshot.camera;
+    rig.position[0] = view.position.x;
+    rig.position[1] = view.position.y;
+    rig.position[2] = view.position.z;
+    rig.yaw = view.yaw * 57.2957795f;
+    rig.pitch = view.pitch * 57.2957795f;
+    rig.speed = camera.speed();
+    rig.walking = camera.mode() == CameraMode::walk;
+    for (std::size_t index = 0; index < CameraRig::bookmark_count; ++index)
+    {
+        rig.bookmarks[index] = camera.bookmarks()[index].name;
+        rig.stored[index] = camera.bookmarks()[index].stored;
+    }
+
+    const auto now = wind_velocity(wind, tick, ((layer_mask >> particle_layout::gusts_mask_bit) & 1) != 0);
+    const float3 right = view.right();
+    const float3 forward{std::sin(view.yaw), 0, -std::cos(view.yaw)};
+    snapshot.wind.settings = wind;
+    snapshot.wind.now_speed = length(now);
+    snapshot.wind.now_heading = std::atan2(now.z, now.x) * 57.2957795f;
+    snapshot.wind.right = dot(now, right);
+    snapshot.wind.forward = dot(now, forward);
+    snapshot.wind.north_right = dot(float3{0, 0, -1}, right);
+    snapshot.wind.north_forward = dot(float3{0, 0, -1}, forward);
+
+    snapshot.views = {views.effect_bounds, views.collision_boxes, views.spawn_regions, views.wind_arrow};
+    snapshot.layer_mask = layer_mask;
 }
 
 void Sandbox::release_due()

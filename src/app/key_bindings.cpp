@@ -55,6 +55,12 @@ std::span<const KeyBinding> key_bindings()
     return bindings;
 }
 
+std::string_view controls_summary()
+{
+    return "WASD/QE + right mouse: move | click/F: fire | 1-7: preset | C: count | B: barrage | V: bombardment | T: 0.25x | "
+           "G: walk | F2-F7: views (Ctrl stores) | F8/F9/L: debug views | Space: group | R: clear | P: pause | N: step";
+}
+
 std::optional<UiCommand> key_command(SDL_Keycode key, SDL_Keymod modifiers)
 {
     if ((modifiers & SDL_KMOD_ALT) != 0) return std::nullopt;
