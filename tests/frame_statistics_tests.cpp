@@ -1,3 +1,4 @@
+#include "app/counter_log.hpp"
 #include "app/frame_statistics.hpp"
 
 #include <cmath>
@@ -66,6 +67,40 @@ int main()
     if (std::abs(rate.rate() - 60.0) > 0.5)
     {
         std::fprintf(stderr, "FAIL: real time is 60 ticks a second over the last second (got %f)\n", rate.rate());
+        ++failures;
+    }
+
+    pyroclast::CounterLog log;
+    log.add_frame({1, 1, 0, 0, 0, false});
+    log.set_cpu_ms(0.5);
+    log.add_frame({2, 1, 3, 3, 1, true});
+    log.add_timing(0.25, 0.01);
+    log.add_frame({3, 1, 3, 0, 0, true});
+    log.add_timing(0.5, 0.02);
+    pyroclast::ParticleCounters record;
+    record.tick = 2;
+    record.alive = 70;
+    record.smoke = 40;
+    record.light = 20;
+    record.debris = 10;
+    log.add_counters(record);
+    const std::string expected =
+        "frame,tick,steps,active,started,dropped,counter_tick,alive,smoke,light,debris,draw_ms,compute_ms,cpu_ms\n"
+        "0,1,1,0,0,0,,,,,,0.250000,0.010000,0.5000\n"
+        "1,2,1,3,3,1,2,70,40,20,10,0.500000,0.020000,0.0000\n"
+        "2,3,1,3,0,0,,,,,,,,0.0000\n";
+    if (log.csv() != expected || log.mismatches() != 0 || log.size() != 3)
+    {
+        std::fprintf(stderr, "FAIL: counter log rows\n%s", log.csv().c_str());
+        ++failures;
+    }
+    record.tick = 7;
+    log.add_counters(record);
+    log.add_timing(1, 1);
+    log.add_timing(1, 1);
+    if (log.mismatches() != 2)
+    {
+        std::fprintf(stderr, "FAIL: counter log mismatches (got %zu)\n", log.mismatches());
         ++failures;
     }
 

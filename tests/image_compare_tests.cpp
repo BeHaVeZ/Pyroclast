@@ -34,5 +34,15 @@ int main()
     second[0] = 250;
     check(compare_rgba(first, second).p99_level == 0, "one outlier stays above p99");
     check(compare_rgba({}, {}).pixels == 0, "empty images");
+
+    using pyroclast::tools::box_blur_rgba;
+    std::vector<std::uint8_t> dot(3 * 3 * 4, 0);
+    dot[(1 * 3 + 1) * 4] = 90;
+    for (int pixel = 0; pixel < 9; ++pixel) dot[pixel * 4 + 3] = 255;
+    const auto spread = box_blur_rgba(dot, 3, 3, 1);
+    check(spread[(1 * 3 + 1) * 4] == 10 && spread[0] == 23 && spread[(0 * 3 + 1) * 4] == 15 && spread[3] == 255 && spread[1] == 0,
+        "a dot spreads over its clipped window");
+    check(box_blur_rgba(first, 10, 10, 2) == first, "a flat image stays flat");
+    check(box_blur_rgba(dot, 3, 3, 0) == dot, "radius 0 copies");
     return failures == 0 ? 0 : 1;
 }

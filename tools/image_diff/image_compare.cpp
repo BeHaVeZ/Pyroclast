@@ -44,6 +44,43 @@ ImageDifference compare_rgba(std::span<const std::uint8_t> first, std::span<cons
     return result;
 }
 
+std::vector<std::uint8_t> box_blur_rgba(std::span<const std::uint8_t> rgba, int width, int height, int radius)
+{
+    assert(width >= 0 && height >= 0 && radius >= 0 && rgba.size() == static_cast<std::size_t>(width) * height * 4);
+    std::vector<std::uint8_t> blurred(rgba.begin(), rgba.end());
+    if (radius == 0 || rgba.empty()) return blurred;
+    const auto index = [width](int x, int y) { return (static_cast<std::size_t>(y) * width + x); };
+    std::vector<std::uint32_t> rows(static_cast<std::size_t>(width) * height * 3);
+    for (int y = 0; y < height; ++y)
+    {
+        for (int x = 0; x < width; ++x)
+        {
+            for (int channel = 0; channel < 3; ++channel)
+            {
+                std::uint32_t sum = 0;
+                for (int dx = std::max(0, x - radius); dx <= std::min(width - 1, x + radius); ++dx) sum += rgba[index(dx, y) * 4 + channel];
+                rows[index(x, y) * 3 + channel] = sum;
+            }
+        }
+    }
+    for (int y = 0; y < height; ++y)
+    {
+        const int top = std::max(0, y - radius);
+        const int bottom = std::min(height - 1, y + radius);
+        for (int x = 0; x < width; ++x)
+        {
+            const auto count = static_cast<std::uint32_t>((std::min(width - 1, x + radius) - std::max(0, x - radius) + 1) * (bottom - top + 1));
+            for (int channel = 0; channel < 3; ++channel)
+            {
+                std::uint32_t sum = 0;
+                for (int dy = top; dy <= bottom; ++dy) sum += rows[index(x, dy) * 3 + channel];
+                blurred[index(x, y) * 4 + channel] = static_cast<std::uint8_t>((sum + count / 2) / count);
+            }
+        }
+    }
+    return blurred;
+}
+
 std::uint64_t ImageDifference::above(unsigned level) const
 {
     std::uint64_t count = 0;

@@ -4,6 +4,7 @@
 #include "../simulation/wind.hpp"
 #include <array>
 #include <cstddef>
+#include <optional>
 #include <string>
 
 namespace pyroclast
@@ -23,11 +24,15 @@ struct SampleDescription
     std::optional<std::uint32_t> profile_tick;
     bool half_resolution_smoke = false;
     std::string view = "overview";
+    std::optional<std::array<float, 6>> camera;
+    std::string scenario;
     std::string scene_format = "rgba16f";
     std::string preset = "small-he";
     std::uint32_t layer_mask = particle_layout::full_mask;
     WindSettings wind;
 };
+
+std::string camera_json(const std::array<float, 6>& pose);
 
 class FrameBaseline final
 {

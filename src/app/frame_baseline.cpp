@@ -22,6 +22,14 @@ std::string json_string(const std::string& text)
 }
 }
 
+std::string camera_json(const std::array<float, 6>& pose)
+{
+    char text[160];
+    std::snprintf(text, sizeof(text), "[%.3f,%.3f,%.3f,%.3f,%.3f,%.3f]", static_cast<double>(pose[0]), static_cast<double>(pose[1]),
+        static_cast<double>(pose[2]), static_cast<double>(pose[3]), static_cast<double>(pose[4]), static_cast<double>(pose[5]));
+    return text;
+}
+
 void FrameBaseline::record(double milliseconds, std::optional<GpuTimings> gpu, std::optional<std::uint32_t> alive)
 {
     if (!enabled_) return;
@@ -58,7 +66,11 @@ void FrameBaseline::record(double milliseconds, std::optional<GpuTimings> gpu, s
     const auto cpu = summarize(samples_);
     const auto& sample = description_;
     const char* renderer = sample.renderer.c_str();
-    if (sample.profile_tick)
+    if (sample.profile_tick && !sample.scenario.empty())
+        SDL_Log("Fixed-state sample: scenario %s frozen at tick=%u, zero integration steps, VSync off; warmup=120, samples=600, resolution=1280x720, capacity=%u, view=%s, scene=%s, renderer=%s, build=%s.",
+            sample.scenario.c_str(), *sample.profile_tick, sample.capacity, sample.view.c_str(), sample.scene_format.c_str(), renderer,
+            build_configuration);
+    else if (sample.profile_tick)
         SDL_Log("Fixed-state sample: tick=%u, zero integration steps, VSync off; warmup=120, samples=600, resolution=1280x720, explosions=%u, capacity=%u, view=%s, scene=%s, renderer=%s, build=%s.",
             *sample.profile_tick, sample.explosions, sample.capacity, sample.view.c_str(), sample.scene_format.c_str(), renderer,
             build_configuration);
@@ -96,16 +108,19 @@ void FrameBaseline::record(double milliseconds, std::optional<GpuTimings> gpu, s
         std::snprintf(summary, sizeof(summary), "{\"samples\":%zu,\"compute\":%.6f,\"draw\":%.6f,\"regions\":", gpu_count_, compute, draw);
         gpu_ms = summary + regions + "}";
     }
+    std::string extra;
+    if (!sample.scenario.empty()) extra += ",\"scenario\":" + json_string(sample.scenario);
+    if (sample.camera) extra += ",\"camera\":" + camera_json(*sample.camera);
     std::printf("{\"build\":\"%s\",\"renderer\":%s,\"gpu\":%s,\"explosions\":%u,\"capacity\":%u,\"profile_tick\":%s,"
-        "\"vsync\":%s,\"smoke_resolution\":\"%s\",\"view\":%s,\"scene_format\":%s,\"preset\":%s,\"layer_mask\":%u,\"wind\":[%.2f,%.1f,%.2f],"
+        "\"vsync\":%s,\"smoke_resolution\":\"%s\",\"view\":%s,\"scene_format\":%s,\"preset\":%s,\"layer_mask\":%u,\"wind\":[%.2f,%.1f,%.2f]%s,"
         "\"width\":1280,\"height\":720,\"warmup_frames\":%zu,\"samples\":%zu,"
         "\"alive\":%s,\"cpu_ms\":{\"average\":%.4f,\"median\":%.4f,\"p99\":%.4f},\"gpu_ms\":%s}\n",
         build_configuration, json_string(sample.renderer).c_str(), json_string(sample.gpu).c_str(),
         sample.explosions, sample.capacity, tick.c_str(), sample.profile_tick ? "false" : "true",
         sample.half_resolution_smoke ? "half" : "full", json_string(sample.view).c_str(), json_string(sample.scene_format).c_str(),
         json_string(sample.preset).c_str(), sample.layer_mask, static_cast<double>(sample.wind.speed),
-        static_cast<double>(sample.wind.direction_degrees), static_cast<double>(sample.wind.gustiness), warmup_frames, samples_.size(),
-        alive_particles.c_str(), cpu.average, cpu.median, cpu.p99, gpu_ms.c_str());
+        static_cast<double>(sample.wind.direction_degrees), static_cast<double>(sample.wind.gustiness), extra.c_str(), warmup_frames,
+        samples_.size(), alive_particles.c_str(), cpu.average, cpu.median, cpu.p99, gpu_ms.c_str());
     std::fflush(stdout);
 }
 }

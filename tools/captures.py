@@ -4,17 +4,22 @@
                                    [--presets small-he,artillery-he,...] [--args="--disable=props ..."]
                                    [--scenarios range --ticks 6,45,180]
   python tools/captures.py compare <dir-a> <dir-b> [--subset] [--max-level 0] [--max-outliers 0] [--min-within-one 1.0]
-  python tools/captures.py cross-api <dir> [--max-level 2] [--max-outliers 9] [--min-within-one 0.999]
+                                   [--blur R]
+  python tools/captures.py cross-api <dir> [--max-level 2] [--max-outliers 9] [--min-within-one 0.999] [--blur R]
 
 --scenarios captures scripted runs instead of fixed states: each scenario at each tick (--capture-tick, the
-frame that draws that tick; 1 or more, default 6,45,180,360), over the renderers, smoke resolutions and views, named
-<renderer>-<smoke>-scenario-<name>-<tick>[-<view>]. --explosions and --presets do not apply.
+frame that draws that tick; 1 or more, default 6,45,180,360), over the renderers, smoke resolutions, views and
+presets, named <renderer>-<smoke>-scenario-<name>-<tick>[-<view>][-<preset>]. --explosions does not apply.
+A preset other than small-he adds --preset and its name, as for fixed states.
 
 --args appends flags to every launch without changing the file names, so a capture set taken with a
 feature switched off (--args=--disable=props) can be compared with an older baseline of the same names.
 
 compare requires both directories to hold the same captures unless --subset allows the first to
 hold only some of the second's. cross-api requires every capture to exist for both renderers.
+
+--blur R passes --blur=R to ImageDiff: both images are box-blurred with radius R pixels before the
+comparison, so the tolerances apply to density at that scale rather than to single pixels.
 
 --max-outliers pixels may exceed --max-level. Cross-API it defaults to 9 (0.001% of 1280 x 720): an
 opaque edge, such as a small debris fragment's, can cover a pixel centre on one API and not the other
@@ -48,20 +53,20 @@ def run_environment():
 def capture_cases(arguments):
     """(file name, workload flags) for every capture asked for."""
     renderers, views, smokes = arguments.renderers.split(","), arguments.views.split(","), arguments.smoke.split(",")
+    presets = arguments.presets.split(",")
     ticks = (arguments.ticks or ("6,45,180,360" if arguments.scenarios else "0,60,180,480")).split(",")
+    suffix = lambda view, preset: ("" if view == "overview" else f"-{view}") + ("" if preset == "small-he" else f"-{preset}")
+    preset_flags = lambda preset: [] if preset == "small-he" else [f"--preset={preset}"]
     if arguments.scenarios:
-        for renderer, view, smoke, scenario, tick in itertools.product(renderers, views, smokes, arguments.scenarios.split(","), ticks):
-            name = f"{renderer}-{smoke}-scenario-{scenario}-{tick}" + ("" if view == "overview" else f"-{view}")
-            yield name, renderer, view, smoke, [f"--scenario={scenario}", f"--capture-tick={tick}"]
+        for renderer, view, smoke, scenario, tick, preset in itertools.product(renderers, views, smokes, arguments.scenarios.split(","),
+                                                                               ticks, presets):
+            name = f"{renderer}-{smoke}-scenario-{scenario}-{tick}" + suffix(view, preset)
+            yield name, renderer, view, smoke, [f"--scenario={scenario}", f"--capture-tick={tick}", *preset_flags(preset)]
         return
     for renderer, view, smoke, explosions, tick, preset in itertools.product(renderers, views, smokes, arguments.explosions.split(","),
-                                                                             ticks, arguments.presets.split(",")):
-        name = (f"{renderer}-{smoke}-{explosions}-{tick}" + ("" if view == "overview" else f"-{view}") +
-                ("" if preset == "small-he" else f"-{preset}"))
-        workload = [f"--explosions={explosions}", f"--profile-tick={tick}"]
-        if preset != "small-he":
-            workload.append(f"--preset={preset}")
-        yield name, renderer, view, smoke, workload
+                                                                             ticks, presets):
+        name = f"{renderer}-{smoke}-{explosions}-{tick}" + suffix(view, preset)
+        yield name, renderer, view, smoke, [f"--explosions={explosions}", f"--profile-tick={tick}", *preset_flags(preset)]
 
 
 def capture(arguments):
@@ -98,9 +103,11 @@ def compare_pairs(pairs, arguments):
     tool = image_diff_path(arguments)
     failures = 0
     for name, first, second in pairs:
-        result = subprocess.run([str(tool), str(first), str(second), f"--max-level={arguments.max_level}",
-                                 f"--max-outliers={arguments.max_outliers}", f"--min-within-one={arguments.min_within_one}"],
-                                capture_output=True, text=True)
+        command = [str(tool), str(first), str(second), f"--max-level={arguments.max_level}",
+                   f"--max-outliers={arguments.max_outliers}", f"--min-within-one={arguments.min_within_one}"]
+        if arguments.blur is not None:
+            command.append(f"--blur={arguments.blur}")
+        result = subprocess.run(command, capture_output=True, text=True)
         line = (result.stdout or result.stderr).strip()
         failures += result.returncode != 0
         print(f"{name}: {line}")
@@ -166,6 +173,7 @@ def main():
         command.add_argument("--max-level", type=int, default=default_level)
         command.add_argument("--max-outliers", type=int, default=default_outliers)
         command.add_argument("--min-within-one", type=float, default=default_fraction)
+        command.add_argument("--blur", type=int, help="box-blur radius in pixels applied to both images before comparing (ImageDiff --blur)")
         command.add_argument("--image-diff", help="ImageDiff.exe path (default: Release build output)")
     arguments = parser.parse_args()
     handlers = {"capture": capture, "compare": compare, "cross-api": cross_api}

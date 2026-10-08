@@ -6,6 +6,7 @@
 #include "../simulation/explosion_presets.hpp"
 #include "../simulation/wind.hpp"
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -31,6 +32,7 @@ struct ApplicationOptions
     std::string capture_path;
     std::optional<std::uint32_t> capture_tick;
     RangeView view = RangeView::overview;
+    std::optional<std::array<float, 6>> camera;
     SceneFormat scene_format = SceneFormat::rgba16f;
     std::string scenario;
     bool effect_lines = false;
@@ -38,7 +40,10 @@ struct ApplicationOptions
     ExplosionPreset preset = ExplosionPreset::small_he;
     std::uint32_t layer_mask = particle_layout::full_mask;
     WindSettings wind;
+    std::string counter_log;
 };
+
+inline constexpr std::uint32_t maximum_profile_tick = 480;
 
 struct CommandLineResult
 {

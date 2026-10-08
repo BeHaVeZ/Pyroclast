@@ -2,6 +2,7 @@
 
 #include "../simulation/explosion_scenarios.hpp"
 
+#include <array>
 #include <charconv>
 #include <cmath>
 #include <optional>
@@ -24,6 +25,24 @@ std::optional<std::uint32_t> parse_count(std::string_view value, std::uint32_t m
         return std::nullopt;
     }
     return parsed_value;
+}
+
+bool parse_numbers(std::string_view values, std::span<float> parsed)
+{
+    std::size_t start = 0;
+    for (std::size_t index = 0; index < parsed.size(); ++index)
+    {
+        const auto comma = values.find(',', start);
+        const auto text = values.substr(start, comma == std::string_view::npos ? std::string_view::npos : comma - start);
+        const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), parsed[index]);
+        if (text.empty() || error != std::errc() || end != text.data() + text.size() || !std::isfinite(parsed[index]) ||
+            (index + 1 == parsed.size()) != (comma == std::string_view::npos))
+        {
+            return false;
+        }
+        start = comma + 1;
+    }
+    return true;
 }
 }
 
@@ -183,6 +202,39 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
                 return result;
             }
         }
+        else if (option.starts_with("--camera="))
+        {
+            if (result.options.camera)
+            {
+                result.error = "Specify --camera only once.";
+                return result;
+            }
+            std::array<float, 6> pose{};
+            const bool parsed = parse_numbers(option.substr(std::string_view("--camera=").size()), pose);
+            const float x = pose[3] - pose[0];
+            const float y = pose[4] - pose[1];
+            const float z = pose[5] - pose[2];
+            if (!parsed || x * x + y * y + z * z < 1e-4f)
+            {
+                result.error = "Expected --camera=EX,EY,EZ,TX,TY,TZ: an eye and a different target in metres.";
+                return result;
+            }
+            result.options.camera = pose;
+        }
+        else if (option.starts_with("--counter-log="))
+        {
+            if (!result.options.counter_log.empty())
+            {
+                result.error = "Specify --counter-log only once.";
+                return result;
+            }
+            result.options.counter_log = option.substr(std::string_view("--counter-log=").size());
+            if (result.options.counter_log.empty())
+            {
+                result.error = "Expected --counter-log=<file.csv>.";
+                return result;
+            }
+        }
         else if (option.starts_with("--scenario="))
         {
             if (scenario_specified)
@@ -222,19 +274,8 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
                 return result;
             }
             wind_specified = true;
-            const auto values = option.substr(std::string_view("--wind=").size());
             float parsed[3]{};
-            std::size_t start = 0;
-            bool valid = true;
-            for (int index = 0; index < 3 && valid; ++index)
-            {
-                const auto comma = values.find(',', start);
-                const auto text = values.substr(start, comma == std::string_view::npos ? std::string_view::npos : comma - start);
-                const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), parsed[index]);
-                valid = !text.empty() && error == std::errc() && end == text.data() + text.size() && std::isfinite(parsed[index]) &&
-                    (index == 2) == (comma == std::string_view::npos);
-                start = comma + 1;
-            }
+            const bool valid = parse_numbers(option.substr(std::string_view("--wind=").size()), parsed);
             const auto wind = valid ? validated({parsed[0], parsed[1], parsed[2]}) : std::nullopt;
             if (!wind)
             {
@@ -309,10 +350,10 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
                 return result;
             }
             profile_specified = true;
-            result.options.profile_tick = parse_count(option.substr(std::string_view("--profile-tick=").size()), 0, 480);
+            result.options.profile_tick = parse_count(option.substr(std::string_view("--profile-tick=").size()), 0, 100'000);
             if (!result.options.profile_tick)
             {
-                result.error = "Expected --profile-tick=N with an integer from 0 to 480.";
+                result.error = "Expected --profile-tick=N with an integer from 0 to 480 (1 up to the scenario's duration with --scenario).";
                 return result;
             }
         }
@@ -412,6 +453,10 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
     {
         result.error = "--capture requires --profile-tick, or --scenario with --capture-tick, so the captured state is reproducible.";
     }
+    if (result.options.capture_tick && profile_specified)
+    {
+        result.error = "--capture-tick cannot be combined with --profile-tick; a frozen scenario captures its frozen frame.";
+    }
     if (result.options.capture_tick && !(scenario_specified && capture_specified))
     {
         result.error = "--capture-tick requires --scenario and --capture.";
@@ -424,9 +469,25 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
     {
         result.error = "--debug-views cannot be combined with --scenario; use --effect-lines.";
     }
-    if (scenario_specified && (explosions_specified || profile_specified))
+    if (scenario_specified && explosions_specified)
     {
-        result.error = "--scenario cannot be combined with --explosions or --profile-tick.";
+        result.error = "--scenario cannot be combined with --explosions.";
+    }
+    if (profile_specified && !scenario_specified && *result.options.profile_tick > maximum_profile_tick)
+    {
+        result.error = "Expected --profile-tick=N with an integer from 0 to 480 (1 up to the scenario's duration with --scenario).";
+    }
+    if (profile_specified && scenario_specified && *result.options.profile_tick == 0)
+    {
+        result.error = "With --scenario, --profile-tick starts at 1: a scenario's first frame draws tick 1.";
+    }
+    if (result.options.camera && view_specified)
+    {
+        result.error = "Give --view or --camera, not both.";
+    }
+    if (!result.options.counter_log.empty() && !profile_specified && !scenario_specified)
+    {
+        result.error = "--counter-log requires --scenario or --profile-tick.";
     }
     return result;
 }

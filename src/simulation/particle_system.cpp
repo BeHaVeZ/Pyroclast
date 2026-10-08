@@ -119,7 +119,7 @@ void ParticleSystem::commit(const ParticleWork& work)
 
 void ParticleSystem::prepare_profile(std::uint32_t tick)
 {
-    assert(particles_ && tick_ == 0 && tick <= 480);
+    assert(particles_ && tick_ == 0);
     paused_ = true;
     accumulator_ = 0;
     pending_steps_ = tick;

@@ -71,12 +71,14 @@ int main(int argc, char** argv)
     unsigned max_level = 0;
     unsigned max_outliers = 0;
     double min_within_one = 1.0;
+    int blur = 0;
     if (argc < 3)
     {
-        std::fputs("Usage: ImageDiff a.png b.png [--max-level=N] [--max-outliers=N] [--min-within-one=F] [--difference=out.png]\n"
+        std::fputs("Usage: ImageDiff a.png b.png [--max-level=N] [--max-outliers=N] [--min-within-one=F] [--blur=R] [--difference=out.png]\n"
             "  --max-level=N       Largest allowed channel difference (default 0).\n"
             "  --max-outliers=N    Pixels allowed to exceed --max-level (default 0).\n"
             "  --min-within-one=F  Required fraction of pixels whose channels differ by at most one (default 1).\n"
+            "  --blur=R            Compare both images after a box blur of radius R pixels (density at that scale).\n"
             "  --difference=FILE   Write the per-channel difference, scaled by 40, as a PNG.\n", stderr);
         return 2;
     }
@@ -90,19 +92,24 @@ int main(int argc, char** argv)
             continue;
         }
         if (!parse_option(argument, "--max-level=", max_level) && !parse_option(argument, "--max-outliers=", max_outliers) &&
-            !parse_option(argument, "--min-within-one=", min_within_one))
+            !parse_option(argument, "--min-within-one=", min_within_one) && !(parse_option(argument, "--blur=", blur) && blur >= 0))
         {
             std::fprintf(stderr, "Unknown or malformed option '%s'.\n", argv[index]);
             return 2;
         }
     }
-    const auto first = load(argv[1]);
-    const auto second = load(argv[2]);
+    auto first = load(argv[1]);
+    auto second = load(argv[2]);
     if (!first || !second) return 2;
     if (first->width != second->width || first->height != second->height)
     {
         std::fprintf(stderr, "Size mismatch: %dx%d vs %dx%d\n", first->width, first->height, second->width, second->height);
         return 2;
+    }
+    if (blur > 0)
+    {
+        first->rgba = pyroclast::tools::box_blur_rgba(first->rgba, first->width, first->height, blur);
+        second->rgba = pyroclast::tools::box_blur_rgba(second->rgba, second->width, second->height, blur);
     }
     const auto difference = pyroclast::tools::compare_rgba(first->rgba, second->rgba);
     if (!difference_path.empty() && !save_difference(*first, *second, difference_path))

@@ -51,6 +51,7 @@ add_executable(Pyroclast
     src/app/main.cpp
     src/app/frame_baseline.cpp
     src/app/frame_statistics.cpp
+    src/app/counter_log.cpp
     src/app/command_line.cpp
     src/app/explosion_renderer.cpp
     src/app/camera.cpp
@@ -128,8 +129,9 @@ if(BUILD_TESTING)
     target_link_libraries(DrawValidationTests PRIVATE pyroclast_shader_list)
     add_test(NAME draw_validation COMMAND DrawValidationTests)
     list(APPEND project_targets DrawValidationTests)
-    add_executable(FrameStatisticsTests tests/frame_statistics_tests.cpp src/app/frame_statistics.cpp)
+    add_executable(FrameStatisticsTests tests/frame_statistics_tests.cpp src/app/frame_statistics.cpp src/app/counter_log.cpp)
     target_include_directories(FrameStatisticsTests PRIVATE src)
+    target_link_libraries(FrameStatisticsTests PRIVATE pyroclast_shader_list)
     add_test(NAME frame_statistics COMMAND FrameStatisticsTests)
     list(APPEND project_targets FrameStatisticsTests)
     add_executable(MathTests tests/math_tests.cpp src/core/math.cpp)

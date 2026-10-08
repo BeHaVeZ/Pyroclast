@@ -94,7 +94,13 @@ int main()
         {"effect lines", {"--effect-lines"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {},
             pyroclast::SceneFormat::rgba16f, {}, true},
         {"scenario with a group", {"--scenario=single", "--explosions=10"}, d3d12, false, "cannot be combined"},
-        {"scenario with a profile tick", {"--profile-tick=10", "--scenario=single"}, d3d12, false, "cannot be combined"},
+        {"frozen scenario", {"--profile-tick=10", "--scenario=single"}, d3d12, false, {}, false, 1, 10, false, {}, {}, false, {}, false, {},
+            {}, {}, "single"},
+        {"frozen scenario past the startup range", {"--scenario=bombardment", "--profile-tick=1500"}, d3d12, false, {}, false, 1, 1500,
+            false, {}, {}, false, {}, false, {}, {}, {}, "bombardment"},
+        {"frozen scenario at tick 0", {"--scenario=single", "--profile-tick=0"}, d3d12, false, "starts at 1"},
+        {"frozen scenario with a capture tick", {"--scenario=single", "--profile-tick=10", "--capture=a.png", "--capture-tick=5"}, d3d12,
+            false, "cannot be combined with --profile-tick"},
         {"duplicate scene format", {"--scene-format=rgba8", "--scene-format=rgba8"}, d3d12, false, "only once"},
         {"duplicate view", {"--view=hill", "--view=hill"}, d3d12, false, "only once"},
         {"GPU regions duplicate", {"--gpu-regions", "--gpu-regions"}, d3d12, false, "only once"},
@@ -231,6 +237,49 @@ int main()
     if (pyroclast::parse_command_line({}).options.capture_tick)
     {
         std::fputs("FAIL: no capture tick by default\n", stderr);
+        ++failures;
+    }
+
+    const char* camera[] = {"--camera=0,18,78,-78,6,78.5"};
+    const auto posed = pyroclast::parse_command_line(camera);
+    if (!posed.error.empty() || !posed.options.camera || (*posed.options.camera)[0] != 0 || (*posed.options.camera)[1] != 18 ||
+        (*posed.options.camera)[3] != -78 || (*posed.options.camera)[5] != 78.5f || pyroclast::parse_command_line({}).options.camera)
+    {
+        std::fprintf(stderr, "FAIL: --camera (error: %s)\n", posed.error.c_str());
+        ++failures;
+    }
+    const char* camera_short[] = {"--camera=0,18,78,0,6"};
+    const char* camera_long[] = {"--camera=0,18,78,0,6,0,1"};
+    const char* camera_text[] = {"--camera=0,18,78,0,6,x"};
+    const char* camera_same[] = {"--camera=1,2,3,1,2,3"};
+    const char* camera_infinite[] = {"--camera=0,18,inf,0,6,0"};
+    const char* camera_view[] = {"--camera=0,18,78,0,6,0", "--view=ground"};
+    const char* camera_twice[] = {"--camera=0,18,78,0,6,0", "--camera=0,18,78,0,6,1"};
+    if (pyroclast::parse_command_line(camera_short).error.find("Expected --camera") == std::string::npos ||
+        pyroclast::parse_command_line(camera_long).error.find("Expected --camera") == std::string::npos ||
+        pyroclast::parse_command_line(camera_text).error.find("Expected --camera") == std::string::npos ||
+        pyroclast::parse_command_line(camera_same).error.find("Expected --camera") == std::string::npos ||
+        pyroclast::parse_command_line(camera_infinite).error.find("Expected --camera") == std::string::npos ||
+        pyroclast::parse_command_line(camera_view).error.find("not both") == std::string::npos ||
+        pyroclast::parse_command_line(camera_twice).error.find("only once") == std::string::npos)
+    {
+        std::fputs("FAIL: --camera errors\n", stderr);
+        ++failures;
+    }
+
+    const char* logged[] = {"--scenario=grid-100", "--counter-log=out/a.csv"};
+    const char* logged_profile[] = {"--profile-tick=180", "--counter-log=b.csv"};
+    const char* logged_interactive[] = {"--counter-log=c.csv"};
+    const char* logged_empty[] = {"--scenario=single", "--counter-log="};
+    const char* logged_twice[] = {"--scenario=single", "--counter-log=a.csv", "--counter-log=b.csv"};
+    if (pyroclast::parse_command_line(logged).options.counter_log != "out/a.csv" ||
+        pyroclast::parse_command_line(logged_profile).options.counter_log != "b.csv" ||
+        !pyroclast::parse_command_line(logged_profile).error.empty() ||
+        pyroclast::parse_command_line(logged_interactive).error.find("--counter-log requires") == std::string::npos ||
+        pyroclast::parse_command_line(logged_empty).error.find("Expected --counter-log") == std::string::npos ||
+        pyroclast::parse_command_line(logged_twice).error.find("only once") == std::string::npos)
+    {
+        std::fputs("FAIL: --counter-log\n", stderr);
         ++failures;
     }
 

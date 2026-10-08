@@ -2,6 +2,7 @@
 #include <SDL3/SDL_main.h>
 
 #include "command_line.hpp"
+#include "counter_log.hpp"
 #include "explosion_renderer.hpp"
 #include "frame_baseline.hpp"
 #include "frame_statistics.hpp"
@@ -14,6 +15,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <fstream>
 #include <limits>
 #include <memory>
 #include <numbers>
@@ -71,6 +73,11 @@ struct FrameHistory
 };
 
 using pyroclast::Sandbox;
+
+const char* pose_name(const pyroclast::ApplicationOptions& options)
+{
+    return options.camera ? "custom" : pyroclast::view_name(options.view);
+}
 
 class ScenarioRun final
 {
@@ -155,14 +162,15 @@ public:
                 sum.label, sum.milliseconds / static_cast<double>(sum.samples), sum.samples);
             regions += entry;
         }
+        const std::string camera = options.camera ? ",\"camera\":" + pyroclast::camera_json(*options.camera) : std::string();
         std::printf("{\"scenario\":\"%.*s\",\"valid\":%s,\"build\":\"%s\",\"renderer\":\"%s\",\"gpu\":%s,\"width\":%d,\"height\":%d,"
-            "\"smoke_resolution\":\"%s\",\"scene_format\":\"%s\",\"view\":\"%s\",\"overlay\":%s,\"effect_lines\":%s,\"gpu_regions\":%s,"
+            "\"smoke_resolution\":\"%s\",\"scene_format\":\"%s\",\"view\":\"%s\"%s,\"overlay\":%s,\"effect_lines\":%s,\"gpu_regions\":%s,"
             "\"preset\":\"%.*s\",\"layer_mask\":%u,\"wind\":[%.2f,%.1f,%.2f],\"ticks\":%u,\"frames\":%zu,\"effects_started\":%llu,\"effects_dropped\":%llu,\"peak_effects\":%u,"
             "\"particles\":{\"samples\":%zu,\"peak_alive\":%u,\"mean_alive\":%.3f,\"checksum\":\"%016llx\"},\"cpu_ms\":%s,"
             "\"gpu_ms\":{\"samples\":%zu,\"draw\":%s,\"compute\":%s,\"regions\":[%s]}}\n",
             static_cast<int>(scenario_.name.size()), scenario_.name.data(), valid_ ? "true" : "false", pyroclast::build_configuration,
             pyroclast::renderer_name(options.renderer), gpu.c_str(), width, height, options.half_smoke ? "half" : "full",
-            pyroclast::scene_format_name(options.scene_format), pyroclast::view_name(options.view), overlay ? "true" : "false",
+            pyroclast::scene_format_name(options.scene_format), pose_name(options), camera.c_str(), overlay ? "true" : "false",
             sandbox.views.effect_bounds ? "true" : "false", options.gpu_regions ? "true" : "false",
             static_cast<int>(pyroclast::preset_name(options.preset).size()), pyroclast::preset_name(options.preset).data(),
             sandbox.layer_mask, static_cast<double>(sandbox.wind.speed), static_cast<double>(sandbox.wind.direction_degrees),
@@ -224,8 +232,16 @@ struct FlightControls
     }
 };
 
+pyroclast::Camera camera_pose(const std::array<float, 6>& pose)
+{
+    pyroclast::Camera camera;
+    camera.position = {pose[0], pose[1], pose[2]};
+    camera.look_at({pose[3], pose[4], pose[5]});
+    return camera;
+}
+
 int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sandbox& sandbox, pyroclast::DebugUi* ui,
-    const pyroclast::ApplicationOptions& options, std::optional<ScenarioRun> scenario)
+    const pyroclast::ApplicationOptions& options, std::optional<ScenarioRun> scenario, pyroclast::CounterLog* counter_log)
 {
     const auto window_id = SDL_GetWindowID(window);
     auto& demo = sandbox.particles;
@@ -238,16 +254,17 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
             views[index] = sandbox.range.view(view);
             names[index] = pyroclast::view_name(view);
         }
-        sandbox.camera = pyroclast::CameraRig(sandbox.range.view(options.view), views, names);
+        sandbox.camera = pyroclast::CameraRig(options.camera ? camera_pose(*options.camera) : sandbox.range.view(options.view), views, names);
     }
     FlightControls flight;
     const auto profile_tick = options.profile_tick;
+    const bool frozen = scenario && profile_tick;
     const bool unattended = scenario.has_value() || !options.capture_path.empty();
     pyroclast::FrameBaseline baseline({pyroclast::renderer_name(options.renderer), std::string(renderer.adapter_name()),
         static_cast<std::uint32_t>(sandbox.group.size()), pyroclast::ParticleSystem::capacity, profile_tick, options.half_smoke,
-        pyroclast::view_name(options.view), pyroclast::scene_format_name(options.scene_format), std::string(pyroclast::preset_name(options.preset)),
-        options.layer_mask, options.wind});
-    if (scenario) baseline.disable();
+        pose_name(options), options.camera, frozen ? options.scenario : std::string(), pyroclast::scene_format_name(options.scene_format),
+        std::string(pyroclast::preset_name(options.preset)), options.layer_mask, options.wind});
+    if (scenario && !frozen) baseline.disable();
     if (ui)
     {
         baseline.disable();
@@ -262,8 +279,8 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
     std::vector<pyroclast::UiCommand> commands;
     auto previous_time = SDL_GetPerformanceCounter();
     std::uint32_t submitted_frames = 0;
-    const auto finish = [&options, &scenario]() {
-        if (scenario)
+    const auto finish = [&options, &scenario, frozen]() {
+        if (scenario && !frozen)
         {
             SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Exited before scenario %s finished; no summary.", options.scenario.c_str());
             return 1;
@@ -396,12 +413,14 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     if (!unattended) for (const auto command : commands) pyroclast::apply(command, sandbox);
                 }
                 const auto release_start = SDL_GetPerformanceCounter();
-                if (scenario) scenario->submit_due(sandbox);
+                if (scenario && (!frozen || demo.has_pending_steps())) scenario->submit_due(sandbox);
                 else if (!unattended) sandbox.release_due();
                 sandbox.build_marks();
                 showcase_ticks += SDL_GetPerformanceCounter() - release_start;
                 showcase_ms = 1000.0 * static_cast<double>(showcase_ticks) / static_cast<double>(SDL_GetPerformanceFrequency());
                 const auto tick_before = demo.tick();
+                const auto started_before = sandbox.effects.started();
+                const auto dropped_before = sandbox.effects.dropped();
                 const bool capture = !options.capture_path.empty() &&
                     (options.capture_tick ? demo.tick() + 1 == *options.capture_tick : !demo.has_pending_steps());
                 const auto result = sandbox.renderer.render(renderer, demo, sandbox.effects, sandbox.range, camera, width, height, elapsed,
@@ -417,20 +436,28 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     }
                 }
                 last_steps = demo.tick() - tick_before;
+                if (counter_log && result == pyroclast::RenderResult::submitted)
+                {
+                    counter_log->add_frame({demo.tick(), last_steps, static_cast<std::uint32_t>(sandbox.effects.active().size()),
+                        sandbox.effects.started() - started_before, sandbox.effects.dropped() - dropped_before, !sandbox.effects.active().empty()});
+                }
                 const double wall = static_cast<double>(SDL_GetPerformanceCounter()) / static_cast<double>(SDL_GetPerformanceFrequency());
                 tick_rate.add(wall, demo.tick());
                 if (const auto gpu = renderer.completed_gpu_timings(); gpu && gpu->sample_id != last_gpu_sample)
                 {
                     last_gpu_sample = gpu->sample_id;
                     gpu_history.add(gpu->compute_ms + gpu->draw_ms);
+                    if (counter_log) counter_log->add_timing(gpu->draw_ms, gpu->compute_ms);
                 }
                 const auto counters = sandbox.poll_counters(renderer);
-                if (scenario && counters) scenario->count(*counters);
+                if (scenario && !frozen && counters) scenario->count(*counters);
+                if (counter_log && counters) counter_log->add_counters(*counters);
                 if (result == pyroclast::RenderResult::submitted)
                 {
                     history.add(1000.0 * elapsed);
                     const double milliseconds = 1000.0 * static_cast<double>(SDL_GetPerformanceCounter() - start) /
                         static_cast<double>(SDL_GetPerformanceFrequency());
+                    if (counter_log) counter_log->set_cpu_ms(milliseconds);
                     if (!profile_tick && baseline.enabled() && sandbox.effects.active().size() != sandbox.group.size())
                     {
                         baseline.disable();
@@ -446,7 +473,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                             *options.capture_tick);
                         return 1;
                     }
-                    if (scenario)
+                    if (scenario && !frozen)
                     {
                         scenario->record(milliseconds, renderer.completed_gpu_timings(), sandbox);
                         if (scenario->finished(sandbox))
@@ -553,10 +580,16 @@ int run_application(const pyroclast::ApplicationOptions& options)
     {
         auto script = pyroclast::make_scenario(options.scenario, sandbox->range.environment(), options.preset);
         if (!script) return 1;
+        if (options.profile_tick && *options.profile_tick > script->duration_ticks)
+        {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Scenario %s runs %u ticks; --profile-tick=%u is past its end.", options.scenario.c_str(),
+                script->duration_ticks, *options.profile_tick);
+            return 1;
+        }
         SDL_Log("Scenario %s: %zu events over %u ticks, one tick per frame; VSync off; timestamps on.", options.scenario.c_str(),
             script->events.size(), script->duration_ticks);
         scenario.emplace(std::move(*script));
-        sandbox->particles.set_fixed_ticks(true);
+        if (!options.profile_tick) sandbox->particles.set_fixed_ticks(true);
     }
     else
     {
@@ -571,7 +604,25 @@ int run_application(const pyroclast::ApplicationOptions& options)
     const std::string title = "Pyroclast | " + std::string(pyroclast::controls_summary()) + (ui ? " | F1: overlay" : "");
     SDL_SetWindowTitle(window.get(), title.c_str());
     SDL_Log("Explosion demo ready. %.*s.", static_cast<int>(pyroclast::controls_summary().size()), pyroclast::controls_summary().data());
-    const int exit_code = run_event_loop(window.get(), device, *sandbox, ui.get(), options, std::move(scenario));
+    std::optional<pyroclast::CounterLog> counter_log;
+    if (!options.counter_log.empty()) counter_log.emplace();
+    int exit_code = run_event_loop(window.get(), device, *sandbox, ui.get(), options, std::move(scenario), counter_log ? &*counter_log : nullptr);
+    if (counter_log)
+    {
+        std::ofstream file(options.counter_log, std::ios::binary);
+        file << counter_log->csv();
+        if (!file)
+        {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Write counter log '%s' failed.", options.counter_log.c_str());
+            exit_code = 1;
+        }
+        else SDL_Log("Counter log: %zu frames written to %s.", counter_log->size(), options.counter_log.c_str());
+        if (counter_log->mismatches() != 0)
+        {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Counter log: %zu samples or records did not match their frames.", counter_log->mismatches());
+            exit_code = 1;
+        }
+    }
     const bool idle = device.wait_idle();
     sandbox.reset();
     return idle ? exit_code : 1;
@@ -598,7 +649,8 @@ int main(int argc, char** argv)
             "  --renderer=d3d12   Request Direct3D 12 (default).\n"
             "  --renderer=vulkan  Request Vulkan.\n"
             "  --explosions=N     Simultaneous explosion group (1, 10, 50, 100; default 1).\n"
-            "  --profile-tick=N   Freeze at tick 0-480; enable timestamps and disable VSync.\n"
+            "  --profile-tick=N   Freeze at tick 0-480; enable timestamps and disable VSync. With --scenario: prepare the\n"
+            "                     scenario to tick N (1 up to its duration), then freeze and sample it the same way.\n"
             "  --smoke-resolution=full|half  Select smoke rendering resolution (default full).\n"
             "  --gpu-timing       Enable GPU timestamp measurements.\n"
             "  --gpu-regions      Also time every dispatch, pass and the overlay (serializes Vulkan GPU work).\n"
@@ -608,6 +660,7 @@ int main(int argc, char** argv)
             "  --exit-after=N     Exit after N submitted frames.\n"
             "  --view=NAME        Start the camera at a named pose: overview (default), ground, hill, aerial, range\n"
             "                     (the north yard's props) or yard (close to its walls).\n"
+            "  --camera=EX,EY,EZ,TX,TY,TZ  Start the camera at this eye, looking at this target (metres), instead of --view.\n"
             "  --scene-format=F   Scene target: rgba16f (default), r11g11b10f, or rgba8 (a cost reference; bands).\n"
             "  --scenario=NAME    Scripted run, one tick per frame, then a JSON summary: single, grid-10, grid-50,\n"
             "                     grid-100, barrage (80 impacts walking across the range), presets (all seven in a row)\n"
@@ -625,6 +678,8 @@ int main(int argc, char** argv)
             "  --debug-views=LIST Start with debug views on: comma-separated bounds (effect bounds), boxes (collision\n"
             "                     boxes), regions (where the showcase places events, F8), wind (wind arrow, F9), or all.\n"
             "                     Not with --effect-lines or --scenario.\n"
+            "  --counter-log=FILE With --scenario or --profile-tick: write a CSV row per frame at exit (tick, steps, effects\n"
+            "                     started and dropped, the frame's live counts and GPU intervals).\n"
             "  --gpu-validation   Debug only: D3D12 GPU-based or Vulkan GPU-assisted validation (slow).\n"
             "  --ui=on|off        Dear ImGui overlay (default on, off with --profile-tick). F1 hides it.\n"
             "  --adapter=NAME     Use the GPU whose name contains NAME (case-insensitive); 'warp' is the D3D12 software rasterizer.\n"

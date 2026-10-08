@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <span>
+#include <vector>
 
 namespace pyroclast::tools
 {
@@ -20,4 +21,6 @@ struct ImageDifference
 
 // Both spans hold the same number of RGBA8 pixels.
 ImageDifference compare_rgba(std::span<const std::uint8_t> first, std::span<const std::uint8_t> second);
+
+std::vector<std::uint8_t> box_blur_rgba(std::span<const std::uint8_t> rgba, int width, int height, int radius);
 }
