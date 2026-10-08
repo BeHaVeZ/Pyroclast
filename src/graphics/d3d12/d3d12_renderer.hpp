@@ -39,6 +39,12 @@ public:
     std::optional<ReadbackData> completed_readback() const override { return readback_; }
     std::optional<CapturedImage> read_capture() override;
     std::string_view adapter_name() const override { return adapter_name_; }
+    SubmitTimings last_submit_timings() const override { return submit_timings_; }
+    PresentInfo present_info() const override
+    {
+        return {vsync_ ? "flip-discard interval 1" : "flip-discard interval 0", backbuffer_count};
+    }
+    std::optional<GpuMemory> memory_usage() const override;
 
 private:
     static constexpr UINT frame_count = 2;
@@ -122,6 +128,7 @@ private:
 
     std::string adapter_name_;
     Microsoft::WRL::ComPtr<IDXGIFactory6> factory_;
+    Microsoft::WRL::ComPtr<IDXGIAdapter3> adapter_;
     Microsoft::WRL::ComPtr<ID3D12Device> device_;
     Microsoft::WRL::ComPtr<ID3D12InfoQueue> info_queue_;
     Microsoft::WRL::ComPtr<ID3D12CommandQueue> queue_;
@@ -157,6 +164,7 @@ private:
     std::uint64_t timestamp_frequency_ = 0;
     std::optional<GpuTimings> gpu_timings_;
     std::uint64_t timing_sample_id_ = 0;
+    SubmitTimings submit_timings_;
     bool overlay_ = false;
     std::vector<UINT> overlay_descriptors_;
     bool capture_enabled_ = false;

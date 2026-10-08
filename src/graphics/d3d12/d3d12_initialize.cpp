@@ -76,7 +76,8 @@ bool D3D12Renderer::create_device([[maybe_unused]] bool gpu_validation, std::str
         }
 
         adapter_name_ = adapter_name;
-        SDL_Log("D3D12 adapter: %s", adapter_name);
+        if (FAILED(adapter.As(&adapter_))) adapter_.Reset();
+        SDL_Log("D3D12 adapter: %s (video memory query %s)", adapter_name, adapter_ ? "available" : "unavailable");
         break;
     }
 
@@ -202,7 +203,8 @@ bool D3D12Renderer::initialize(SDL_Window* window, const GraphicsDeviceOptions& 
     regions_ = options.gpu_regions;
     if ((options.gpu_timing || options.gpu_regions) && !create_timestamps()) return false;
     if (options.debug_overlay && !create_overlay()) return false;
-    SDL_Log("D3D12 initialized: %dx%d, two backbuffers, VSync %s.", width_, height_, vsync_ ? "enabled" : "disabled");
+    SDL_Log("D3D12 initialized: %dx%d, two backbuffers, VSync %s; presentation: %.*s.", width_, height_, vsync_ ? "enabled" : "disabled",
+        static_cast<int>(present_info().mode.size()), present_info().mode.data());
     return true;
 }
 }

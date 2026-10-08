@@ -244,7 +244,10 @@ RenderResult D3D12Renderer::render(const Frame& frame)
     auto* backbuffer = backbuffers_[backbuffer_index].Get();
     auto& slot = frames_[frame_index_];
 
-    if (!wait_for_fence(slot.fence_value) || !read_timestamps(frame_index_) ||
+    const auto wait_begin = SDL_GetPerformanceCounter();
+    const bool slot_free = wait_for_fence(slot.fence_value);
+    const auto wait_end = SDL_GetPerformanceCounter();
+    if (!slot_free || !read_timestamps(frame_index_) ||
         !check(slot.allocator->Reset(), "Reset frame command allocator") ||
         !check(command_list_->Reset(slot.allocator.Get(), nullptr), "Reset command list"))
     {
@@ -376,7 +379,11 @@ RenderResult D3D12Renderer::render(const Frame& frame)
     }
     ID3D12CommandList* lists[] = {command_list_.Get()};
     queue_->ExecuteCommandLists(1, lists);
+    const auto present_begin = SDL_GetPerformanceCounter();
     const HRESULT present_result = swapchain_->Present(vsync_ ? 1 : 0, 0);
+    const auto present_end = SDL_GetPerformanceCounter();
+    const double milliseconds = 1000.0 / static_cast<double>(SDL_GetPerformanceFrequency());
+    submit_timings_ = {static_cast<double>(wait_end - wait_begin) * milliseconds, static_cast<double>(present_end - present_begin) * milliseconds};
     occluded_ = present_result == DXGI_STATUS_OCCLUDED;
     const auto value = next_fence_value_++;
     if (!check(queue_->Signal(fence_.Get(), value), "Signal frame fence"))
@@ -442,5 +449,18 @@ D3D12Renderer::~D3D12Renderer()
             static_cast<unsigned long long>(validation_warnings_),
             static_cast<unsigned long long>(validation_errors_));
     }
+}
+
+std::optional<GpuMemory> D3D12Renderer::memory_usage() const
+{
+    if (!adapter_) return std::nullopt;
+    DXGI_QUERY_VIDEO_MEMORY_INFO local{};
+    DXGI_QUERY_VIDEO_MEMORY_INFO non_local{};
+    if (FAILED(adapter_->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &local)) ||
+        FAILED(adapter_->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL, &non_local)))
+    {
+        return std::nullopt;
+    }
+    return GpuMemory{local.CurrentUsage, local.Budget, non_local.CurrentUsage, non_local.Budget};
 }
 }

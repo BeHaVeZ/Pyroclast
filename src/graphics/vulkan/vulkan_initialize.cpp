@@ -196,6 +196,7 @@ bool VulkanRenderer::create_device(std::string_view requested_adapter)
     }
     int best_score = 0;
     bool best_present_fences = false;
+    bool best_memory_budget = false;
     bool name_matched = requested_adapter.empty();
     for (const auto adapter : adapters)
     {
@@ -270,6 +271,7 @@ bool VulkanRenderer::create_device(std::string_view requested_adapter)
             continue;
         }
         const bool present_fences = has_maintenance && maintenance.swapchainMaintenance1;
+        const bool memory_budget = has_extension(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
         bool queue_found = false;
         vkGetPhysicalDeviceQueueFamilyProperties(adapter, &count, nullptr);
         std::vector<VkQueueFamilyProperties> families(count);
@@ -291,6 +293,7 @@ bool VulkanRenderer::create_device(std::string_view requested_adapter)
             {
                 best_score = score;
                 best_present_fences = present_fences;
+                best_memory_budget = memory_budget;
                 vk_.physical = adapter;
                 vk_.queue_family = index;
             }
@@ -313,6 +316,7 @@ bool VulkanRenderer::create_device(std::string_view requested_adapter)
         return false;
     }
     vk_.present_fences = best_present_fences;
+    vk_.memory_budget = best_memory_budget;
     const float priority = 1.0f;
     VkDeviceQueueCreateInfo queue{};
     queue.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
@@ -329,6 +333,7 @@ bool VulkanRenderer::create_device(std::string_view requested_adapter)
     vulkan13.synchronization2 = VK_TRUE;
     std::vector<const char*> extensions{VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME};
     if (vk_.present_fences) extensions.push_back(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
+    if (vk_.memory_budget) extensions.push_back(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
     VkDeviceCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     info.pNext = &vulkan13;
@@ -346,8 +351,9 @@ bool VulkanRenderer::create_device(std::string_view requested_adapter)
     VkPhysicalDeviceProperties properties{};
     vkGetPhysicalDeviceProperties(vk_.physical, &properties);
     adapter_name_ = properties.deviceName;
-    SDL_Log("Vulkan adapter: %s (present fences %s).", properties.deviceName,
-        vk_.present_fences ? "available" : "unavailable; resize and shutdown wait for device idle");
+    SDL_Log("Vulkan adapter: %s (present fences %s; memory budget %s).", properties.deviceName,
+        vk_.present_fences ? "available" : "unavailable; resize and shutdown wait for device idle",
+        vk_.memory_budget ? "available" : "unavailable");
     return validation_ok();
 }
 

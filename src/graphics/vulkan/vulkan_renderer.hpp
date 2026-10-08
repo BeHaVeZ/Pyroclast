@@ -25,6 +25,7 @@ struct VulkanContext
     std::uint32_t queue_family = 0;
     bool surface_maintenance = false;
     bool present_fences = false;
+    bool memory_budget = false;
     PFN_vkCmdBeginDebugUtilsLabelEXT begin_label = nullptr;
     PFN_vkCmdEndDebugUtilsLabelEXT end_label = nullptr;
     std::atomic_uint64_t validation_warnings{0};
@@ -153,6 +154,9 @@ public:
     std::optional<ReadbackData> completed_readback() const override { return readback_; }
     std::optional<CapturedImage> read_capture() override;
     std::string_view adapter_name() const override { return adapter_name_; }
+    SubmitTimings last_submit_timings() const override { return submit_timings_; }
+    PresentInfo present_info() const override { return {present_mode_, static_cast<std::uint32_t>(swapchain_.images.size())}; }
+    std::optional<GpuMemory> memory_usage() const override;
 
 private:
     static constexpr VkFormat depth_format = VK_FORMAT_D32_SFLOAT;
@@ -217,6 +221,8 @@ private:
     bool regions_ = false;
     std::optional<GpuTimings> gpu_timings_;
     std::uint64_t timing_sample_id_ = 0;
+    SubmitTimings submit_timings_;
+    std::string_view present_mode_ = "fifo";
     std::optional<ReadbackData> readback_;
     std::uint64_t readback_sample_id_ = 0;
 };

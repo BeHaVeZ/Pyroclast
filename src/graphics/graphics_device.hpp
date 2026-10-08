@@ -179,6 +179,27 @@ struct GpuTimings
     std::uint64_t sample_id = 0;
     std::array<GpuRegion, max_gpu_regions> regions{};
     std::uint32_t region_count = 0;
+    double frame_ms = 0;
+};
+
+struct SubmitTimings
+{
+    double wait_ms = 0;
+    double present_ms = 0;
+};
+
+struct PresentInfo
+{
+    std::string_view mode;
+    std::uint32_t images = 0;
+};
+
+struct GpuMemory
+{
+    std::uint64_t local_usage = 0;
+    std::uint64_t local_budget = 0;
+    std::uint64_t non_local_usage = 0;
+    std::uint64_t non_local_budget = 0;
 };
 
 class GraphicsDevice
@@ -199,6 +220,9 @@ public:
     virtual std::optional<CapturedImage> read_capture() = 0;
     // The selected GPU as the driver reports it; valid for the device's lifetime.
     virtual std::string_view adapter_name() const = 0;
+    virtual SubmitTimings last_submit_timings() const = 0;
+    virtual PresentInfo present_info() const = 0;
+    virtual std::optional<GpuMemory> memory_usage() const = 0;
 };
 
 struct GraphicsDeviceCreation

@@ -46,6 +46,7 @@ bool D3D12Renderer::read_timestamps(std::size_t frame)
     const double scale = 1000.0 / static_cast<double>(timestamp_frequency_);
     GpuTimings timings{static_cast<double>(values[1] - values[0]) * scale,
         static_cast<double>(values[3] - values[2]) * scale, ++timing_sample_id_};
+    timings.frame_ms = static_cast<double>(values[3] - values[0]) * scale;
     for (std::uint32_t region = 0; region < slot.region_count; ++region)
     {
         const auto* pair = values + 4 + 2 * region;

@@ -248,6 +248,7 @@ RenderResult VulkanRenderer::render(const Frame& frame)
         }
     }
     auto& slot = frames_[frame_index_];
+    const auto wait_begin = SDL_GetPerformanceCounter();
     if (!check(vkWaitForFences(vk_.device, 1, &slot.submitted, VK_TRUE,
         std::numeric_limits<std::uint64_t>::max()), "Wait for frame command buffer") || !read_timestamps(frame_index_))
     {
@@ -275,6 +276,7 @@ RenderResult VulkanRenderer::render(const Frame& frame)
         return RenderResult::failed;
     }
     image.present_pending = false;
+    const auto wait_end = SDL_GetPerformanceCounter();
     if (!check(vkResetCommandPool(vk_.device, slot.pool, 0), "Reset frame command pool"))
     {
         return RenderResult::failed;
@@ -504,7 +506,11 @@ RenderResult VulkanRenderer::render(const Frame& frame)
     present.swapchainCount = 1;
     present.pSwapchains = &swapchain_.handle;
     present.pImageIndices = &image_index;
+    const auto present_begin = SDL_GetPerformanceCounter();
     const VkResult result = vkQueuePresentKHR(vk_.queue, &present);
+    const auto present_end = SDL_GetPerformanceCounter();
+    const double milliseconds = 1000.0 / static_cast<double>(SDL_GetPerformanceFrequency());
+    submit_timings_ = {static_cast<double>(wait_end - wait_begin) * milliseconds, static_cast<double>(present_end - present_begin) * milliseconds};
     image.present_pending = vk_.present_fences && (result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR ||
         result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_ERROR_SURFACE_LOST_KHR);
     frame_index_ = (frame_index_ + 1) % frames_.size();
@@ -517,5 +523,24 @@ RenderResult VulkanRenderer::render(const Frame& frame)
         return RenderResult::failed;
     }
     return validation_ok() ? RenderResult::submitted : RenderResult::failed;
+}
+
+std::optional<GpuMemory> VulkanRenderer::memory_usage() const
+{
+    if (!vk_.memory_budget) return std::nullopt;
+    VkPhysicalDeviceMemoryBudgetPropertiesEXT budget{};
+    budget.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT;
+    VkPhysicalDeviceMemoryProperties2 properties{};
+    properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2;
+    properties.pNext = &budget;
+    vkGetPhysicalDeviceMemoryProperties2(vk_.physical, &properties);
+    GpuMemory memory;
+    for (std::uint32_t heap = 0; heap < properties.memoryProperties.memoryHeapCount; ++heap)
+    {
+        const bool local = (properties.memoryProperties.memoryHeaps[heap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0;
+        (local ? memory.local_usage : memory.non_local_usage) += budget.heapUsage[heap];
+        (local ? memory.local_budget : memory.non_local_budget) += budget.heapBudget[heap];
+    }
+    return memory;
 }
 }

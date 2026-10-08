@@ -84,6 +84,9 @@ public:
     std::optional<pyroclast::ReadbackData> completed_readback() const override { return std::nullopt; }
     std::optional<pyroclast::CapturedImage> read_capture() override { return std::nullopt; }
     std::string_view adapter_name() const override { return "test device"; }
+    pyroclast::SubmitTimings last_submit_timings() const override { return {}; }
+    pyroclast::PresentInfo present_info() const override { return {"test", 0}; }
+    std::optional<pyroclast::GpuMemory> memory_usage() const override { return std::nullopt; }
     pyroclast::RenderResult render(const pyroclast::Frame& frame) override
     {
         const char* error = pyroclast::validate_frame(frame);

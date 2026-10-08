@@ -94,7 +94,7 @@ bool VulkanRenderer::create_swapchain()
         }
         info.presentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
     }
-    SDL_Log("Vulkan presentation mode: %s.", vsync_ ? "FIFO" : "IMMEDIATE");
+    present_mode_ = vsync_ ? "fifo" : "immediate";
     info.clipped = VK_TRUE;
     if (!check(vkCreateSwapchainKHR(vk_.device, &info, nullptr, &swapchain_.handle), "Create Vulkan swapchain") ||
         !check(vkGetSwapchainImagesKHR(vk_.device, swapchain_.handle, &count, nullptr), "Count Vulkan swapchain images"))
@@ -106,6 +106,7 @@ bool VulkanRenderer::create_swapchain()
     {
         return false;
     }
+    SDL_Log("Vulkan presentation mode: %s, %u images.", vsync_ ? "FIFO" : "IMMEDIATE", count);
     swapchain_.images.resize(count);
     for (std::size_t index = 0; index < swapchain_.images.size(); ++index)
     {

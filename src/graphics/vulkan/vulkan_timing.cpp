@@ -40,6 +40,7 @@ bool VulkanRenderer::read_timestamps(std::size_t frame)
     const double scale = timing_.period / 1000000.0;
     GpuTimings timings{static_cast<double>((values[1] - values[0]) & timing_.mask) * scale,
         static_cast<double>((values[3] - values[2]) & timing_.mask) * scale, ++timing_sample_id_};
+    timings.frame_ms = static_cast<double>((values[3] - values[0]) & timing_.mask) * scale;
     for (std::uint32_t region = 0; region < slot.region_count; ++region)
     {
         const auto* pair = values.data() + 4 + 2 * region;
