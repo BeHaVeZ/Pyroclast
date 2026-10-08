@@ -299,6 +299,18 @@ int main()
         ++failures;
     }
 
+    const char* cloud[] = {"--effect-order=cloud"};
+    const char* unordered[] = {"--effect-order=none"};
+    const char* misordered[] = {"--effect-order=depth"};
+    if (pyroclast::parse_command_line(cloud).options.scalability.effect_order != pyroclast::EffectOrder::cloud ||
+        pyroclast::parse_command_line(unordered).options.scalability.effect_order != pyroclast::EffectOrder::none ||
+        pyroclast::parse_command_line({}).options.scalability.effect_order != pyroclast::EffectOrder::origin ||
+        pyroclast::parse_command_line(misordered).error.find("Expected --effect-order") == std::string::npos)
+    {
+        std::fputs("FAIL: --effect-order\n", stderr);
+        ++failures;
+    }
+
     const char* covered[] = {"--coverage"};
     const char* covered_twice[] = {"--coverage", "--coverage"};
     if (pyroclast::parse_command_line({}).options.scalability.coverage || !pyroclast::parse_command_line(covered).options.scalability.coverage ||

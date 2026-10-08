@@ -91,6 +91,7 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
     bool capture_specified = false;
     bool view_specified = false;
     bool budget_specified = false;
+    bool order_specified = false;
     const auto set_once = [&result](bool& flag, const char* name) {
         if (flag)
         {
@@ -370,6 +371,24 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
                 return result;
             }
             setting = value[0];
+        }
+        else if (option.starts_with("--effect-order="))
+        {
+            if (order_specified)
+            {
+                result.error = "Specify --effect-order only once.";
+                return result;
+            }
+            order_specified = true;
+            const auto value = option.substr(std::string_view("--effect-order=").size());
+            auto& order = result.options.scalability.effect_order;
+            if (value == "none") order = EffectOrder::none;
+            else if (value == "cloud") order = EffectOrder::cloud;
+            else if (value != "origin")
+            {
+                result.error = "Expected --effect-order=origin, none or cloud.";
+                return result;
+            }
         }
         else if (option.starts_with("--smoke-budget="))
         {

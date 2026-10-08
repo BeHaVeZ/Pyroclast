@@ -414,6 +414,14 @@ void showcase_window(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>
 
     if (ImGui::CollapsingHeader("Smoke level of detail"))
     {
+        constexpr const char* orders[] = {"origin", "none", "cloud"};
+        ImGui::TextUnformatted("Order by");
+        for (std::uint32_t order = 0; order < 3; ++order)
+        {
+            ImGui::SameLine();
+            const bool selected = snapshot.load.effect_order == orders[order];
+            if (ImGui::RadioButton(orders[order], selected) && !selected) commands.push_back({UiCommand::Kind::set_effect_order, order});
+        }
         float lod = snapshot.load.smoke_lod;
         ImGui::SetNextItemWidth(160);
         if (ImGui::SliderFloat("Thin above (px)", &lod, 0, 256, lod > 0 ? "%.0f" : "off"))

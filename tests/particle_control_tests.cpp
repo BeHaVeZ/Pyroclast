@@ -503,6 +503,21 @@ int main()
         if (rank > 0) back_to_front = distance(ordered_device.constants.effect_order[(rank - 1) / 4][(rank - 1) % 4]) >= distance(slot);
     }
     check(back_to_front, "the effect order is a permutation of the active slots from the farthest to the nearest");
+    for (const auto key : {EffectOrder::none, EffectOrder::cloud})
+    {
+        ExplosionRenderer::FrameOptions keyed{};
+        keyed.scalability.effect_order = key;
+        ordered.render(ordered_device, ordered_particles, ordered_effects, ordered_range, oblique, 1280, 720, 0, keyed);
+        std::vector<bool> listed(ParticleSystem::effect_slots);
+        bool permutation = true;
+        for (std::uint32_t rank = 0; rank < 100; ++rank)
+        {
+            const auto slot = ordered_device.constants.effect_order[rank / 4][rank % 4];
+            permutation &= slot < 100 && !listed[slot] && (key != EffectOrder::none || slot == rank);
+            if (slot < 100) listed[slot] = true;
+        }
+        check(permutation, key == EffectOrder::none ? "effect order none keeps slot order" : "effect order cloud is a permutation of the active slots");
+    }
 
     ExplosionRenderer half_resolution;
     ExplosionSystem half_effects(ParticleSystem::effect_slots);

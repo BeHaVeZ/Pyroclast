@@ -110,6 +110,8 @@ static_assert(effect_class_count <= particle_layout::maximum_effect_classes);
 
 EffectClass make_effect_class(ExplosionPreset preset, SurfaceType surface);
 std::vector<EffectClass> effect_classes();
+
+float cloud_rise(ExplosionPreset preset, float seconds);
 std::uint32_t effect_ticks(ExplosionPreset preset, SurfaceType surface);
 
 struct LightCurve

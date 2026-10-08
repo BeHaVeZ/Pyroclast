@@ -74,6 +74,7 @@ struct DiagnosticsSnapshot
         std::uint64_t smoke_switches = 0;
         float smoke_lod = 0;
         float faint_floor = 0;
+        std::string_view effect_order = "origin";
     };
     struct Aim
     {
@@ -162,6 +163,7 @@ struct UiCommand
         toggle_half_light,
         set_smoke_lod,
         set_faint_floor,
+        set_effect_order,
     };
     Kind kind;
     std::uint32_t value = 0;

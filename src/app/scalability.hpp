@@ -11,6 +11,13 @@ constexpr const char* smoke_resolution_name(SmokeResolution resolution)
     return resolution == SmokeResolution::half ? "half" : resolution == SmokeResolution::automatic ? "auto" : "full";
 }
 
+enum class EffectOrder { origin, none, cloud };
+
+constexpr const char* effect_order_name(EffectOrder order)
+{
+    return order == EffectOrder::none ? "none" : order == EffectOrder::cloud ? "cloud" : "origin";
+}
+
 struct SmokeBudget
 {
     bool count = false;
@@ -25,5 +32,6 @@ struct ScalabilitySettings
     bool half_light = false;
     float smoke_lod = 0;
     float faint_floor = 0;
+    EffectOrder effect_order = EffectOrder::origin;
 };
 }

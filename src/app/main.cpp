@@ -679,6 +679,7 @@ int main(int argc, char** argv)
             "  --smoke-budget=coverage:S|count:N  With auto: half resolution from S screens of smoke coverage (default 1000),\n"
             "                     or from N alive smoke particles.\n"
             "  --half-light       With half or auto: half-resolution frames draw light at half resolution too.\n"
+            "  --effect-order=K   Sort effects back to front by origin (default), cloud (the rising cloud's centre) or none.\n"
             "  --gpu-timing       Enable GPU timestamp measurements.\n"
             "  --gpu-regions      Also time every dispatch, pass and the overlay (serializes Vulkan GPU work).\n"
             "  --capture=FILE.png Write the first frame drawn at the profile tick, then exit (requires --profile-tick,\n"

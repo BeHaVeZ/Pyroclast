@@ -111,6 +111,7 @@ void Sandbox::fill_snapshot(DiagnosticsSnapshot& snapshot) const
     load.smoke_switches = renderer.smoke_policy().switches();
     load.smoke_lod = scalability.smoke_lod;
     load.faint_floor = scalability.faint_floor;
+    load.effect_order = effect_order_name(scalability.effect_order);
 
     auto& shown = snapshot.showcase;
     shown.preset = showcase.preset;
@@ -301,6 +302,13 @@ void apply(UiCommand command, Sandbox& sandbox)
         {
             sandbox.scalability.faint_floor = command.scalar;
             SDL_Log("Faint smoke floor: %g.", static_cast<double>(command.scalar));
+        }
+        break;
+    case Kind::set_effect_order:
+        if (command.value <= 2)
+        {
+            sandbox.scalability.effect_order = static_cast<EffectOrder>(command.value);
+            SDL_Log("Effect order: %s.", effect_order_name(sandbox.scalability.effect_order));
         }
         break;
     case Kind::toggle_coverage:

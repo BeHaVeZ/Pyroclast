@@ -1,4 +1,5 @@
 #include "app/smoke_resolution_policy.hpp"
+#include "simulation/explosion_presets.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -91,6 +92,10 @@ int main()
     ParticleCounters many;
     many.smoke = 70000;
     check(counted.decide(many, {true, 60000}, pixels) && !counted.decide(sample, {true, 60000}, pixels), "the count arm compares smoke particles");
+
+    check(std::abs(cloud_rise(ExplosionPreset::heavy, 3) - 26 * (1 - std::exp(-1.0f))) < 1e-4f && cloud_rise(ExplosionPreset::heavy, 0) == 0 &&
+        cloud_rise(ExplosionPreset::small_impact, 5) == 0 && cloud_rise(ExplosionPreset::heavy, 100) > 25.99f,
+        "cloud_rise follows the ring's rise");
 
     if (failures == 0) std::puts("scalability tests passed");
     return failures == 0 ? 0 : 1;

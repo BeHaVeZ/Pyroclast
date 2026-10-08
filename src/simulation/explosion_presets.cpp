@@ -275,6 +275,16 @@ FlowParameters preset_flow(ExplosionPreset preset)
     return {};
 }
 
+}
+
+float cloud_rise(ExplosionPreset preset, float seconds)
+{
+    const auto flow = preset_flow(preset);
+    return flow.rise_height * (1 - std::exp(-seconds / std::max(flow.rise_time, 1e-3f)));
+}
+
+namespace
+{
 void apply_surface(Layers& layers, SurfaceType surface)
 {
     auto& dust = layers[layer_index(EffectLayer::ground_dust)];

@@ -65,11 +65,22 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
         constants.effect_states[index] = {slot.seed, slot.generation, slot.start_tick, slot.effect_class};
     }
     std::vector<std::uint32_t> order(active.begin(), active.end());
-    const auto distance = [&slots, &camera](std::uint32_t slot) {
-        const auto offset = slots[slot].origin - camera.position;
+    const auto key_tick = particles.tick() + work.steps;
+    const auto effect_order = options.scalability.effect_order;
+    const auto distance = [&slots, &camera, key_tick, effect_order](std::uint32_t slot) {
+        auto centre = slots[slot].origin;
+        if (effect_order == EffectOrder::cloud)
+        {
+            const float seconds = static_cast<float>(key_tick - std::min(key_tick, slots[slot].start_tick)) / 60.0f;
+            centre.y += cloud_rise(slots[slot].preset, seconds);
+        }
+        const auto offset = centre - camera.position;
         return dot(offset, offset);
     };
-    std::stable_sort(order.begin(), order.end(), [&distance](std::uint32_t a, std::uint32_t b) { return distance(a) > distance(b); });
+    if (effect_order != EffectOrder::none)
+    {
+        std::stable_sort(order.begin(), order.end(), [&distance](std::uint32_t a, std::uint32_t b) { return distance(a) > distance(b); });
+    }
     for (std::size_t rank = 0; rank < order.size(); ++rank) constants.effect_order[rank / 4][rank % 4] = order[rank];
     std::array<PointLight, particle_layout::maximum_lights> lights;
     const bool lit = ((options.layer_mask >> particle_layout::lights_mask_bit) & 1) != 0;
