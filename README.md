@@ -12,8 +12,8 @@ by clicks or scripts, built from seven presets of layered effects (flash, fireba
 plume, ground dust, debris, temporary lights) that respond to the surface they hit, and the GPU decides
 which particles are alive and how many to draw. Smoke rides gusty wind, rolls into mushroom caps and is lit
 as volume. Walls, a hut, crates, vehicles, barriers and rocks on the range stop sparks, debris, dust and
-smoke, and turn the wind. A showcase mode aims, fires and walks the range, and optional scalability settings
-keep dense smoke fields within a frame budget. A benchmark mode follows.
+smoke, and turn the wind. A showcase mode aims, fires and walks the range, optional scalability settings
+keep dense smoke fields within a frame budget, and a benchmark mode measures seven reproducible workloads on both APIs.
 
 ## Core question
 
@@ -59,6 +59,37 @@ This project is an independent technical exploration.
 It is not affiliated with Bohemia Interactive, Arma, Enfusion, or Blastcore, and does not use proprietary engine source code.
 
 ## Current milestone
+
+**M20 - Benchmark mode** (complete)
+
+- `--benchmark=NAME` runs one of seven fixed workloads: `single`, `simultaneous-10`, `simultaneous-50` and
+  `simultaneous-100` (small explosions at once), `sustained-barrage` (80 artillery impacts over 20 s),
+  `smoke-field` (100 heavy explosions seen from the ground, the worst overdraw) and `accumulation` (artillery impacts
+  as often as the 128 effect slots allow, for 30 s of steady state). Each warms up for 120 frames, then runs its
+  script one tick per frame with VSync off; its frames, images and checksums are exactly those of the matching
+  `--scenario`, and any skipped frame, focus loss or resize marks the run invalid.
+- Each run prints a JSON record and, with `--counter-log`, a per-frame CSV: the frame period, the render call and the
+  time it spent waiting and presenting, the GPU frame and its regions, the work (dispatches, passes, draws), particle
+  counts, and GPU memory (DXGI and `VK_EXT_memory_budget`). Statistics give average, median, p95, p99, the mean of the
+  worst 1% and the maximum.
+- `tools/bench/run.py` runs interleaved sessions over both APIs and any settings, from a copy of the exe, and records
+  the machine (CPU, RAM, OS build, driver, power plan, remote session, commit, exe hash). `tools/bench/report.py`
+  checks every record against its CSV, determinism across runs and APIs and the session's completeness, and writes
+  the tables and SVG charts, byte-identical when re-run.
+- D3D12 now presents without VSync with tearing allowed where supported, the closest match to Vulkan's IMMEDIATE
+  mode; measured neutral.
+- Measured (RTX 4090, 5 runs per case, every option off), GPU frame average / p95 in ms, D3D12 / Vulkan:
+
+  | Benchmark | D3D12 | Vulkan | M19 recommended set (D3D12; Vulkan within 3 points) |
+  |---|---|---|---|
+  | single | 0.056 / 0.063 | 0.055 / 0.063 | -6% / -13% |
+  | simultaneous-100 | 1.58 / 2.78 | 1.64 / 2.82 | -40% / -47% |
+  | sustained-barrage | 0.93 / 1.61 | 0.96 / 1.62 | -44% / -51% |
+  | smoke-field | 12.2 / 27.3 | 12.4 / 28.0 | -84% / -86% |
+  | accumulation | 3.67 / 5.09 | 3.84 / 5.25 | -50% / -46% |
+
+  The two APIs agree on the GPU within a few percent; on the CPU, D3D12's slowest frames wait several times longer
+  than Vulkan's at similar medians. Every benchmark was identical run to run and across APIs.
 
 **M19 - Scalability program** (complete)
 
@@ -409,6 +440,14 @@ Presets, layers, smoke features and the wind apply to groups, profiles and scena
 .\out\build\windows-x64\Release\Pyroclast.exe --scenario=range --view=yard --disable=deflection
 ```
 
+Benchmarks run a fixed workload after a warm-up and print a JSON record (`--counter-log` adds the per-frame CSV):
+
+```powershell
+.\out\build\windows-x64\Release\Pyroclast.exe --benchmark=smoke-field
+.\out\build\windows-x64\Release\Pyroclast.exe --renderer=vulkan --benchmark=accumulation --counter-log=accumulation.csv
+.\out\build\windows-x64\Release\Pyroclast.exe --benchmark=simultaneous-100 --smoke-resolution=auto --half-light --smoke-lod=16
+```
+
 Scalability settings (all off by default; the overlay's Scalability and Smoke level of detail sections switch
 them live):
 
@@ -542,8 +581,9 @@ at tick 480 the group has retired and only the range and the tonemap remain. The
 compacts the alive ones. This isolates pool/rendering costs rather than force costs. The JSON record's
 `"alive"` is the live particle count the GPU reported.
 Input, focus loss, resize, minimize, or skipped frames invalidate the sample.
-D3D12 uses Present interval zero; Vulkan requires IMMEDIATE presentation and
-reports a useful error if unavailable. Desktop compositing can still affect CPU
+D3D12 presents at interval zero with tearing allowed where the system supports it (since M20, the closest match to
+Vulkan's IMMEDIATE; the queues still differ, 2 DXGI buffers against Vulkan's 3 images); Vulkan requires IMMEDIATE
+presentation and reports a useful error if unavailable. Desktop compositing can still affect CPU
 presentation time, so the output separates CPU call times from GPU regions.
 
 ```powershell
@@ -587,6 +627,12 @@ python tools/ab.py --a out/build/windows-x64/Release --b out/build/windows-x64/R
 powershell -File tools/lifecycle.ps1 -Configuration Debug -Renderer vulkan -SmokeResolution half
 # Every automatic-resolution capture must equal the full- or half-resolution capture of the same case
 python tools/captures.py policy-check out/baselines/mine out/auto-captures
+# Benchmark sessions: every benchmark on both APIs, interleaved, then the report and charts in out/bench/<session>
+python tools/bench/run.py --exe out/build/windows-x64/Release --label mine --runs 5
+python tools/bench/run.py --exe out/build/windows-x64/Release --quick
+python tools/bench/report.py out/bench/<session> --strict
+# Two builds on benchmarks, with the CPU breakdown
+python tools/ab.py --a C:/baseline/out/build/windows-x64/Release --b out/build/windows-x64/Release --benchmarks single,smoke-field --cpu
 # Frozen scenario states as A/B cases, tail percentiles, and per-frame counter logs compared run to run
 python tools/ab.py --a out/build/windows-x64/Release --b out/build/windows-x64/Release --cases bombardment@450 --b-args=--smoke-lod=16
 python tools/ab.py --a out/build/windows-x64/Release --b out/build/windows-x64/Release --scenarios bombardment --b-smoke auto --tails --counter-logs out/logs
