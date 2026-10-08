@@ -2,697 +2,752 @@
 
 > A real-time C++ graphics and simulation project exploring scalable, high-fidelity explosion and smoke effects across Direct3D 12 and Vulkan.
 
-## Status
+![One heavy explosion at tick 180, seen from eye level](media/screenshots/heavy-ground-180.png)
 
-Early development.
+*One heavy explosion at tick 180 (3 s), from eye level; D3D12 in-app capture.*
 
-The project runs a GPU explosion and smoke effect in a 3D test range (terrain, sky, depth, a
-free-fly camera) on D3D12 and Vulkan, with a Dear ImGui engineering overlay. Explosions are events placed
-by clicks or scripts, built from seven presets of layered effects (flash, fireball, sparks, blast smoke,
-plume, ground dust, debris, temporary lights) that respond to the surface they hit, and the GPU decides
-which particles are alive and how many to draw. Smoke rides gusty wind, rolls into mushroom caps and is lit
-as volume. Walls, a hut, crates, vehicles, barriers and rocks on the range stop sparks, debris, dust and
-smoke, and turn the wind. A showcase mode aims, fires and walks the range, optional scalability settings
-keep dense smoke fields within a frame budget, and a benchmark mode measures seven reproducible workloads on both APIs.
+**Status:** milestones M11-M21 complete. Windows x64, Direct3D 12 and Vulkan.
 
-## Core question
+**Technology:** C++20, CMake 4.2, SDL 3.4.18, Direct3D 12, Vulkan 1.3, HLSL compiled by DXC to DXIL and SPIR-V,
+Dear ImGui 1.92.9b, GPU compute.
 
-**How can dense, believable explosion smoke remain performant when many explosions occur simultaneously?**
+## Contents
 
-Pyroclast is intended as an engine-programming portfolio project rather than a game.
+[What and why](#what-and-why) ·
+[Results at a glance](#results-at-a-glance) ·
+[Gallery](#gallery) ·
+[Features](#features) ·
+[Architecture](#architecture) ·
+[GPU particle pipeline](#gpu-particle-pipeline) ·
+[Smoke model](#smoke-model) ·
+[D3D12 and Vulkan](#d3d12-and-vulkan) ·
+[Performance](#performance) ·
+[Optimization record](#optimization-record) ·
+[Correctness and validation](#correctness-and-validation) ·
+[Limitations](#limitations) ·
+[Future work](#future-work) ·
+[Build](#build) ·
+[Run](#run) ·
+[History](#history)
 
-## Planned technology
+## What and why
 
-- C++20
-- CMake
-- SDL3
-- Direct3D 12
-- Vulkan
-- HLSL + DXC
-- Dear ImGui
-- GPU compute
+The core question:
 
-## Design direction
+> How can dense, believable explosion smoke remain performant when many explosions occur simultaneously?
 
-Pyroclast will use a deliberately small rendering abstraction so the same simulation can run through D3D12 and Vulkan while keeping backend-specific behavior explicit.
+A single high-quality explosion is easy to make expensive. The engineering problem is keeping visual quality as
+the workload scales: one explosion, several at once, sustained artillery, overlapping and long-lived smoke, large
+particle counts. Pyroclast investigates how to preserve the *perceived visual density* of the effect while keeping
+the simulation and rendering workload bounded.
 
-Renderer selection is intended to happen at startup:
+The rendering side is held to one rule: build exactly enough rendering infrastructure to support and study scalable
+explosion and smoke simulation well, not a renderer that could theoretically support anything.
 
-```text
-Pyroclast.exe --renderer=d3d12
-Pyroclast.exe --renderer=vulkan
-```
-
-The project will prioritize measurable performance, clear architecture, profiling, and documented engineering decisions.
-
-## Documentation
-
-- `docs/PROJECT_CONTEXT.md`
-- `docs/ARCHITECTURE.md`
-- `docs/ROADMAP.md`
-- `docs/BENCHMARKING.md`
-
-## Project scope
+Out of scope: gameplay, multiplayer, AI, weapons systems, a world editor, a generic ECS, a general-purpose engine,
+runtime renderer hot-swapping, support for every graphics API, physically exact fluid dynamics and proprietary
+engine integration.
 
 This project is an independent technical exploration.
 
 It is not affiliated with Bohemia Interactive, Arma, Enfusion, or Blastcore, and does not use proprietary engine source code.
 
-## Current milestone
+## Results at a glance
 
-**M20 - Benchmark mode** (complete)
+Measured on an i9-13900K and an RTX 4090 (driver 617.14), Windows 10 Pro 22H2 (19045.6466), Release, 1280x720,
+VSync off. Points 1, 4 and 5 come from the M20 benchmark session (5 interleaved runs per case, 120 warm-up frames
+per launch; details under [Performance](#performance)); points 2 and 3 from the M19
+[optimization record](#optimization-record) and the M20 region timestamps.
 
-- `--benchmark=NAME` runs one of seven fixed workloads: `single`, `simultaneous-10`, `simultaneous-50` and
-  `simultaneous-100` (small explosions at once), `sustained-barrage` (80 artillery impacts over 20 s),
-  `smoke-field` (100 heavy explosions seen from the ground, the worst overdraw) and `accumulation` (artillery impacts
-  as often as the 128 effect slots allow, for 30 s of steady state). Each warms up for 120 frames, then runs its
-  script one tick per frame with VSync off; its frames, images and checksums are exactly those of the matching
-  `--scenario`, and any skipped frame, focus loss or resize marks the run invalid.
-- Each run prints a JSON record and, with `--counter-log`, a per-frame CSV: the frame period, the render call and the
-  time it spent waiting and presenting, the GPU frame and its regions, the work (dispatches, passes, draws), particle
-  counts, and GPU memory (DXGI and `VK_EXT_memory_budget`). Statistics give average, median, p95, p99, the mean of the
-  worst 1% and the maximum.
-- `tools/bench/run.py` runs interleaved sessions over both APIs and any settings, from a copy of the exe, and records
-  the machine (CPU, RAM, OS build, driver, power plan, remote session, commit, exe hash). `tools/bench/report.py`
-  checks every record against its CSV, determinism across runs and APIs and the session's completeness, and writes
-  the tables and SVG charts, byte-identical when re-run.
-- D3D12 now presents without VSync with tearing allowed where supported, the closest match to Vulkan's IMMEDIATE
-  mode; measured neutral.
-- Measured (RTX 4090, 5 runs per case, every option off), GPU frame average / p95 in ms, D3D12 / Vulkan:
+1. **GPU time grows with the smoke on screen.** The GPU frame average is 0.056 ms for one small explosion,
+   1.575 ms for 100 at once, and 12.151 ms (p95 27.295 ms, 1.6 times a 60 Hz frame) for 100 heavy explosions seen
+   from the ground (D3D12).
+2. **Translucent particles are the frame.** At full resolution the particle pass is 97.8-99.9% of the draw
+   interval in every frozen grid-100 and bombardment state of the M19 baseline. By region timestamps, the simulation, scan and scatter dispatches together average at
+   most 0.041 ms on any benchmark.
+3. **Draw time follows screen coverage, not particle count.** Over 64,470 frames, R² is 0.979 for smoke
+   coverage against 0.334 for the alive particle count, about 5 µs of draw per screen of coverage.
+4. **A recommended set** (`--smoke-resolution=auto --half-light --smoke-lod=16`) lowers the GPU frame average on
+   all seven benchmarks on both APIs, by 5.00% (single, Vulkan) up to 84.20% (smoke-field, D3D12). It is not the
+   default, because each of its parts changes the image.
+5. **The two APIs agree, and runs are deterministic.** Vulkan's GPU frame average is within -6.01% to +4.67% of
+   D3D12's. Particle counts and their checksums are identical across runs (112/112 checks) and across APIs (7/7).
 
-  | Benchmark | D3D12 | Vulkan | M19 recommended set (D3D12; Vulkan within 3 points) |
-  |---|---|---|---|
-  | single | 0.056 / 0.063 | 0.055 / 0.063 | -6% / -13% |
-  | simultaneous-100 | 1.58 / 2.78 | 1.64 / 2.82 | -40% / -47% |
-  | sustained-barrage | 0.93 / 1.61 | 0.96 / 1.62 | -44% / -51% |
-  | smoke-field | 12.2 / 27.3 | 12.4 / 28.0 | -84% / -86% |
-  | accumulation | 3.67 / 5.09 | 3.84 / 5.25 | -50% / -46% |
+![GPU frame average against the number of simultaneous explosions, D3D12 and Vulkan](media/charts/scaling.svg)
 
-  The two APIs agree on the GPU within a few percent; on the CPU, D3D12's slowest frames wait several times longer
-  than Vulkan's at similar medians. Every benchmark was identical run to run and across APIs.
+## Gallery
 
-**M19 - Scalability program** (complete)
+All images are in-app captures of the default 1280x720 window, copied on the GPU before presentation. Captions
+give the state, the renderer and build, and any non-default flag.
 
-Measured experiments on what makes dense smoke expensive and what to do about it, each with a record of the
-problem, the evidence, the change, the result and the trade-off. Every new option is off by default, so the
-default frame is still M18's (all 192 reference captures identical, every timing within noise).
+| | |
+|---|---|
+| ![Fireball stage of one heavy explosion](media/screenshots/heavy-ground-45.png)<br>One heavy explosion at tick 45 (0.75 s), from eye level: the fireball stage. D3D12, Debug. | ![The range scenario among the yard's props](media/screenshots/range-yard-180.png)<br>The `range` scenario (seven explosions of six presets among the north yard's props) at tick 180, from the yard view. D3D12, Debug. |
+| ![Artillery barrage from the overview](media/screenshots/barrage-600.png)<br>The `barrage` scenario (80 artillery-he impacts walking across the range) at tick 600 (10 s), overview. D3D12, Debug. | ![100 simultaneous explosions from above](media/screenshots/grid-100-aerial-180.png)<br>100 small-he explosions started together, tick 180, aerial view. D3D12, Debug. |
+| ![Smoke field, every option off](media/screenshots/smoke-field-180-default.png)<br>The smoke-field workload (100 heavy explosions, from the ground) at tick 180, every option off. D3D12, Debug. | ![Smoke field with the recommended set](media/screenshots/smoke-field-180-recommended.png)<br>The same frame with `--smoke-resolution=auto --half-light --smoke-lod=16`: the image cost of the recommended set. D3D12, Debug. |
+| ![The engineering overlay](media/screenshots/overlay-grid-100-180.png)<br>The overlay (`--ui=on --coverage`) over 100 small-he explosions at tick 180. D3D12, Release. A single live reading: no number in this README is taken from it. | ![Effect lines and collision boxes](media/screenshots/effect-lines-range-45.png)<br>`--effect-lines` on the `range` scenario at tick 45, range view: each effect's origin, normal and reach, and the props' collision boxes. D3D12, Debug. |
 
-- Where the time goes: drawing the translucent particles is 98-100% of the drawing time in every expensive case,
-  and its cost follows how much screen the smoke covers (R² 0.98), not how many particles are alive (0.33).
-  `--coverage` (or the overlay) counts that coverage on the GPU, by particle size, along with particles off
-  screen.
-- `--smoke-resolution=auto` draws smoke at half resolution only on frames whose measured coverage is above a
-  budget (1,000 screens by default, `--smoke-budget`), with hysteresis and a minimum of 30 frames between
-  switches; lighter frames stay full resolution and identical to it. `--half-light` also puts the fireball and
-  sparks into the half-size target, keeping the full-resolution drawing order.
-- `--smoke-lod=16` thins smoke particles larger than 16 pixels in radius: every other one fades out by 32
-  pixels while its neighbour grows more opaque to block about as much light, so dense clouds look the same
-  with half the blending. No popping between frames. `--faint-floor=F` skips nearly invisible smoke (a
-  quality trade: it can remove a visible ground haze).
-- `--effect-order=origin|cloud|none` chooses how explosions are sorted back to front (by origin, the
-  default; by the centre of their rising cloud; or not at all, which shows that the order matters).
-  `--slot-policy=evict-oldest` lets new impacts replace the oldest explosion when all 128 slots are busy,
-  instead of being dropped: no more seconds without a new impact under sustained fire, at about a third more
-  drawing time over the bombardment.
-- Measured (RTX 4090), the recommended set `--smoke-resolution=auto --half-light --smoke-lod=16` against
-  everything off: 100 heavy explosions draw in 1.8 ms instead of 11.0 (p95 3.6 ms instead of 26.1), the heavy
-  bombardment in 1.3 ms instead of 7.9 (p95 2.5 instead of 17.4), 100 artillery explosions in 1.1 ms instead
-  of 4.7; lighter scenes gain 24-50%. It is not the default because each part changes the image a little
-  (softer smoke on half-resolution frames, slightly reshaped edges of young clouds).
-- Tried and not kept: exact culling of off-screen particles (identical images, no measurable gain on this
-  GPU). Analysed and not built: smoke aggregation, occlusion culling, order-independent transparency, a
-  global particle sort, adaptive emission and simulation level of detail; each record says what would
-  reopen it.
-- Measuring aids: `--scenario=NAME --profile-tick=T` freezes a script at a tick, `--camera=` places the
-  camera exactly, `--counter-log=FILE.csv` writes every frame's counts and GPU times, and `tools/ab.py`,
-  `tools/captures.py` and `tools/counter_log.py` compare them.
+## Features
 
-**M18 - Showcase mode** (complete)
+| Area | What it does |
+|---|---|
+| Test range | A 512 m procedural heightfield (257x257 heights, 2 m apart) with a flat central range, sun and hemisphere light, fog and a sky. A 36x36 m concrete pad. 18 props (walls, a hut, crates, a truck, barriers, rocks, a tank, a burnt car) built in code from 36 boxes, no asset files, drawn as one 1,764-vertex mesh. |
+| Explosions | Events placed by clicks or scripts at any time and place. 7 presets (small impact, small HE, artillery HE, heavy, fuel/fire, dust blast, stress test), each a table of up to 7 layers: ground dust, blast smoke, plume, flash, fireball, sparks, debris. Dirt and concrete respond differently. Up to 16 temporary lights per frame, the brightest first. |
+| Environment | Sparks and debris collide with the terrain and the props (swept, so nothing tunnels through a thin wall); debris comes to rest on tops; dust is held back and stays on tops; the wind and each explosion's vortex ring turn aside and up over walls. |
+| Showcase | Aim and fire with the crosshair; counts 1, 10, 50 and 100 (the aimed explosion plus a Vogel disc of radius 16.3, 36.6 or 51.6 m around it); an 80-impact barrage across the view; a continuous bombardment; walk or fly; six camera bookmarks; 0.25x slow motion; debug views (effect bounds, collision boxes, spawn regions, wind arrow). |
+| Scalability options | Coverage counters, an automatic smoke resolution with a coverage budget, half-resolution light, projected-size smoke thinning, a faint-smoke floor, effect-order keys and a slot policy. All off by default. |
+| Benchmark mode | 7 named workloads (`--benchmark`), each after 120 warm-up frames, with a JSON record, a per-frame CSV, an interleaved session driver and a report with charts. |
+| Tooling | A Dear ImGui overlay that shows only values the application measures or owns; `--gpu-regions`; in-app capture (`--capture`, `--capture-sequence`); `ImageDiff`; `tools/captures.py`, `tools/ab.py`, `tools/bench`, `tools/counter_log.py`, `tools/lifecycle.ps1`. |
 
-- Aim and fire: the crosshair (or the cursor) picks a point on the terrain or a prop; keys 1-7 pick the preset,
-  C the count (1, 10, 50, 100: the aimed explosion and the rest dropped around it on a fixed spiral), F or a
-  click fires. B walks an 80-impact artillery barrage across the view; V starts or stops a continuous
-  bombardment around the aim (rate and radius in the overlay). Every pattern is seeded and placed by index, so
-  the same keys give the same explosions however frames fall.
-- Walk (G) at eye height on the terrain and on prop tops, blocked by walls and in through the hut's door, or fly
-  as before; per-mode speeds; F2-F7 recall six camera bookmarks (the named views), Ctrl+F2-F7 store them.
-- Slow motion (T, 0.25x) on the fixed-step clock, with pause and single steps as before.
-- Debug views: effect bounds and collision boxes (L), spawn regions (F8: where F, B and V will land, the
-  barrage's corridor, the bombardment's disc and the next impact, draped on the ground) and a wind arrow (F9).
-- The overlay has two windows: the engine (GPU, frame times, the clock, effect slots, particles, drops) and the
-  showcase (aim readout, presets, counts, barrage, bombardment, wind with a compass, camera and bookmarks, views,
-  layers). When all 128 effect slots are busy, new events are dropped, counted and logged once a second.
-- `--scenario=bombardment` fires 400 impacts within 30 m, 20 a second: the saturation workload (small-he drops
-  64 of them, artillery-he 144; identical checksums on both APIs).
-- Measured (RTX 4090): scripted runs, frozen states and every image are unchanged from M17 (192 of 192
-  captures identical, the same checksums, every timing within noise). With the overlay open, Vulkan's CPU frame
-  costs 7-10 µs more than M17's; firing 100 explosions takes 0.1-0.6 ms of CPU.
+## Architecture
 
-**M17 - Test range and environmental interaction** (complete)
-
-- The range has props: blast walls, a hut with a door and a roof, a crate stack, a truck, jersey barriers and
-  rocks in a yard north of the startup groups, a tank, a burnt car, barriers and a rock around the edges. They
-  are built in code (no assets) from 36 upright boxes, drawn as one mesh with a material per prop, and grounded
-  with contact shadows and a dark hut interior.
-- Particles meet them like the ground: sparks and debris bounce off walls (swept, so nothing tunnels through a
-  thin wall), debris comes to rest on tops, fire and smoke slide along faces, ground dust is held back by the
-  barriers and stays on tops, and the wind and the explosions' vortex rings turn aside and up over walls.
-- Clicks land on props too, with the prop's material deciding the response (wood throws dark clods and brown
-  dust). The CPU raycast and the GPU read the same packed data, so they see the same boxes.
-- `--scenario=range` fires seven presets among the props; scenario frames can be captured by tick
-  (`--capture-tick`), so collision has an image baseline and a D3D12/Vulkan comparison (identical run to run,
-  within one level across APIs).
-- Measured (RTX 4090): drawing the props costs nothing measurable; collision and deflection add nothing
-  measurable on D3D12 and up to 1.5 µs (6%) on Vulkan to the simulation of 100 effects, and 2.2-2.5 µs where
-  every explosion is among props. Against M16 the larger simulation kernel costs D3D12 0.5-3.4 µs (3-9%) even
-  where no particle meets a prop. `--disable=props` (or `collision`, `deflection`) switches them off.
-
-**M16 - Smoke model and lighting** (complete)
-
-- Smoke moves with the air instead of a fixed drift: gusty wind that weakens near the ground, a rising
-  vortex ring per explosion that rolls the smoke up through the core and out over the top into a mushroom
-  cap, and divergence-free turbulence (curl noise computed in the shader, no textures).
-- Smoke cools, rises while hot and spreads as it cools; hot smoke glows.
-- Smoke is lit as volume: each particle is shaded as a sphere (soft sunlit side, sky-lit shadow side,
-  light scattered inside the cloud), and each explosion's cloud shadows its own core. Fire and flashes still
-  light the smoke around them.
-- Every part can be switched off to see and measure it (`--disable=curl,vortex,gusts,shading,shadow,emission`
-  or the overlay); the wind is set with `--wind=SPEED,HEADING,GUSTINESS` or overlay sliders.
-- Measured (RTX 4090, 100 artillery explosions): shading costs 2-3.5% of the drawing time; the turbulence and
-  the vortex rings cost nothing measurable in a simulation pass of about 25-30 µs. Denser, lit smoke draws
-  4-9% slower than in M15.
-
-**M15 - Presets, layered composition and surface response** (complete)
-
-- Seven presets: small impact, small HE, artillery HE, heavy, fuel/fire, dust-heavy ground blast and a
-  stress test. They differ only by parameters: each is a table of layers that the GPU reads, and every
-  preset runs the same kernels.
-- Layers: a flash; the fireball; sparks drawn as streaks along their motion; blast smoke; a plume fed
-  for seconds (its particles are born over time); ground dust rolling out over the surface and staying
-  near it; and debris drawn as lit, opaque boxes that tumble, bounce and come to rest on the ground.
-- A concrete pad on the range. Explosions on concrete raise less and lighter dust, throw more and smaller
-  grey fragments and strike more sparks; on dirt they throw dark soil clods.
-- Temporary lights: each preset's flash and glow light the terrain, the debris and the smoke (at most 16
-  lights, the brightest first).
-- `--preset=NAME` selects the preset of groups, profiles and scenarios; `--disable=LIST` hides layers or
-  the lights; `--scenario=presets` fires all seven in a row. The overlay picks the preset a click places
-  and toggles layers and lights.
-- Measured (RTX 4090): 16 temporary lights cost nothing measurable, and the new workloads are dominated
-  by smoke and fireball fill: from 0.16 ms (100 small impacts) to 12.7 ms (100 heavy explosions) of
-  drawing at the 3 s mark, against 18-52 µs of simulation. Opaque debris saves drawing time by hiding
-  smoke behind it. Scalability work on such frames is M19.
-
-**M14b - GPU particle lifecycle** (complete)
-
-- The GPU decides what is alive and how much is drawn. Each frame the simulation also marks the alive
-  records of every 64-record group; one compute group scans those marks into list offsets, indirect draw
-  arguments and live counts; a scatter writes the alive records' indices. The particle draws are indirect
-  and read only alive particles. The lists keep the previous draw order (effects back to front, each in
-  record order), so every image is identical to M14a's and the counts repeat exactly from run to run, on
-  both APIs and on other GPUs.
-- Measured against M14a (RTX 4090, interleaved runs): frames where dead particles dominate draw up to 47%
-  faster (100 effects at tick 470, half resolution, Vulkan), and the Vulkan half-resolution gap found in
-  M12 turns out to be dead light particles drawn as empty quads (about 110 µs on Vulkan, 7 µs on D3D12);
-  it is gone.
-  Dense young smoke is unchanged (it is limited by blending). The new kernels cost a fixed 3-5 µs per frame
-  at light loads; a faster simulation kernel pays for them at 100 effects. Appending with atomics was
-  3-12 µs cheaper but made blending order, and so images, change between runs, so it was rejected.
-- The rendering interface gained indirect draws and a small per-frame readback. The overlay shows live
-  particle counts, the fixed-state JSON reports `"alive"`, and scenario summaries report peak and mean
-  live counts and a checksum of every count, which must repeat across runs. `tools/ab.py --matrix
-  scenarios` compares two builds on the scripted scenarios, interleaved.
-
-**M14a - Explosion events, effect slabs and scripted scenarios** (complete)
-
-- Explosions are events with their own place and time: a left click on the terrain places one (the
-  view ray is cast against the heightfield), Space restarts the startup group, and scripted scenarios
-  submit them by simulation tick. Each effect lives until its last particle has died, then frees its
-  slot.
-- The particle pool is 128 slabs, one per effect slot. Only active slabs are simulated and drawn; a
-  slot's generation tells the GPU to respawn its slab, and random streams come from the event's seed, so
-  an effect looks the same in any slab. Bursts open around the surface normal.
-- `--scenario=single|grid-10|grid-50|grid-100|barrage` runs a script at one tick per frame with VSync
-  off and prints one JSON summary (average, median, p95, p99 and max of CPU frame time and GPU draw and
-  compute intervals; effects started, dropped, peak); the barrage walks 80 impacts across the range,
-  four a second. `--effect-lines` (or L) draws each effect's origin, normal and nominal reach.
-
-**M13b - HDR and tonemapping** (complete)
-
-- The scene renders in linear HDR into a 16-bit float target; the last pass tonemaps it (exposure,
-  Stephen Hill's ACES fit, sRGB encoding, a fixed per-pixel dither) into the 8-bit backbuffer. Light,
-  sky and particle colours are linear radiance; fire and sparks emit several times more than a lit
-  surface, so they glow instead of clipping.
-- `--scene-format=rgba16f|r11g11b10f|rgba8` selects the scene target for comparisons (`rgba8` stores
-  linear values in 8 bits and bands; it is a cost reference). Measured on the RTX 4090 with dense smoke,
-  RGBA16F costs about +0.4 ms over 8 bits (blending is the bottleneck), and R11G11B10F is 65% slower
-  than RGBA16F, because this GPU does not blend that format at full rate. RGBA16F is the default.
-- Floating-point blending also brought D3D12 and Vulkan within one level everywhere (with far sparks drawn
-  as single pixels of the right total weight), and other vendors within 7 levels of the RTX 4090.
-
-**M13a - True 3D foundation** (complete)
-
-- World space in metres and seconds with real gravity: a 512 m procedural heightfield with a flat
-  central test range, a 10 m / 50 m grid for scale, sun and hemisphere light, fog and a sky.
-- A free-fly camera (WASD, Q/E, Shift, right mouse button to look, wheel for speed).
-  `--view=overview|ground|hill|aerial` starts it at a named pose, which profile and capture runs keep.
-- Reverse-Z depth (32-bit float, infinite far plane). The rendering interface gained depth targets,
-  passes that load their target instead of clearing it, read-only depth attachments that the same
-  pass can sample, and per-pipeline depth modes, on both APIs.
-- 48-byte world-space particle records; a 64-byte layout measured 16% (D3D12) and 45% (Vulkan) slower
-  in the compute pass. Bursts start on the terrain, spawn into the upper hemisphere, collide with the
-  same heights the terrain is drawn from, and render as camera-facing billboards.
-- Effects blend back to front in an order the CPU sorts each frame, with one premultiplied blend for
-  smoke and light, so light from distant effects no longer shows through nearer smoke. Particles fade
-  softly where they meet the scene. Half-resolution smoke accumulates over transparent black, is hidden
-  by the terrain through the same depth fade, and is composited over the scene.
-- A frame is: the range (terrain and sky) into a scene target with depth, the particles over it, and a
-  copy to the backbuffer.
-
-**M12 - Dear ImGui tooling, GPU regions and second-vendor validation** (complete)
-
-- A Dear ImGui overlay (F1 hides it) shows only values the application measures or owns: renderer,
-  GPU, resolution, CPU frame intervals with a plot, GPU timestamp intervals, explosions, pool size,
-  smoke resolution and pause state. Its buttons call the same functions as the keys. It is on for
-  interactive runs and off for `--profile-tick` measurement and capture runs unless `--ui=on`.
-- `--gpu-regions` times every dispatch, pass and the overlay; the overlay shows a table and the JSON
-  record gains a `regions` array. First result: in half-resolution mode Vulkan's composite-and-light
-  pass costs about 75 µs more than D3D12's, which is the whole half-resolution gap measured since
-  Phase 10; the smoke pass itself costs the same.
-- `--adapter=NAME` selects a GPU by name on either API and `--adapter=warp` the D3D12 software
-  rasterizer. Vulkan no longer requires `VK_EXT_swapchain_maintenance1`, so it runs on the Intel UHD
-  770, where D3D12 and Vulkan images agree within one level.
-- `--gpu-validation` (Debug) enables D3D12 GPU-based or Vulkan GPU-assisted validation.
-
-**M11 - Rendering interface for a 3D, GPU-driven frame** (complete)
-
-A pure refactor with pixel-identical output: every fixed-state capture (both APIs, full and half
-smoke, ticks 0/60/180/480, 1 and 100 explosions, Debug and Release) matches the pre-refactor build
-exactly. What changed underneath:
-
-- A frame is a list of compute dispatches and a list of passes; each pass names its target, the
-  render targets it samples, and its draws. Backends derive the barriers from the bindings.
-- One binding model for every pipeline (`shaders/binding_layout.hlsli`): 16 draw constants (b0),
-  per-frame constants (b1), eight read-only buffers (t0-t7), two render-target inputs (t8-t9), six
-  writable buffers for dispatches (u0-u5), and linear/point samplers (s0/s1). D3D12 implements it
-  as one version 1.1 root signature with root descriptors; Vulkan as one pipeline layout with a
-  push-descriptor set.
-- Vertex shaders pull particle records from buffers, so there are no input layouts.
-- Vulkan requires 1.3 and uses dynamic rendering, synchronization2 and `VK_KHR_push_descriptor`.
-- GPU buffers are created zero-filled on the GPU; Vulkan keeps them in plain device-local memory.
-- Shaders are registered once, in `cmake/Shaders.cmake`.
-- In-app frame capture (`--capture`), `--exit-after`, and validation/measurement tools (below).
-
-Phase 10 (profiling and measured smoke optimizations; historical, the 2D prototype that M13a moved
-into 3D): both backends ran the same shared HLSL explosion: a brief fireball, ballistic sparks, and
-longer-lived smoke. A single burst activates 2,560 particles (256 fireball particles, 1,792 sparks, and
-512 smoke particles) in an 8,192-slot GPU pool; the GPU handles spawning, movement, cooling, expansion,
-fading, and death without CPU particle updates. Smoke rose with cooling-dependent buoyancy, slowed
-through drag, and drifted with a fixed wind; two ordered draw ranges used premultiplied alpha for
-smoke, then additive blending for light. Startup scenarios of 1, 10, 50, or 100 simultaneous
-explosions share one bounded pool and one compute dispatch.
-
-See `docs/ROADMAP.md`.
-
-## Build and run
-
-The initial build targets Windows x64 with Visual Studio 2026 and CMake 4.2 or
-newer. Install the **Desktop development with C++** workload, including the
-Windows SDK and C++ CMake tools for Windows. Shader compilation requires DXC
-(`dxc.exe`) with both DXIL and SPIR-V support. Download the Windows archive from
-[Microsoft's DXC releases](https://github.com/microsoft/DirectXShaderCompiler/releases),
-extract it, and keep its supplied DLLs beside `bin/x64/dxc.exe`. Windows SDK DXC
-builds can lack SPIR-V support; CMake checks the actual compiler capability.
-The pipeline was validated with standalone DXC v1.9.2609.
-CMake searches PATH, `VULKAN_SDK/Bin`, and the selected Windows SDK tools directory.
-Override `PYROCLAST_DXC` with the standalone compiler's full path using your local
-`CMakeUserPresets.json` or at configuration:
-
-```powershell
-cmake --preset windows-x64 -DPYROCLAST_DXC="C:/path/to/dxc/bin/x64/dxc.exe"
+```mermaid
+flowchart TD
+    app["src/app<br/>SDL loop, command line, Sandbox and apply(),<br/>showcase, camera rig, ExplosionRenderer, overlay (src/tools)"]
+    sim["src/simulation<br/>ParticleSystem (plan / commit), effect slots,<br/>presets, scenarios, terrain, props"]
+    rhi["src/graphics/graphics_device.hpp<br/>the whole RHI: a Frame is dispatches, passes, readback"]
+    d3d["src/graphics/d3d12<br/>root signature 1.1, buffer-state tracking"]
+    vk["src/graphics/vulkan<br/>Vulkan 1.3: push descriptors, synchronization2,<br/>dynamic rendering"]
+    hlsl["shaders/*.hlsl, one source<br/>DXC: DXIL and SPIR-V"]
+    app --> sim
+    app --> rhi
+    sim --> rhi
+    rhi --> d3d
+    rhi --> vk
+    hlsl --> d3d
+    hlsl --> vk
 ```
 
-CMake retains this path in the build cache. Set it again if you delete the cache.
-Install a recent [Vulkan SDK](https://vulkan.lunarg.com/sdk/home) for headers,
-the loader import library, and Debug validation layers. Vulkan SDK 1.4.363.0 was
-validated. CMake finds the SDK through `VULKAN_SDK`; restart Visual Studio after
-a standard SDK installation so it receives the updated environment. For a
-copy-only SDK installation, set `VULKAN_SDK` before configuring:
+- `create_graphics_device` in `src/graphics/graphics_device.cpp` is the only code that includes both backends;
+  native API headers appear nowhere else.
+- The simulation layer talks to the RHI only and does not know which backend is active.
+- `src/core/math` (vectors, matrices, rays) is shared by the application and simulation layers.
 
-```powershell
-$env:VULKAN_SDK = "C:/path/to/VulkanSDK"
-$env:VK_ADD_LAYER_PATH = "$env:VULKAN_SDK/Bin"
-cmake --preset windows-x64
+### The frame contract
+
+A frame is every dispatch in order, then every pass in order, then presentation. Backends derive the barriers from
+the bindings. There is no command-list, render-graph or general texture abstraction; swapchains, barriers,
+fences, descriptors and timestamp queries stay private to each backend. The whole frame, verbatim from
+`src/graphics/graphics_device.hpp`:
+
+```cpp
+// One frame: every dispatch in order, then every pass in order, then presentation. The backend
+// derives the barriers between them from the bindings.
+struct Frame
+{
+    std::span<const Dispatch> dispatches;
+    // The last pass, and only the last, draws to the backbuffer.
+    std::span<const Pass> passes;
+    std::array<float, 4> clear_color{};
+    // b1 for every dispatch and draw of the frame; at most binding_layout::frame_constant_bytes.
+    std::span<const std::byte> constants;
+    // Copies the presented image for read_capture(). Instrumentation only; requires GraphicsDeviceOptions::capture.
+    bool capture = false;
+    // Dear ImGui draw data drawn over the finished frame; requires GraphicsDeviceOptions::debug_overlay.
+    ImDrawData* overlay = nullptr;
+    // Bytes copied after the dispatches, between the compute and draw intervals (so outside both), for
+    // GraphicsDevice::completed_readback (counters, never bulk data).
+    struct Readback
+    {
+        const Buffer* source = nullptr;
+        std::uint32_t offset = 0;
+        std::uint32_t size = 0;
+    } readback;
+};
 ```
 
-Runtime requires a Vulkan-capable graphics driver. The Vulkan backend currently
-requires Vulkan 1.3 with dynamic rendering and synchronization2, a combined
-graphics/compute/present queue, and `VK_KHR_push_descriptor`. When the driver offers
-`VK_EXT_swapchain_maintenance1` (with its surface dependencies) its presentation fences are used;
-otherwise resize and shutdown wait for the device to go idle. Rejected adapters are logged with the
-missing capability. Presentation
-fences from this extension allow explicit resource cleanup on resize and shutdown.
-Unsupported configurations fail with a diagnostic; there is no silent API fallback.
+A `Dispatch` is a compute pipeline, its bindings, 16 constants and a group count. A `Pass` names a colour target
+(or the backbuffer), up to two earlier targets it samples, an optional depth target (written, or read-only and
+sampled), and its draws. `validate_frame` checks this contract once, independently of the API, and is unit-tested.
 
-Run these commands from the repository root in **Developer PowerShell for
-Visual Studio 2026**, where `cmake` is available on PATH:
+### One binding model
+
+Every pipeline of the renderer's own uses one binding layout on both APIs (the Dear ImGui overlay uses the
+library's stock backends). It is defined once in `shaders/binding_layout.hlsli`, which
+C++ includes and CMake parses (verbatim):
+
+```hlsl
+// b0: per-draw/dispatch constants (D3D12 root constants, Vulkan push constants).
+static const uint draw_constant_words = 16;
+// b1: per-frame constants (D3D12 root CBV, Vulkan push-descriptor uniform buffer).
+static const uint frame_constant_bytes = 16384;
+// t0..t7: read-only buffers. t8..t9: sampled render targets. u0..u5: read-write buffers, dispatches only.
+static const uint read_buffer_slots = 8;
+static const uint texture_slots = 2;
+static const uint write_buffer_slots = 6;
+
+// Vulkan set 0: DXC maps register N of each class to binding N + shift (-fvk-<class>-shift).
+static const uint vulkan_b_shift = 0;
+static const uint vulkan_t_shift = 2;
+static const uint vulkan_u_shift = 12;
+static const uint vulkan_s_shift = 18;
+```
+
+| Slot | Contents | D3D12 | Vulkan (set 0) |
+|---|---|---|---|
+| b0 | 16 constant words | root constants | push constants |
+| b1 | frame constants, at most 16 KiB | root CBV | uniform buffer, binding 1 |
+| t0-t7 | read-only buffers | root SRVs | storage buffers, bindings 2-9 |
+| t8-t9 | sampled render targets | one single-descriptor table each | sampled images, bindings 10-11 |
+| u0-u5 | writable buffers, dispatches only | root UAVs | storage buffers, bindings 12-17 |
+| s0, s1 | linear and point clamp samplers | static samplers | samplers, bindings 18-19 |
+
+- D3D12 uses 48 of the 64 root-signature DWORDs. Vulkan uses 19 push descriptors, checked at startup against the
+  device's `maxPushDescriptors`.
+- **Vertex pulling.** Vertex shaders load records from buffers at shared offsets, so the renderer's pipelines have
+  no input layouts.
+  Draws never use a base instance (SPIR-V's `InstanceIndex` includes it, DXIL's `SV_InstanceID` does not); range
+  starts are passed as constants.
+- **Shared headers.** `shaders/particle_layout.hlsli` (record stride and offsets, counts, group sizes) and
+  `shaders/binding_layout.hlsli` contain only `static const uint` lines and are included by both C++ and HLSL.
+  `cmake/Shaders.cmake` lists every shader once, generates the `Shader` enum and both backends' bytecode tables,
+  and turns the binding layout into DXC's `-fvk-*-shift` options. Shaders compile as shader model 6.0 with HLSL
+  2021; SPIR-V targets the Vulkan 1.1 environment.
+
+## GPU particle pipeline
+
+```mermaid
+flowchart LR
+    cpu["CPU: start and retire effects,<br/>plan fixed steps, sort effects,<br/>frame constants"]
+    subgraph dispatches["Dispatches"]
+        sim["Particle simulation<br/>40 groups of 64 per active effect"]
+        scan["Particle scan<br/>1 group of 512"]
+        scatter["Particle scatter<br/>alive lists"]
+    end
+    copy["Counter readback copy"]
+    subgraph passes["Passes"]
+        scene["Scene: props, terrain,<br/>debris (indirect), sky"]
+        particles["Particles: one indirect draw,<br/>back to front, premultiplied"]
+        half["Half-resolution smoke"]
+        composite["Composite and light"]
+        present["Present: tonemap, overlay"]
+    end
+    cpu --> sim --> scan --> scatter --> copy --> scene
+    scene --> particles --> present
+    scene -.->|"half or auto"| half --> composite --> present
+```
+
+- **Pool.** 128 effect slots, each owning a slab of 2,560 records of 48 bytes: 327,680 records, 15.7 MB, created
+  zero-filled on the GPU. The CPU never writes particle data. Only active slabs are simulated and drawn.
+- **Effects.** An effect class (a preset on a surface) assigns each 64-record group of a slab to one layer, so a
+  wave never diverges by layer. A record whose stored generation differs from its slot's respawns from that slot's
+  event; random streams are keyed by the event's seed and the record's index in the slab, so an effect looks the
+  same in any slab and on both APIs.
+- **Simulation.** A fixed step of 1/60 s; one dispatch runs all of a frame's steps, and catch-up is capped at 4
+  steps per frame.
+- **Lists.** The simulation writes each group's 64-bit alive mask. One scan group of 512 threads turns the masks
+  into per-group list offsets, four indirect argument records (all translucent particles, smoke, light, debris)
+  and a 16-word counter record. The scatter writes the alive records' indices. The particle and debris draws are
+  indirect and read only alive particles.
+- **Readback.** The first 32 bytes of the counter record (64 when measuring coverage) are copied between the
+  compute and draw intervals and reach the CPU when that frame's slot is reused. It is the frame's only readback of simulation data; GPU
+  timestamps and captures have their own.
+- **Order.** The CPU sorts the active effects back to front each frame; within an effect, records keep slab order.
+  The lists are a stable compaction, so blending order, images and counts are deterministic.
+- **One blend.** A single premultiplied blend state draws smoke and light together, because light writes zero
+  alpha. Every particle fades softly where it meets the scene depth.
+- **Half resolution** (`--smoke-resolution=half`, or `auto` per frame): smoke goes to a half-size RGBA16F target
+  cleared to transparent black, fades against the full-resolution depth, and is composited premultiplied with a
+  linear filter; light stays at full resolution unless `--half-light` puts it in the same back-to-front list.
+- **Work per frame.** 3 dispatches, 3 passes and 6 draws at full resolution; 3, 4 and 8 at half resolution (7 draws
+  with `--half-light`, which moves light into the half-resolution draw).
+- **HDR.** The scene renders into an RGBA16F target in linear radiance. The present pass applies exposure,
+  Stephen Hill's ACES fit, sRGB encoding and a fixed per-pixel dither.
+
+Measured decisions:
+
+| Decision | Result |
+|---|---|
+| GPU lifecycle (alive lists, indirect draws) against drawing whole slabs | Up to 47% faster draws where dead particles dominate; a fixed 3-5 µs at light loads |
+| Atomic append instead of stable compaction (rejected) | 3-12 µs cheaper per frame, but the blending order, and so the image, changed from run to run |
+| Scan: coalesced loads into group-shared counts, 512 threads | 12.2 → 3.9 µs (D3D12, 100 effects) |
+| Counter readback between the compute and draw intervals instead of at frame end | Vulkan single-effect CPU median -5.1%: at frame end, its barrier drained the GPU before the frame fence |
+| 48-byte records against 64-byte | 64 bytes costs +16% (D3D12) and +45% (Vulkan) compute; 48 kept |
+
+## Smoke model
+
+Smoke aims at physical plausibility, not accuracy. The simulation (`shaders/particles_compute.hlsl`):
+
+| Element | Behaviour |
+|---|---|
+| Drag | Smoke-like layers relax toward the local air: `v += (air - v) · drag · dt` |
+| Wind | 35% of the wind at the ground, all of it from 15 m up |
+| Gusts | Computed on the CPU from the tick: sines with periods 7.3, 2.9 and 1.3 s scale the speed within 1 ± gustiness, and the heading swings by up to 12° × gustiness. Default 3 m/s toward +x, gustiness 0.3. |
+| Vortex ring | A softened point vortex about the rising ring core: up through the core, out over the top, in underneath; it decays after the rise |
+| Ring strength | From 3.5 m²/s with a 7 m rise (small HE) to 20 m²/s with a 26 m rise (heavy) |
+| Curl noise | Analytic, no textures; eddies about 8 m across, strongest while the smoke is young |
+| Buoyancy | From a temperature derived from age, `heat · exp(-cooling · age)`, so no extra particle state |
+| Ground and props | Ground clamp and bounce; contacts with the props' boxes in index order; smoke within two sizes of the ground is pushed up; ground dust stays in a layer that thickens with age |
+
+Rendering (`shaders/particles.hlsl`):
+- size grows with age and as the smoke cools; opacity fades in and falls off over the particle's life;
+- a particle smaller than a pixel is drawn as a one-pixel square carrying the disc's whole weight, so it does not
+  flicker or rasterize differently on each API;
+- each smoke particle is shaded as a sphere: wrap lighting `(n·L + 0.6) / 1.6`, half-desaturated sky light, and
+  sunlight scattered inside the cloud;
+- self-shadowing: the sun ray's chord through a sphere around the vortex ring, `exp(-density · chord)`;
+- hot smoke glows, and the explosions' temporary lights light it;
+- the soft-particle fade against the scene depth.
+
+Measured (100 artillery-he explosions): curl noise and the vortex ring are effectively free. In the grid-100
+scenario the simulation dispatch takes 27.1 µs (D3D12) / 23.4 µs (Vulkan) with everything on, and turning curl
+noise off did not make it faster. In the frozen state at tick 180, sphere shading costs 0.12 / 0.20 ms of a
+5.8-5.9 ms draw, 2-3.5%. Each part can be switched off (`--disable=curl,vortex,gusts,shading,shadow,emission`).
+
+## D3D12 and Vulkan
+
+| Topic | D3D12 | Vulkan |
+|---|---|---|
+| Binding | One root signature 1.1: root constants, a root CBV, root SRVs and UAVs (marked `DATA_VOLATILE`), one table per sampled target | One pipeline layout: push constants and one push-descriptor set |
+| b1 frame constants | An upload-heap buffer per frame slot | `HOST_VISIBLE \| HOST_COHERENT`, preferring `DEVICE_LOCAL` |
+| GPU buffers | Default heap, committed (zero-initialized) | Plain `DEVICE_LOCAL`, zero-filled with `vkCmdFillBuffer` |
+| Resizable BAR | No counterpart on Windows 10: `D3D12_HEAP_TYPE_GPU_UPLOAD` needs Windows 11 and the Agility SDK (per Microsoft's documentation) | The 2D prototype moved the pool into host-visible device-local memory: compute 2.02 → 0.016 ms. Plain device-local memory later measured the same. |
+| Samplers | Static samplers | Pushed with every draw and dispatch: an immutable sampler that was never pushed filtered as point sampling on driver 617.14 |
+| Barriers | Buffer states tracked per command list from COMMON (buffers decay to it after `ExecuteCommandLists`); UAV barriers between dispatches writing one buffer; read states merged, so a buffer read by compute and graphics needs no transition between them | Global memory barriers before, between and after the dispatches; image layouts transitioned per pass; nothing recorded inside dynamic rendering |
+| Barrier cost | The generalized barriers cost +1.3 to +2.4 µs of compute interval per frame on both APIs; kept deliberately | (same) |
+| Presentation | Flip-discard, 2 buffers; without VSync, interval 0 with tearing allowed where supported | FIFO with VSync; without it, `IMMEDIATE` (required); `minImageCount + 1` images, 3 here |
+| GPU region timestamps | Not fenced: a region can overlap neighbouring work | An execution barrier after each region start, so `--gpu-regions` serializes the GPU |
+| Debug validation | Requires the debug layer | Requires the validation layer, with synchronization validation |
+
+Shader portability rules, all handled without forking shader logic:
+- Vulkan uses a negative-height viewport, so shared HLSL keeps D3D12's clip-space orientation;
+- every Vulkan binding sits in set 0 through DXC's per-class register shifts;
+- no base vertex or instance;
+- `ddx_fine` / `ddy_fine` instead of `fwidth` where results must match (DXIL's derivatives are coarse, SPIR-V's are
+  the driver's choice);
+- a particle's view distance is passed as an interpolant, because Vulkan's `FragCoord.w` is 1/w;
+- debug lines are excluded from cross-API image comparisons: the APIs rasterize lines differently;
+- the measuring scatter `cs_measure` is its own entry point and pipeline: a descriptor that a pipeline statically
+  uses must be valid on Vulkan even when a flag skips it.
+
+Measured differences (M20 benchmark session, `default` variant):
+
+| Benchmark | Vulkan against D3D12: GPU frame average | Compute interval average | CPU frame median |
+|---|---:|---:|---:|
+| single | -0.99% (neutral) | +0.87% (neutral) | -28.03% |
+| simultaneous-10 | -6.01% | -2.21% (neutral) | -15.65% |
+| simultaneous-50 | +0.75% (neutral) | -7.73% | +4.30% (neutral) |
+| simultaneous-100 | +3.99% | -9.25% | +2.86% (neutral) |
+| sustained-barrage | +2.92% | -11.26% | -1.79% |
+| smoke-field | +2.21% | -17.39% | -1.02% (neutral) |
+| accumulation | +4.67% | -11.08% | +0.75% (neutral) |
+
+- The GPU frames agree within a few percent; Vulkan's compute interval is 7.73-17.39% lower on the five heaviest
+  workloads.
+- On the CPU, on the lighter benchmarks, D3D12's frame-time tails (p99, worst 1%) are 1.5-11 times Vulkan's at
+  similar medians; on `smoke-field`, where the GPU sets the pace, its p99 is slightly shorter. On `single`, the CPU frame
+  p99 is 1.829 ms against 0.688 ms and the worst 1% 8.028 ms against 0.735 ms; a nine-run D3D12 session gives p99
+  3.978 ms and worst 1% 8.607 ms. The time is spent waiting on the frame slot's fence, not in `Present`; the cause
+  is not found (presentation is a likely suspect, but no PresentMon trace confirms it).
+- D3D12's local video memory grows by 7.1-7.2 MiB during every benchmark except `single` and `simultaneous-10`
+  (+0.1 MiB there); Vulkan's stays flat. No resource is created after startup; the cause is not found.
+- Earlier, Vulkan's half-resolution frame was slower than D3D12's by a pass that turned out to be dead light
+  particles drawn as degenerate quads: 110 µs on Vulkan against 7 µs on D3D12. The GPU lifecycle removed it.
+
+## Performance
+
+### Method
+
+- **Environment:** i9-13900K (32 logical processors), 31.7 GiB RAM, RTX 4090 (driver 617.14), Windows 10 Pro 22H2
+  (19045.6466), display 239.76 Hz, Balanced power plan, no remote session. Release, 1280x720, VSync off.
+- **Runs:** 5 per case, interleaved (every case once per run, the order reversed on odd runs), one discarded launch
+  per renderer first. Each launch draws 120 warm-up frames at tick 0, then runs its script one tick per frame.
+- **Benchmark frames are scenario frames:** the measured frames equal `--scenario`'s (same images, counts and
+  checksums). A skipped frame, a swapchain rebuilt while measuring, focus loss, minimizing or a resize invalidates
+  the launch, which is run again.
+- **Statistics:** nearest-rank percentiles; worst 1% = the mean of the slowest ⌈n/100⌉ frames. A table value is
+  the median across runs of the per-run statistic. A difference is neutral when it is within max(1%, 3 × the larger
+  relative MAD across runs).
+- **Metrics:** GPU frame = first to last GPU timestamp (every dispatch, the readback copy and every pass; no overlay).
+  CPU frame = the loop period, one frame's start to the next.
+- **Provenance:** session `20261008-142035-m20-final`, executable SHA-256
+  `3cdf7d6ecaf370a01e971831700cdd536f98c39eafc604a0b4b6642973b6bef4`, commit `d2f7d4d` (with uncommitted
+  Python-only changes). The region session `20261008-143834-m20-regions` (3 runs) and the nine-run session
+  `20261008-142729-m20-single-9` ran the same executable.
+- **The M21 code:** an interleaved A/B of the M21 build against this executable (single, simultaneous-100 and
+  smoke-field, both APIs, 5 runs) is neutral on every metric, so these numbers stand for the current code.
+
+### The benchmarks
+
+| Benchmark | Script, preset, pose | Measured frames | Peak effects | Peak alive particles | Counts checksum |
+|---|---|---:|---:|---:|---|
+| `single` | single, small-he, overview | 480 | 1 | 1,617 | `ff5c70a92771eebd` |
+| `simultaneous-10` | grid-10, small-he, overview | 480 | 10 | 17,412 | `22f48e015cdb03a7` |
+| `simultaneous-50` | grid-50, small-he, overview | 480 | 50 | 90,165 | `d27ea5abe4fbc6ae` |
+| `simultaneous-100` | grid-100, small-he, overview | 480 | 100 | 169,152 | `3b96591caa5bd973` |
+| `sustained-barrage` | barrage (80 impacts, one every 15 ticks), artillery-he, overview | 1,785 | 40 | 44,325 | `3896b00be006225b` |
+| `smoke-field` | grid-100, heavy, ground | 660 | 100 | 210,072 | `6fb233585e3fb1e3` |
+| `accumulation` | accumulation (480 impacts, one every 5 ticks), artillery-he, overview | 2,995 | 120 | 129,106 | `8613b51879dcb9a9` |
+
+### Headline results (every option off)
+
+Milliseconds; GPU frame average / p95, CPU frame median / p99.
+
+| Benchmark | GPU, D3D12 | GPU, Vulkan | CPU, D3D12 | CPU, Vulkan |
+|---|---:|---:|---:|---:|
+| single | 0.056 / 0.063 | 0.055 / 0.063 | 0.123 / 1.829 | 0.089 / 0.688 |
+| simultaneous-10 | 0.164 / 0.241 | 0.154 / 0.230 | 0.237 / 1.341 | 0.200 / 0.904 |
+| simultaneous-50 | 0.640 / 1.062 | 0.645 / 1.077 | 0.821 / 6.467 | 0.856 / 1.845 |
+| simultaneous-100 | 1.575 / 2.776 | 1.638 / 2.820 | 1.940 / 7.188 | 1.995 / 3.622 |
+| sustained-barrage | 0.929 / 1.609 | 0.956 / 1.624 | 1.341 / 2.333 | 1.317 / 2.253 |
+| smoke-field | 12.151 / 27.295 | 12.420 / 27.953 | 10.922 / 28.831 | 10.811 / 29.937 |
+| accumulation | 3.665 / 5.092 | 3.836 / 5.249 | 4.767 / 7.816 | 4.802 / 6.208 |
+
+![GPU frame per-run statistics for every benchmark, D3D12 and Vulkan](media/charts/percentiles-gpu.svg)
+
+![CPU frame per-run statistics for every benchmark, D3D12 and Vulkan](media/charts/percentiles-cpu.svg)
+
+*CPU frame statistics. D3D12's long tails sit in the frame-slot fence wait; their cause is not explained.*
+
+![CPU frame breakdown: record, wait and present](media/charts/cpu-breakdown.svg)
+
+*CPU frame breakdown. Record = submit - wait - present. Compare wait + present across APIs, not each part: DXGI may
+block in `Present` where Vulkan blocks on the fence or the acquire.*
+
+![smoke-field: GPU frame, CPU frame and alive particles per tick](media/charts/timeline-smoke-field.svg)
+
+*The smoke field tick by tick: GPU frame, CPU frame and alive particles, median across runs with the min-max
+envelope.*
+
+### The recommended set
+
+`--smoke-resolution=auto --half-light --smoke-lod=16` against every option off (relative difference of the medians;
+D3D12 / Vulkan):
+
+| Benchmark | GPU frame average | GPU frame p95 | CPU frame median |
+|---|---:|---:|---:|
+| single | -5.89% / -5.00% | -12.90% / -12.01% | -3.90% / neutral |
+| simultaneous-10 | -29.47% / -25.27% | -41.28% / -38.62% | -20.04% / -22.86% |
+| simultaneous-50 | -35.27% / -35.39% | -46.09% / -46.77% | -32.85% / -36.58% |
+| simultaneous-100 | -40.24% / -40.51% | -47.33% / -45.02% | -37.79% / -36.61% |
+| sustained-barrage | -44.35% / -45.92% | -50.73% / -51.13% | -43.07% / -43.88% |
+| smoke-field | -84.20% / -84.01% | -85.97% / -86.14% | -78.22% / -77.57% |
+| accumulation | -50.25% / -49.84% | -45.63% / -45.44% | -44.65% / -45.93% |
+
+![The recommended set against default, per benchmark and API](media/charts/variants.svg)
+
+- `auto` switches smoke to half resolution once the newest measured coverage (from a frame about two frames back)
+  reaches a budget (1,000 screens by default), and back to full once it falls to 80% of the budget, with at least
+  30 frames between switches. Every frame equals a full- or a half-resolution frame exactly, and a run that never
+  reaches the budget is identical to full resolution. `--half-light` keeps light in the same back-to-front list. `--smoke-lod=16` thins smoke particles
+  whose projected radius exceeds 16 pixels.
+- It is not the default because each part changes the image: softer smoke on half-resolution frames, slightly
+  reshaped silhouettes of young clouds near the camera.
+- **Sensitivity check:** on the sustained barrage the draw average falls 45.59% (D3D12) and 46.98% (Vulkan), against
+  45% and 47% for the same workload in the M19 experiments: the M20 harness reproduces the earlier result.
+
+### Attribution
+
+From the region session (`--gpu-regions`, 3 runs; for attribution only, since Vulkan regions serialize the GPU):
+- `simultaneous-100` on D3D12: Particles pass 1.500 ms, Scene pass 0.033 ms, particle simulation 0.020 ms.
+- `smoke-field` on D3D12: Particles pass 12.702 ms.
+- Across all benchmarks and both APIs, the simulation dispatch averages 0.006-0.033 ms and the scan and scatter
+  0.001-0.005 ms each.
+
+### GPU memory
+
+Per-process usage as each driver estimates it, sampled after the warm-up and at the end. D3D12 (DXGI) starts at
+53.3 MiB local and Vulkan (`VK_EXT_memory_budget`) at 58.1 MiB; the two APIs count differently, so the figures are
+not comparable across them.
+
+### Reproduce
+
+```text
+python tools/bench/run.py --exe <dir or Pyroclast.exe> --label mine --runs 5 --variant default=--smoke-resolution=full "--variant=recommended=--smoke-resolution=auto --half-light --smoke-lod=16"
+python tools/bench/report.py out/bench/<session> --strict
+```
+
+`run.py` copies the executable into the session, records the machine, refuses to start while Pyroclast or a build is
+running, and interleaves the runs. `report.py` re-checks every record against its CSV, determinism across runs and
+APIs and the session's completeness, and rewrites the tables and charts byte-identically.
+
+## Optimization record
+
+Every change is judged the same way: a baseline, region timestamps, a hypothesis, a toggle, an interleaved A/B,
+image captures, and a written record, kept even when the change is rejected. The records:
+
+| Record | Status | Headline |
+|---|---|---|
+| 00 Baseline | evidence | At full resolution the particle pass is 97.8-99.9% of the draw interval in every frozen grid-100 and bombardment state. Half resolution removes 69-73% of the draw in the grid-100 and bombardment states. Hiding the opaque debris makes heavy 100@45 1.16 ms slower: debris writes depth, so smoke behind it is rejected before shading. |
+| 01 Coverage counters | kept, off by default | Screen coverage per frame, counted in the scatter: R² 0.979 against 0.334 for the alive count; about 5 µs of draw per screen. |
+| 02 Smoke resolution policy | kept, off by default | Heavy grid-100: draw -68% average and -73% p95. A trigger on the particle count was rejected: in the heavy bombardment its draw p95 was 11.87 ms against 5.00 ms with the coverage budget. |
+| 03 Smoke thinning, faint floor | thinning kept (P = 16); both off by default | Heavy and artillery-he workloads at full resolution: draw -45% to -48% average, -46% to -49% p95. No popping between consecutive ticks. The floor removes a visible ground haze, so it stays a quality trade. |
+| 04 Off-screen culling | rejected | Exact images, but 0.3-0.9% saved even with every effect behind the camera. |
+| 05 Effect order | `cloud` key kept as an option | Neutral in cost and invisible in the look check; slot order (`none`) shows that the order between effects matters. A per-effect sort, OIT and a global sort were not built. |
+| 06 Slot policy | evict-oldest kept as an option | Removes the 1.7-4.7 s windows without a new impact under saturation, at +32-35% average draw (artillery-he and heavy). |
+| 07 Simulation side | not built | Each candidate is bounded by the whole simulation region, tens of microseconds. |
+| 08 Draw side | not built | Aggregation, HiZ, CPU and GPU bounds, OIT and a global sort, each with the evidence that would reopen it. |
+| 09 D3D12 tearing presentation | kept | Neutral on every metric; the closest match to Vulkan's `IMMEDIATE`. It does not remove D3D12's CPU tails. |
+
+Earlier decisions, measured the same way:
+
+| Decision | Result |
+|---|---|
+| Scene target format | R11G11B10F costs 65-68% more draw than RGBA16F on this GPU (it does not blend at full rate); HDR costs +0.41 ms (D3D12) / +0.47 ms (Vulkan) over 8 bits on dense smoke. RGBA16F kept. |
+| Analytic box collision for the props | Collision plus deflection cost far below the decision rule's 25% of the simulation region, so the analytic boxes stayed and no depth-buffer collision was prototyped. |
+| Generalized barriers, resizable-BAR placement, pipeline decisions | See [D3D12 and Vulkan](#d3d12-and-vulkan) and [GPU particle pipeline](#gpu-particle-pipeline). |
+
+## Correctness and validation
+
+- **Exact image gate.** 192 reference captures (both APIs, full and half resolution, fixed states, named poses,
+  every preset, and the range scenario) are compared exactly after every code step; they matched at every M19, M20 and
+  M21 step. Refactors must match them exactly until a milestone deliberately changes the image.
+- **Cross-API.** The tolerance is at most 2 levels with up to 9 outlier pixels (an opaque edge can cover a pixel
+  centre on one API only) and 99.9% of pixels within 1 level; 96/96 pairs pass. Without opaque debris the APIs agree within one level; a
+  debris fragment's edge can leave single pixels further apart (up to 35 levels before fragments got a 1.5-pixel
+  minimum size, one or two pixels beyond 2 levels after it), which the outlier allowance covers.
+- **Cross-vendor.** Measured once, at M13b (100 explosions at tick 180, before debris, lit smoke and props): the
+  Intel UHD 770 and WARP differed from the RTX 4090 by at most 7 levels, and from each other by at most 2. Later
+  milestones check that both run validation-clean.
+- **Determinism.** Scenario and benchmark particle counts are identical run to run and across APIs, and each
+  benchmark has a recorded checksum. Captures through `--benchmark` equal captures through `--scenario` exactly.
+- **Native validation.** Debug runs require the D3D12 debug layer or the Vulkan validation layer and end with
+  "validation summary: 0 warnings, 0 errors". D3D12 GPU-based validation and Vulkan GPU-assisted validation run once
+  per milestone (Vulkan reports 4 known setup notices and 0 errors).
+- **Lifecycle.** `tools/lifecycle.ps1` drives the interactive path under validation: the controls, the showcase keys,
+  30 resizes, minimize and restore, and a minimized start.
+- **Release repeatability.** Optimized D3D12 output is not always bit-identical between runs on this driver, so the
+  exact gates use Debug builds.
+
+## Limitations
+
+- Windows only.
+- Timings come from one GPU (RTX 4090); the UHD 770 and WARP were used for correctness only.
+- No bloom and no automatic exposure; exposure is a constant.
+- No sun shadows: props are grounded by contact and cover shading only, and point lights leak through walls.
+- Half-resolution smoke without `--half-light` composites all smoke under all light, unlike the full-resolution
+  order, and its edges against nearer geometry are half resolution.
+- No sorting within an effect, and no order-independent transparency.
+- Each scalability option changes the image, so none is on by default.
+- 128 effect slots; by default a new event is dropped while all are busy.
+- Prop collision has documented edge cases: seams between boxes, smoke larger than the hut's interior, a door
+  closed to large smoke.
+- Slow motion is stepped (about 15 updates a second at 60 Hz); interactive impacts can start up to 3 ticks late
+  under catch-up.
+- No PIX capture of the 3D frame: hardware counters need an elevated session. The only counters come from the 2D
+  prototype.
+- Coverage is an estimate: it ignores early-Z, the soft fade and the disc's falloff.
+- D3D12's CPU frame tails and its local-memory growth are unexplained.
+- Region timestamps are not fenced on D3D12 and serialize the GPU on Vulkan.
+
+## Future work
+
+Each item was analysed or measured and not built; each has the condition that would reopen it.
+
+| Item | Reopen when |
+|---|---|
+| Removing off-screen particles from the lists | On a GPU where the off-screen listing cost (70-90 µs here) is a large share of the frame budget, or for a workload that lists far more particles than it draws |
+| A per-effect GPU sort | A preset's look check shows a layer drawn through its own smoke |
+| Weighted-blended OIT, a global particle sort | Something measured calls for them (OIT also needs multiple render targets, which the RHI does not have) |
+| Adaptive emission | A compute-bound target, or thinning rejected for quality |
+| Simulation-frequency LOD, skipping dead-record stores, a separate prop-contact dispatch | A target where the simulation is a large share of the frame (for example the UHD 770); skipping dead-record stores first |
+| Smoke aggregation | Thinning rejected for quality while most coverage still comes from particles above 64 pixels |
+| HiZ or occlusion culling | A profiler capture shows many half-resolution smoke fragments behind the range |
+| The D3D12 CPU tails | A PresentMon trace (presentation mode per frame) or a fullscreen swapchain |
+| Benchmark harness additions: camera motion, a drain phase, a GPU idle-gap classifier, PresentMon telemetry | A measurement needs them (M20 left them out) |
+
+## Build
+
+Windows x64, Visual Studio 2026 (the **Desktop development with C++** workload with the Windows SDK and the C++
+CMake tools), CMake 4.2 or newer.
+
+- **DXC** with both DXIL and SPIR-V support: download the Windows archive from
+  [Microsoft's DXC releases](https://github.com/microsoft/DirectXShaderCompiler/releases) and keep its DLLs beside
+  `bin/x64/dxc.exe`. Windows SDK builds of DXC can lack SPIR-V; CMake checks the actual compiler. Validated with
+  v1.9.2609. CMake searches PATH, `VULKAN_SDK/Bin` and the Windows SDK tools; set `PYROCLAST_DXC` to override.
+- **Vulkan SDK** for headers, the loader import library and the Debug validation layers (validated: 1.4.363.0).
+  CMake finds it through `VULKAN_SDK`. For a copy-only SDK, set `VULKAN_SDK` and `VK_ADD_LAYER_PATH` before
+  configuring.
+- **Graphics Tools** (Windows optional feature) for the D3D12 debug layer that Debug builds require.
+
+From the repository root in Developer PowerShell for Visual Studio 2026:
 
 ```powershell
-cmake --preset windows-x64
+cmake --preset windows-x64          # add -DPYROCLAST_DXC="<path>/bin/x64/dxc.exe" if needed
 cmake --build --preset debug
 cmake --build --preset release
-
-.\out\build\windows-x64\Debug\Pyroclast.exe
-.\out\build\windows-x64\Release\Pyroclast.exe
-```
-
-Configuration downloads SDL 3.4.18 and Dear ImGui 1.92.9b from their release archives and verifies
-their SHA-256 checksums. Internet access is required for the first configuration;
-subsequent builds reuse the dependency under the build directory. SDL is built
-statically, so no SDL DLL needs to be copied beside the executable. Its GPU and
-2D renderer subsystems are disabled; Pyroclast will own its graphics backends.
-
-The executable opens a resizable 1280 x 720 window and waits for events while
-idle. Close the window to exit. Startup, failures, and shutdown are logged to the
-console; startup and rendering failures return a nonzero exit code. The default
-D3D12 renderer draws the test range and the explosion with VSync enabled. Minimized
-windows pause rendering and wait for events.
-
-Controls:
-
-- **Left click:** the selected count of the selected preset where the cursor points on the terrain or a prop
-  (at the crosshair while looking around), responding to the surface there (a prop's material: concrete, rock
-  and metal like concrete, wood like dirt). When every effect slot is busy, new events are dropped and counted
-  in the overlay and the log.
-- **1-7:** select the preset (small impact, small HE, artillery HE, heavy, fuel/fire, dust blast, stress
-  test). **C:** cycle the count (1, 10, 50, 100). **F:** fire at the crosshair.
-- **B:** start an artillery barrage walking across the view through the crosshair. **V:** start or stop a
-  continuous bombardment around the crosshair.
-- **T:** slow motion (0.25x) on or off. **P:** pause or resume. **N:** advance one 1/60-second step while
-  paused.
-- **Space:** trigger/restart the startup explosion group, including while paused; it replaces every effect
-  and stops the barrage and bombardment. **R:** clear every effect and stop them; retain the pause setting.
-- **L:** show or hide each effect's origin, surface normal and nominal reach, and the props' collision
-  boxes, as lines. **F8:** spawn regions. **F9:** wind arrow.
-- **W/A/S/D:** move forward, left, back, right; **Q/E:** down, up (flying); hold **Shift** to move four times
-  faster. Hold the **right mouse button** and move the mouse to look around; the **mouse wheel** changes the
-  speed of the current mode. **G:** walk or fly. **F2-F7:** recall a camera bookmark (overview, ground, hill,
-  aerial, range, yard); **Ctrl+F2-F7:** store the current pose there.
-- **F1:** hide or show the overlay. Its controls do the same as the keys above; while you type into or
-  click on the overlay, the keys do not reach the application.
-
-In the default small HE preset, fireball particles last 0.35-0.8 seconds, sparks 1-2.2 seconds, debris
-4-7 seconds and smoke 6-8 seconds, rounded to simulation ticks; presets with a plume last up to 12
-seconds. Only the range remains after the effects die.
-Minimizing freezes simulation. Long stalls discard excess catch-up time to keep
-GPU work bounded. Resizing preserves state.
-
-Scaling scenarios are selected at startup with `--explosions=1`, `10`, `50`, or
-`100` (default 1). For example:
-
-```powershell
-.\out\build\windows-x64\Debug\Pyroclast.exe --renderer=d3d12 --explosions=100
-.\out\build\windows-x64\Release\Pyroclast.exe --renderer=vulkan --explosions=50 --gpu-timing --ui=off
-```
-
-In your existing Visual Studio launch configuration, add `"--explosions=100"`
-to `args` beside the renderer argument. **F5** starts that group; **Space**
-restarts it. All its effects start together on a deterministic grid, 9 m apart, on the flat range;
-smoke overlaps as it expands. The pool always holds 128 effect slots of 2,560 particles (327,680
-records, 15.7 MB); only the slots of active effects are simulated, and only their alive particles are
-drawn.
-
-Scripted scenarios replace the group and the interactive clock; each run ends with one JSON line:
-
-```powershell
-.\out\build\windows-x64\Release\Pyroclast.exe --scenario=barrage
-.\out\build\windows-x64\Release\Pyroclast.exe --renderer=vulkan --scenario=grid-100 --smoke-resolution=half
-.\out\build\windows-x64\Release\Pyroclast.exe --scenario=presets
-.\out\build\windows-x64\Release\Pyroclast.exe --scenario=range --view=range
-.\out\build\windows-x64\Release\Pyroclast.exe --scenario=bombardment --preset=artillery-he
-```
-
-Presets, layers, smoke features and the wind apply to groups, profiles and scenarios:
-
-```powershell
-.\out\build\windows-x64\Release\Pyroclast.exe --preset=artillery-he --explosions=10
-.\out\build\windows-x64\Release\Pyroclast.exe --preset=stress-test --explosions=100 --profile-tick=45 --disable=debris,lights
-.\out\build\windows-x64\Release\Pyroclast.exe --preset=heavy --wind=8,45,0.6 --disable=shading
-.\out\build\windows-x64\Release\Pyroclast.exe --scenario=range --view=yard --disable=deflection
-```
-
-Benchmarks run a fixed workload after a warm-up and print a JSON record (`--counter-log` adds the per-frame CSV):
-
-```powershell
-.\out\build\windows-x64\Release\Pyroclast.exe --benchmark=smoke-field
-.\out\build\windows-x64\Release\Pyroclast.exe --renderer=vulkan --benchmark=accumulation --counter-log=accumulation.csv
-.\out\build\windows-x64\Release\Pyroclast.exe --benchmark=simultaneous-100 --smoke-resolution=auto --half-light --smoke-lod=16
-```
-
-Scalability settings (all off by default; the overlay's Scalability and Smoke level of detail sections switch
-them live):
-
-```powershell
-.\out\build\windows-x64\Release\Pyroclast.exe --preset=heavy --smoke-resolution=auto --half-light --smoke-lod=16
-.\out\build\windows-x64\Release\Pyroclast.exe --scenario=bombardment --preset=artillery-he --slot-policy=evict-oldest
-.\out\build\windows-x64\Release\Pyroclast.exe --scenario=grid-100 --preset=heavy --profile-tick=360 --coverage --view=ground
-.\out\build\windows-x64\Release\Pyroclast.exe --scenario=bombardment --smoke-resolution=auto --smoke-budget=coverage:500 --counter-log=bombardment.csv
-```
-
-`--view=range` and `--view=yard` look at the props in the north yard; `--disable=props` removes them (no
-drawing, clicks or collision), `--disable=collision` keeps them drawn while particles pass through.
-`--debug-views=bounds,boxes,regions,wind` (or `all`) starts an interactive run with debug views on.
-
-Renderer selection happens at startup and defaults to D3D12:
-
-```powershell
-.\out\build\windows-x64\Debug\Pyroclast.exe --renderer=d3d12
-.\out\build\windows-x64\Debug\Pyroclast.exe --renderer=vulkan
-.\out\build\windows-x64\Debug\Pyroclast.exe --help
-```
-
-Both renderer options initialize their selected backend, log the selected GPU,
-and draw the same explosion effect. `--help` prints usage and exits without opening a window.
-Unknown arguments, invalid values, and any repeated flag other than `--help`
-return exit code 1 before SDL initializes. Use the exact `--renderer=value`
-form; arguments are case sensitive. All arguments are validated even when
-`--help` is present.
-
-To run the unit tests after building each configuration:
-
-```powershell
 ctest --preset debug
 ctest --preset release
 ```
 
-In Visual Studio, open this repository with **File > Open > Folder**, select the
-`windows-x64` configure preset and `debug` or `release` build preset, and choose
-`Pyroclast.exe` as the startup item. Press **F5** to debug. To supply arguments,
-right-click the executable in CMake Targets View and select **Add Debug
-Configuration**. Set `args` in the generated `launch.vs.json`, for example
-`"args": ["--renderer=vulkan"]`. Keep the generated target and executable fields.
-The local `.vs/` settings are ignored by Git. Run the `command_line`, `particle_controls`, `draw_validation`, `frame_statistics`, `image_compare`, `math`, `terrain`, `environment`, `explosion_system`, `explosion_presets` and `showcase` tests from
-**Test > Test Explorer**, or run the CTest commands above in Developer PowerShell.
+- The first configuration downloads SDL 3.4.18 and Dear ImGui 1.92.9b from their release archives and verifies
+  their SHA-256 checksums. SDL is linked statically, with its GPU and 2D renderer subsystems disabled, so the
+  executable needs no DLL beside it.
+- Both shader formats are embedded in the executable; the renderer picks its pair at startup. Shader warnings fail
+  the build; C++ builds with `/W4 /permissive-`.
+- 12 test executables, registered with CTest as `command_line`, `particle_controls`, `draw_validation`, `frame_statistics`, `image_compare`,
+  `math`, `terrain`, `environment`, `explosion_system`, `explosion_presets`, `showcase` and `scalability`. The
+  benchmark tools have their own tests: `python -m unittest discover -s tools/bench`.
+- **Visual Studio:** File > Open > Folder, select the `windows-x64` configure preset and the `debug` or `release`
+  build preset, and choose `Pyroclast.exe` as the startup item. Arguments go in `launch.vs.json` (`"args"`); for
+  Vulkan Debug with a copy-only SDK also add `VK_ADD_LAYER_PATH` under `"env"`. Keep machine-specific paths in local
+  launch settings or the ignored `CMakeUserPresets.json`.
+- **Runtime:** Vulkan 1.3 with dynamic rendering, synchronization2 and `VK_KHR_push_descriptor`, a combined
+  graphics/compute/present queue, and D3D12's compute limits (1,024 threads per group, 32 KB of group-shared
+  memory). `VK_EXT_swapchain_maintenance1` is used when present. Unsupported configurations fail with a diagnostic;
+  there is no silent API fallback.
+- **Debug validation:** a clean run logs `D3D12 validation summary: 0 warnings, 0 errors` (or `Vulkan ...`) and exits
+  0. Debug Vulkan enables synchronization validation and fails at startup if the layer is missing. Loader messages
+  from third-party overlays are logged as `Vulkan loader:` and not counted.
 
-For Vulkan Debug with a copy-only SDK, also add an `env` property to that launch
-configuration, with `VK_ADD_LAYER_PATH` pointing to the SDK's `Bin` directory.
-Use clear local names such as **Pyroclast D3D12 (Debug)** and
-**Pyroclast Vulkan (Debug)**; select the desired entry beside the green run button.
-Keep machine-specific paths in local launch settings or `CMakeUserPresets.json`.
+Build output stays under `out/`.
 
-Debug D3D12 builds require the Windows **Graphics Tools** optional feature. If
-the debug layer is unavailable, startup fails with an installation hint rather
-than running without validation. Debug-layer warnings/errors are logged to the
-console and Visual Studio debugger, with a validation summary at shutdown.
-
-To check the explosion in Visual Studio, select your existing D3D12 or Vulkan
-launch entry and press **F5**. Press **Space** to trigger the burst and watch the
-fireball expand, sparks fly outward, fall and bounce on the ground, and smoke rise, drift with the
-wind (towards +X), expand, and fade away. Allow eight seconds of simulation for complete particle death.
-Press **P**, then **R** to clear the paused pool. **Space** should show a frozen
-flash; **N** advances it one simulation tick. Repeat triggering and
-resize/minimize/restore checks, then close the window. A clean D3D12 Debug run
-logs `D3D12 validation summary: 0 warnings, 0 errors` and exit code 0.
-Breakpoints on validation errors are enabled when a debugger is attached.
-
-Debug Vulkan requires `VK_LAYER_KHRONOS_validation` and enables synchronization
-validation. Startup fails with an installation/path hint if the layer is absent.
-Repeat the explosion and resize/minimize checks with `--renderer=vulkan`; a clean
-Debug run logs `Vulkan validation summary: 0 warnings, 0 errors` and exits with
-code 0. Loader messages from installed third-party overlays are logged as
-`Vulkan loader:` and are not counted in the summary.
-
-`cmake/Shaders.cmake` lists every shader once in `PYROCLAST_SHADERS`
-(`<enumerator>:<file>:<stage>:<entry point>`) and compiles each for both backends; the list
-generates the `Shader` enum and both backends' bytecode tables, so adding a shader is one line.
-SPIR-V register shifts come from `shaders/binding_layout.hlsli`, the same file the C++ binding
-code includes. `shaders/explosion.hlsli` shares layer classification and deterministic spawn hashing:
-
-- DXIL and bytecode headers: `out/build/windows-x64/generated/shaders/<configuration>/d3d12/`
-- SPIR-V and bytecode headers: `out/build/windows-x64/generated/shaders/<configuration>/vulkan/`
-
-The particle workload is three dispatches (the simulation over the active effects' slabs in 64-thread
-groups, 40 per effect; a one-group scan; a scatter over the same groups) and one indirect draw of six
-vertices per alive particle (two draws in half-resolution mode, smoke and light); with no active effect
-there is none of it; the range adds the props (1,764 vertices), the terrain (393,216 vertices), the sky and
-the tonemap pass to the backbuffer. Each backend orders the previous frame's draws before the next update, and compute writes
-before the draws read them, as data or as draw arguments. No per-frame descriptor allocation or particle
-upload is needed; the only readback is a 32-byte counter record per frame. The terrain heights and the
-props' boxes and grid are one buffer, uploaded once and read by the simulation, the terrain and the props.
-
-Debug disables shader optimization and includes debug information; Release uses
-`-O3`. SPIR-V targets the Vulkan 1.1 environment (unchanged when the API moved to 1.3, so the
-generated code did not change) and is validated by DXC. Shader warnings fail
-the build, and errors report source filenames and line numbers. DXC dependency
-files track includes, so source or include changes rebuild the affected outputs
-for the configuration being built. Unchanged shaders are left alone.
-
-The executable embeds both shader formats and selects the appropriate pair at
-startup, so Visual Studio and other working directories require no shader file
-copying. Vulkan uses a negative-height viewport to match the D3D12 clip-space
-orientation without changing the shared HLSL.
-
-For a small startup measurement of the selected group, run **Release** with `--ui=off` (the overlay is
-not part of the measurement, so the sample is skipped while it is on) and leave the default 1280 x 720
-window focused and untouched. After 120 warmup frames and 600 samples, the log
-reports average, median, and p99 CPU resize/render-call time, including GPU fence
-and VSync presentation waits. Controls, focus loss, minimize, resize, or skipped
-submissions discard this sample. The sample covers the evolving startup explosion and smoke and stops,
-with a log line, if the group retires (8 s after it starts) before it completes, which happens on
-displays below about 90 Hz; use `--profile-tick` or `--scenario` there.
-This is a presentation-paced consistency baseline, not GPU simulation time or a
-throughput comparison; GPU profiling is required
-before optimization claims.
-
-For optional GPU timing, append `--gpu-timing --ui=off` to a Release launch (or add it to
-your existing local Visual Studio launch arguments). Leave the default window
-focused and untouched until the startup summary appears. It reports separate
-compute/draw timestamp-region averages after the same warmup/sample window.
-Results are read only after existing frame fences; normal runs allocate no query
-resources. These instrumented regions include synchronization and clear work,
-and do not replace a profiler or prove scaling performance.
-
-For a controlled fixed-state measurement, append `--profile-tick=180` (any integer
-0-480 is accepted). This automatically enables timestamps and requests VSync off.
-The application advances to that tick, freezes, then warms up 120 frames and
-samples 600. At tick 180 only smoke remains (51,200 alive particles at 100 effects); at tick 470 nearly
-every particle is dead (4,239 alive) but the effects are still active, so their slabs are still simulated;
-at tick 480 the group has retired and only the range and the tonemap remain. The measured simulation has
-**zero integration steps** but still reads and writes every record of the active effects' slabs, then
-compacts the alive ones. This isolates pool/rendering costs rather than force costs. The JSON record's
-`"alive"` is the live particle count the GPU reported.
-Input, focus loss, resize, minimize, or skipped frames invalidate the sample.
-D3D12 presents at interval zero with tearing allowed where the system supports it (since M20, the closest match to
-Vulkan's IMMEDIATE; the queues still differ, 2 DXGI buffers against Vulkan's 3 images); Vulkan requires IMMEDIATE
-presentation and reports a useful error if unavailable. Desktop compositing can still affect CPU
-presentation time, so the output separates CPU call times from GPU regions.
+## Run
 
 ```powershell
-.\out\build\windows-x64\Release\Pyroclast.exe --renderer=vulkan --explosions=100 --profile-tick=180
+.\out\build\windows-x64\Release\Pyroclast.exe                      # D3D12, the showcase
+.\out\build\windows-x64\Release\Pyroclast.exe --renderer=vulkan --view=range
 ```
 
-When a startup or fixed-state sample completes, the application also prints one
-JSON line on standard output: build configuration, renderer, GPU name, scenario,
-smoke resolution, and the same CPU and GPU timings as the log. Scripts should read
-that record instead of matching log text.
+The window opens at 1280x720 and is resizable. Interactive runs present with VSync, show the overlay and enable GPU
+timestamps. Minimizing pauses the simulation; resizing keeps its state.
 
-In Visual Studio, add `"--profile-tick=180"` to your existing profile's `args`.
-The frozen plume is intentional. Remove that argument to restore normal playback.
-Vulkan logs the memory type of each buffer it creates. The GPU-owned particle pool lives in
-plain device-local memory and is zero-filled with `vkCmdFillBuffer`, which does not depend on
-resizable BAR. (Phase 10 first moved the pool from system memory to host-visible device-local
-memory; M11 measured plain device-local memory as equally fast on the RTX 4090.)
+### Controls
 
-### Validation and measurement tools
+| Input | Action |
+|---|---|
+| Left click, **F** | Fire the selected count of the selected preset where the cursor (or, while looking around, the crosshair) meets the terrain or a prop; **F** always fires at the crosshair. A prop's material sets the response. |
+| **1-7** | Preset: small impact, small HE, artillery HE, heavy, fuel/fire, dust blast, stress test |
+| **C** | Count: 1, 10, 50, 100 |
+| **B** / **V** | An 80-impact barrage of the selected preset walking across the view through the crosshair / a continuous bombardment of the selected preset around the crosshair (on or off) |
+| **T**, **P**, **N** | 0.25x slow motion; pause or resume; one 1/60 s step while paused |
+| **Space** / **R** | Restart the startup group / clear every effect (both stop the barrage and bombardment) |
+| **W A S D**, **Q E**, **Shift** | Move; down and up while flying; four times faster |
+| Right mouse button, wheel | Look around; change the speed of the current mode |
+| **G** | Walk (eye 1.7 m above the terrain or a prop's top, blocked by props) or fly |
+| **F2-F7**, **Ctrl+F2-F7** | Recall or store the camera bookmarks (overview, ground, hill, aerial, range, yard) |
+| **L**, **F8**, **F9** | Effect bounds and collision boxes; spawn regions; wind arrow |
+| **F1** | Hide or show the overlay. While the overlay takes keyboard or mouse input, the keys do not reach the application. |
 
-`--capture=FILE.png` (requires `--profile-tick`, or `--scenario` with `--capture-tick=N`) writes the first
-frame drawn at the profile tick, or the scenario frame that draws tick N, copied on the GPU before Present,
-then exits. `--capture-sequence=DIR` (with `--scenario` or `--benchmark`, optionally `--capture-from=T` and
-`--capture-to=T`) writes every frame of a scripted run as `DIR/tick-NNNNNN.png` instead, for videos; such a run prints
-no record. `--exit-after=N` ends any run after N submitted
-frames. The tools in `tools/` build on these:
+When every effect slot is busy, new events are dropped, counted in the overlay and logged.
+
+### Examples
 
 ```powershell
-# Capture the fixed-state matrix, compare against an earlier set, compare D3D12 with Vulkan
+$exe = ".\out\build\windows-x64\Release\Pyroclast.exe"
+& $exe --explosions=100 --preset=artillery-he                     # a startup group; Space restarts it
+& $exe --preset=heavy --wind=8,45,0.6 --disable=shading            # wind, a smoke feature off
+& $exe --preset=heavy --smoke-resolution=auto --half-light --smoke-lod=16
+& $exe --scenario=barrage                                          # a scripted run, then one JSON line
+& $exe --scenario=range --view=yard --disable=deflection
+& $exe --scenario=bombardment --preset=artillery-he --slot-policy=evict-oldest
+& $exe --benchmark=smoke-field --counter-log=smoke-field.csv       # a benchmark record and its per-frame CSV
+& $exe --explosions=100 --profile-tick=180 --gpu-regions           # a frozen state, timed per dispatch and pass
+& $exe --scenario=range --view=range --capture-to=120 --capture-sequence=out\video\range-120
+```
+
+### Command-line flags
+
+Flags use the exact `--name=value` form and are case-sensitive. Unknown flags, malformed or out-of-range values,
+refused combinations and repeated flags (other than `--help`) exit with code 1 before SDL starts; every argument is
+validated even when `--help` is present. Checks that need the scenario's length (`--profile-tick`, `--capture-tick`,
+`--capture-to` past its end), the file system (a non-empty `--capture-sequence` folder) or the build
+(`--gpu-validation` in Release) exit with code 1 after SDL starts.
+`--help` prints the usage and exits.
+
+| Flag | Effect |
+|---|---|
+| `--renderer=d3d12\|vulkan` | Graphics API, chosen at startup (default d3d12). |
+| `--adapter=NAME\|warp` | The GPU whose name contains NAME (case-insensitive); `warp` is the D3D12 software rasterizer (use Release). |
+| `--explosions=1\|10\|50\|100` | The startup group (default 1). |
+| `--preset=NAME` | small-impact, small-he (default), artillery-he, heavy, fuel-fire, dust-blast or stress-test: the startup group, profiles, scenarios and the first click. |
+| `--disable=LIST` | Hide layers (dust, smoke, plume, flash, fireball, sparks, debris), the lights, smoke features (curl, vortex, gusts, shading, shadow, emission) or the props (props, collision, deflection). |
+| `--wind=S,D,G` | Speed 0-40 m/s, heading in degrees from +x towards +z, gustiness 0-1 (default 3,0,0.3). |
+| `--view=NAME` | Start at a named pose: overview (default), ground, hill, aerial, range (the north yard's props) or yard (close to its walls). |
+| `--camera=EX,EY,EZ,TX,TY,TZ` | Start at this eye, looking at this target (metres), instead of `--view`. |
+| `--effect-lines` | Start with each effect's origin, normal and reach, and the props' collision boxes, drawn as lines. |
+| `--debug-views=LIST` | Start with bounds, boxes, regions, wind or all on. Not with `--effect-lines` or `--scenario`. |
+| `--scenario=NAME` | A scripted run, one tick per frame, then a JSON summary: single, grid-10, grid-50, grid-100, barrage, presets, range, bombardment or accumulation. |
+| `--benchmark=NAME` | A named scenario, preset and pose after 120 warm-up frames: single, simultaneous-10, simultaneous-50, simultaneous-100, sustained-barrage, smoke-field or accumulation. Prints a JSON record. |
+| `--profile-tick=N` | Freeze at tick 0-480 (with `--scenario`: 1 up to its duration), with timestamps on and VSync off, and sample the frozen state. |
+| `--counter-log=FILE` | With `--scenario` (or `--benchmark`) or `--profile-tick`: one CSV row per frame, written at exit. |
+| `--gpu-timing` | GPU timestamp measurements. |
+| `--gpu-regions` | Also time every dispatch, pass and the overlay (serializes Vulkan GPU work). |
+| `--capture=FILE.png` | Write the first frame drawn at the profile tick, or with `--scenario` and `--capture-tick=N` the frame that draws tick N, then exit. |
+| `--capture-tick=N` | With `--scenario` and `--capture`: the tick whose frame is captured. |
+| `--capture-sequence=DIR` | With `--scenario` or `--benchmark`: write every frame as `DIR/tick-NNNNNN.png` (DIR new or empty), then exit without a record. |
+| `--capture-from=T`, `--capture-to=T` | With `--capture-sequence`: the first and last tick written (default 1 and the script's last tick). |
+| `--exit-after=N` | Exit after N submitted frames. |
+| `--smoke-resolution=full\|half\|auto` | Smoke at full or half resolution (default full); auto switches per frame on measured coverage. |
+| `--smoke-budget=coverage:S\|count:N` | With auto: half resolution from S screens of coverage (default 1000), or from N alive smoke particles. |
+| `--half-light` | With half or auto: half-resolution frames draw light at half resolution too. |
+| `--smoke-lod=P` | Thin smoke particles larger than P pixels in radius (0 < P ≤ 4096). |
+| `--faint-floor=F` | Do not draw smoke whose opacity is below F (0 < F < 1). |
+| `--effect-order=origin\|cloud\|none` | Sort effects back to front by origin (default), by the rising cloud's centre, or not at all. |
+| `--slot-policy=drop-new\|evict-oldest` | With every slot busy, drop the new event (default) or replace the effect that started earliest. |
+| `--coverage` | Count screen coverage and off-screen particles into the counter record. |
+| `--scene-format=rgba16f\|r11g11b10f\|rgba8` | Scene target (default rgba16f; rgba8 is a cost reference and bands). |
+| `--ui=on\|off` | The overlay (default on; off with `--profile-tick`, `--scenario` or `--benchmark`). F1 hides it. |
+| `--gpu-validation` | Debug only: D3D12 GPU-based or Vulkan GPU-assisted validation (slow). |
+
+Combinations: `--benchmark` refuses `--scenario`, `--explosions`, `--preset`, `--view`, `--camera`, `--profile-tick`,
+`--exit-after`, `--ui=on`, `--debug-views` and `--effect-lines`. `--capture-sequence` refuses `--capture`,
+`--capture-tick`, `--profile-tick`, `--counter-log`, `--ui=on` and `--exit-after`, and needs `--capture-from` ≤
+`--capture-to` (each 1-100000).
+
+### Measuring
+
+- Run Release, leave the 1280x720 window focused and untouched. Any input, focus loss, minimizing, resizing or a
+  skipped frame invalidates a sample.
+- `--profile-tick=T` freezes the startup group (or a scenario) at tick T with VSync off and timestamps on, then
+  warms up 120 frames and samples 600. A frozen state runs zero integration steps, so it isolates rendering cost;
+  use scenarios or benchmarks for motion. The process keeps running after the sample: add `--exit-after`.
+- Scenario, profile and benchmark runs print one JSON line on stdout (build, renderer, GPU, scenario, settings,
+  timings, live counts); scripts should read it rather than the log.
+- Without VSync, D3D12 presents at interval 0 with tearing allowed where supported, and Vulkan requires
+  `IMMEDIATE`. GPU timings drift by a few percent between sessions: compare builds with interleaved runs.
+
+### Tools
+
+```powershell
+# Captures: the fixed-state matrix, named poses, scenario frames; compare exactly, or D3D12 against Vulkan
 python tools/captures.py capture --config Debug --out out/baselines/mine
 python tools/captures.py capture --config Debug --out out/baselines/mine --views ground,hill,aerial --ticks 60,180
-python tools/captures.py compare out/baselines/mine out/baselines/theirs   # exact by default
-python tools/captures.py cross-api out/baselines/mine                      # max 2 levels, 99.9% within 1
-# Scenario frames by tick, and flags added to every launch without changing file names
 python tools/captures.py capture --config Debug --out out/baselines/mine --scenarios range --views range,yard
-python tools/captures.py capture --config Debug --out out/props-off --args=--disable=props
-# Interleaved A/B timing of two builds (directories containing Pyroclast.exe), on frozen states or scenarios
-python tools/ab.py --a C:/baseline/out/build/windows-x64/Release --b out/build/windows-x64/Release --runs 5
-python tools/ab.py --a C:/baseline/out/build/windows-x64/Release --b out/build/windows-x64/Release --matrix scenarios
-# One build under two settings, on a named scenario
+python tools/captures.py compare out/baselines/mine out/baselines/theirs    # exact by default
+python tools/captures.py cross-api out/baselines/mine                       # max 2 levels, 99.9% within 1
+python tools/captures.py policy-check out/baselines/mine out/auto-captures  # auto captures equal full or half
+# Interleaved A/B of two builds (folders holding Pyroclast.exe) on frozen states, scenarios or benchmarks
+python tools/ab.py --a <baseline-dir> --b out/build/windows-x64/Release --runs 5
+python tools/ab.py --a <baseline-dir> --b out/build/windows-x64/Release --matrix scenarios
+python tools/ab.py --a <baseline-dir> --b out/build/windows-x64/Release --benchmarks single,smoke-field --cpu
 python tools/ab.py --a out/build/windows-x64/Release --b out/build/windows-x64/Release --scenarios range --a-args=--disable=collision
-# Interactive lifecycle under native validation: controls, the showcase keys, 30 resizes, minimize/restore, minimized start
-powershell -File tools/lifecycle.ps1 -Configuration Debug -Renderer vulkan -SmokeResolution half
-# Every automatic-resolution capture must equal the full- or half-resolution capture of the same case
-python tools/captures.py policy-check out/baselines/mine out/auto-captures
-# Benchmark sessions: every benchmark on both APIs, interleaved, then the report and charts in out/bench/<session>
+# Benchmark sessions and their report
 python tools/bench/run.py --exe out/build/windows-x64/Release --label mine --runs 5
-python tools/bench/run.py --exe out/build/windows-x64/Release --quick
 python tools/bench/report.py out/bench/<session> --strict
-# Two builds on benchmarks, with the CPU breakdown
-python tools/ab.py --a C:/baseline/out/build/windows-x64/Release --b out/build/windows-x64/Release --benchmarks single,smoke-field --cpu
-# Frozen scenario states as A/B cases, tail percentiles, and per-frame counter logs compared run to run
-python tools/ab.py --a out/build/windows-x64/Release --b out/build/windows-x64/Release --cases bombardment@450 --b-args=--smoke-lod=16
-python tools/ab.py --a out/build/windows-x64/Release --b out/build/windows-x64/Release --scenarios bombardment --b-smoke auto --tails --counter-logs out/logs
-python tools/counter_log.py diff out/logs/*.csv
+# Per-frame counter logs compared run to run
+python tools/counter_log.py diff (Get-ChildItem out/logs/*.csv).FullName
+# The interactive lifecycle under native validation
+powershell -File tools/lifecycle.ps1 -Configuration Debug -Renderer vulkan -SmokeResolution half
+# A scripted run's frames as numbered PNGs (for video), here ticks 1-360
+.\out\build\windows-x64\Release\Pyroclast.exe --scenario=range --view=range --capture-to=360 --capture-sequence=out\video\range-360
 ```
 
-`ImageDiff` (built with the project) compares two captures and can write an amplified difference
-image (`--difference=out.png`). Desktop screenshots are not used for correctness: they proved
-unreliable for unpaced D3D12 presentation.
+- `ImageDiff` (built with the project) compares two captures and can write an amplified difference image
+  (`--difference=out.png`). Desktop screenshots are not used for correctness.
+- `--capture-sequence` captures each frame that draws a tick in its range, through the same capture path as
+  `--capture-tick`. Every captured frame waits for the GPU and writes a PNG, so a sequence run prints no record. A
+  folder that is not empty (or not a folder), a `--capture-to` past the script's end, a window resized during the
+  run, or a window closed before the last frame exits with code 1.
+  Sequence frames equal `--capture-tick` captures exactly (Debug, both APIs, including the frames around both of the
+  automatic smoke resolution's switches) and repeat exactly run to run on both APIs. A Release sequence of the range
+  scenario, 720 frames, took 130.6 s and 447 MB on the machine above (about 0.18 s and 621 KB per frame).
 
-Other diagnostic options:
+## History
 
-```powershell
-# Per-dispatch, per-pass and overlay GPU timings (Vulkan regions serialize GPU work; for attribution only)
-.\out\build\windows-x64\Release\Pyroclast.exe --explosions=100 --profile-tick=180 --gpu-regions
-# The same workload on another GPU, or on WARP (use Release: WARP fails on the unoptimized Debug shaders)
-.\out\build\windows-x64\Debug\Pyroclast.exe --renderer=vulkan --adapter=uhd
-.\out\build\windows-x64\Release\Pyroclast.exe --adapter=warp --profile-tick=180 --capture=warp.png
-# GPU-based (D3D12) or GPU-assisted (Vulkan) validation of shader resource accesses; slow, Debug only
-.\out\build\windows-x64\Debug\Pyroclast.exe --explosions=100 --profile-tick=180 --gpu-validation --capture=gpuav.png
-# The same frozen state with another scene target format, or from another camera pose
-.\out\build\windows-x64\Release\Pyroclast.exe --explosions=100 --profile-tick=180 --scene-format=r11g11b10f --view=ground
-.\out\build\windows-x64\Release\Pyroclast.exe --explosions=100 --profile-tick=180 --camera=0,40,-120,0,10,0
-# The overlay in a capture, or no overlay in an interactive run
-.\out\build\windows-x64\Debug\Pyroclast.exe --profile-tick=60 --ui=on --capture=overlay.png
-```
-
-Cross-vendor images are not expected to match the cross-API tolerance: the Intel UHD 770 and WARP
-differ from the RTX 4090 by up to 7 levels inside the dense smoke of the 100-effect group (32 before the
-scene blended in floating point), and from each other by up to 2, while D3D12 and Vulkan agree within
-one level on each vendor.
-
-For half-resolution smoke on every frame, add
-`"--smoke-resolution=half"` to your Visual Studio launch `args` (`auto` chooses per frame; see M19). Full
-resolution remains the default; use `"--smoke-resolution=full"` for the comparison. Both APIs
-render the smoke, effect by effect from back to front, into a reusable target with half the width and
-height, cleared to transparent black; each smoke pixel fades against the full-resolution scene depth, so
-the terrain hides it. The target is then composited premultiplied over the scene with a linear-filtered
-draw (`shaders/composite.hlsl`, the target bound as a pass input), fireball and sparks are drawn at full
-resolution against the scene depth, and the scene is tonemapped to the backbuffer. Particle simulation and
-counts are unchanged.
-
-```powershell
-.\out\build\windows-x64\Release\Pyroclast.exe --renderer=d3d12 --explosions=100 --profile-tick=180 --smoke-resolution=half
-```
-
-Compare full and half at the same frozen tick and window size. Check plume
-coverage, opacity and edge softness; remove `--profile-tick` for normal playback
-and verify the flash, sparks, smoke drift and dissipation. Repeat resize and
-minimize/restore in Debug on both APIs. The half target rounds odd dimensions
-up and retains the full-window aspect ratio. All smoke is composited before any light, unlike the
-full-resolution per-effect order (`--half-light` keeps that order by drawing light into the half target too),
-and smoke edges against nearer geometry are half-resolution. Reduced
-detail and an extra pass are explicit trade-offs, so half resolution is optional.
-
-See `docs/PHASE1.md` through `docs/PHASE10.md`, `docs/PHASE10_PROFILING.md`,
-`docs/PHASE10_SMOKE_RESOLUTION.md`, `docs/PHASE11.md` (M11) and `docs/PHASE12.md` (M12)
-for ownership, synchronization, measurements, validation, and current limitations.
-
-Build output stays under `out/`. Machine-specific overrides can go in the ignored
-`CMakeUserPresets.json`; shared presets contain no local installation paths.
+| Milestone | Result |
+|---|---|
+| Phase 10 | The 2D prototype: scaling baseline, fixed-state profiling, Vulkan memory placement, a PIX capture and optional half-resolution smoke. |
+| M11 | A pure refactor with pixel-identical output: the frame as dispatch and pass lists, one binding model, vertex pulling, Vulkan 1.3, in-app capture. |
+| M12 | The Dear ImGui overlay (measured values only), `--gpu-regions`, adapter selection, second-vendor validation. |
+| M13a | True 3D: camera, reverse-Z depth, the heightfield range, world-space particles, per-effect back-to-front order, soft particles. |
+| M13b | HDR scene target and tonemapping, measured against R11G11B10F and 8 bits. |
+| M14a | Explosion events, one slab per effect slot, click-to-spawn, fixed-step scripted scenarios. |
+| M14b | The GPU particle lifecycle: alive masks, scan, scatter, indirect draws, counter readback, deterministic counts. |
+| M15 | Seven presets of layered effects, surface response, debris, temporary lights. |
+| M16 | The smoke model: gusty wind, vortex rings, curl noise, sphere-lit and self-shadowed smoke. |
+| M17 | The range's props, swept collision, air deflection, the range scenario and its capture baseline. |
+| M18 | Showcase mode: aim and fire, counts, barrage, bombardment, walk, bookmarks, slow motion, debug views. |
+| M19 | The scalability program: records 00-08 and the options they kept. |
+| M20 | Benchmark mode: seven workloads, records and CSVs, the session driver, the report and charts; D3D12 tearing (record 09). |
+| M21 | This README, the images, `--capture-sequence` and the recording guide. |
