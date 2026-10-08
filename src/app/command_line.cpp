@@ -567,7 +567,9 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
     }
     if (capture_specified && !result.options.profile_tick && !(scenario_specified && result.options.capture_tick))
     {
-        result.error = "--capture requires --profile-tick, or --scenario with --capture-tick, so the captured state is reproducible.";
+        result.error = result.options.benchmark.empty() ?
+            "--capture requires --profile-tick, or --scenario with --capture-tick, so the captured state is reproducible." :
+            "--capture with --benchmark requires --capture-tick=N.";
     }
     if (result.options.capture_tick && profile_specified)
     {
@@ -575,7 +577,7 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
     }
     if (result.options.capture_tick && !(scenario_specified && capture_specified))
     {
-        result.error = "--capture-tick requires --scenario and --capture.";
+        result.error = result.options.benchmark.empty() ? "--capture-tick requires --scenario and --capture." : "--capture-tick requires --capture.";
     }
     if (debug_views_specified && result.options.effect_lines)
     {

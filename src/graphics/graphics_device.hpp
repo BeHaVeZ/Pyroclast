@@ -223,6 +223,7 @@ public:
     virtual SubmitTimings last_submit_timings() const = 0;
     virtual PresentInfo present_info() const = 0;
     virtual std::optional<GpuMemory> memory_usage() const = 0;
+    virtual std::uint64_t swapchain_rebuilds() const = 0;
 };
 
 struct GraphicsDeviceCreation

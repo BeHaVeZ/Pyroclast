@@ -55,7 +55,7 @@ the CPU median; its CSV also records each run's live-particle checksum, which mu
 every run of a build. Results come from the JSON record Pyroclast prints.
 
 A launch that exits 0 without a timing record, or a scenario whose summary is marked invalid, had
-its sample invalidated (focus loss, resize) and is retried, with a message. A launch that crashes, exits nonzero or times out is a failure: it is
+its sample invalidated (focus loss, resize) and is tried again, up to 3 attempts in all, with a message. A launch that crashes, exits nonzero or times out is a failure: it is
 reported, recorded in the CSV, and makes the script exit 1, because an unstable build must not
 look performance-neutral.
 
@@ -65,12 +65,14 @@ max(1%, 3 x the larger relative median absolute deviation); otherwise "CHANGED".
 absolute deviation ignores a single outlying run, so one slow run cannot hide a consistent shift.
 Raw per-run values are written to the CSV after every launch. Newer records' keys follow the original
 columns (half_frames, switches, effects_evicted, coverage_smoke = the average smoke coverage, offscreen,
-scalability = the record's object of non-default M19 options as compact JSON; blank when absent), then
+scalability = the record's object of non-default M19 options as compact JSON, present_mode = how the run presented
+(since M20; earlier CSVs lack this column, so smoke_arg moved one column right); blank when absent), then
 smoke_arg, then the --tails, --cpu and --regions metrics.
 
-launch() is shared with tools/bench/run.py: launch(command, scenario, attempts=3, timeout=600, log=None) retries
-an invalidated sample up to `attempts` times, gives each attempt `timeout` seconds, and writes the last
-attempt's stderr and stdout to `log` when one is given.
+launch() is shared with tools/bench/run.py: launch(command, scenario, attempts=3, timeout=600, log=None,
+invalidated=None) tries an invalidated sample up to `attempts` times in all, gives each attempt `timeout` seconds,
+writes the last attempt's stderr and stdout to `log` when one is given, and lists the invalidated attempts' reasons
+in `invalidated`.
 """
 import argparse
 import collections
@@ -81,6 +83,7 @@ import shlex
 import statistics
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 MATRICES = {
@@ -189,12 +192,14 @@ def write_log(log, stderr, stdout):
         Path(log).write_text(stderr + separator + output_text(stdout), encoding="utf-8")
 
 
-def launch(command, scenario, attempts=3, timeout=600, log=None):
+def launch(command, scenario, attempts=3, timeout=600, log=None, invalidated=None):
     """Returns ("ok", values, record) or ("failed: reason", None, the last record or None). An invalidated sample is
-    retried up to `attempts` times; each attempt may take `timeout` seconds. With `log`, the last attempt's stderr
-    and stdout are written to that file."""
+    tried up to `attempts` times in all (attempts - 1 retries); each attempt may take `timeout` seconds. With `log`,
+    the last attempt's stderr and stdout are written to that file; with `invalidated` (a list), each invalidated
+    attempt is appended as {attempt, returncode, invalid_reason, seconds}."""
     record = None
     for attempt in range(attempts):
+        began = time.monotonic()
         try:
             result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
         except subprocess.TimeoutExpired as expired:
@@ -210,7 +215,11 @@ def launch(command, scenario, attempts=3, timeout=600, log=None):
             return "ok", record_values(record, True), record
         if not scenario and record.get("gpu_ms"):
             return "ok", record_values(record, False), record
-        print(f"  sample invalidated (attempt {attempt + 1}/{attempts}): {' '.join(command[1:])}", flush=True)
+        reason = record.get("invalid_reason") or ("no record" if not record else "no GPU samples" if record.get("valid") else "invalid")
+        if invalidated is not None:
+            invalidated.append({"attempt": attempt + 1, "returncode": result.returncode, "invalid_reason": reason,
+                                "seconds": round(time.monotonic() - began, 3)})
+        print(f"  sample invalidated (attempt {attempt + 1}/{attempts}; {reason}): {' '.join(command[1:])}", flush=True)
     return "failed: no valid sample", None, record or None
 
 

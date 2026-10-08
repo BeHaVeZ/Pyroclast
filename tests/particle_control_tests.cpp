@@ -87,6 +87,7 @@ public:
     pyroclast::SubmitTimings last_submit_timings() const override { return {}; }
     pyroclast::PresentInfo present_info() const override { return {"test", 0}; }
     std::optional<pyroclast::GpuMemory> memory_usage() const override { return std::nullopt; }
+    std::uint64_t swapchain_rebuilds() const override { return 0; }
     pyroclast::RenderResult render(const pyroclast::Frame& frame) override
     {
         const char* error = pyroclast::validate_frame(frame);

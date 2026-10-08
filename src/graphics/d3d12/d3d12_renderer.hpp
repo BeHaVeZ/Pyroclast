@@ -45,6 +45,7 @@ public:
         return {vsync_ ? "flip-discard interval 1" : tearing_ ? "flip-discard interval 0 tearing" : "flip-discard interval 0", backbuffer_count};
     }
     std::optional<GpuMemory> memory_usage() const override;
+    std::uint64_t swapchain_rebuilds() const override { return swapchain_rebuilds_; }
 
 private:
     static constexpr UINT frame_count = 2;
@@ -166,6 +167,7 @@ private:
     std::optional<GpuTimings> gpu_timings_;
     std::uint64_t timing_sample_id_ = 0;
     SubmitTimings submit_timings_;
+    std::uint64_t swapchain_rebuilds_ = 0;
     bool overlay_ = false;
     std::vector<UINT> overlay_descriptors_;
     bool capture_enabled_ = false;

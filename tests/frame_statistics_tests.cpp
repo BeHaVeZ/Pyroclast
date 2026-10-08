@@ -76,7 +76,7 @@ int main()
         for (int byte = 0; byte < 4; ++byte) expected_checksum = (expected_checksum ^ ((word >> (8 * byte)) & 0xff)) * 0x100000001b3ull;
     }
     first_record.debris = 99;
-    if (pyroclast::counter_checksum(pyroclast::checksum_basis, first_record) != expected_checksum ||
+    if (pyroclast::counter_checksum(pyroclast::checksum_basis, first_record) != expected_checksum || expected_checksum != 0x84c39a079fc08121ull ||
         pyroclast::counter_checksum(pyroclast::checksum_basis, {}) == expected_checksum)
     {
         std::fputs("FAIL: counter_checksum folds tick, alive, smoke and light, not debris\n", stderr);
@@ -175,14 +175,14 @@ int main()
         bench.reserve(8);
         bench.add_frame({0, 0, 0, 0, 0, false, false, 0, FramePhase::warmup, 0.0, 0.25, {0.1, 0.05}, {0, 2, 4}});
         bench.set_cpu_ms(0.5);
-        bench.add_frame({1, 1, 1, 1, 0, true, false, 0, FramePhase::measured, 4.0, 1.0, {0.2, 0.25}, {3, 3, 6}});
+        bench.add_frame({1, 1, 1, 1, 0, true, false, 0, FramePhase::measured, 4.0, 1.0, {0.25, 0.25}, {3, 3, 6}});
         bench.set_cpu_ms(2.0);
         pyroclast::GpuTimings warm{0.01, 0.4};
         warm.frame_ms = 0.45;
         warm.regions[0] = {second_label, 0.3};
         warm.region_count = 1;
         bench.add_timing(warm);
-        bench.add_frame({2, 1, 1, 0, 0, true, false, 0, FramePhase::measured, 10.0, 1.5, {0.4, 0.75}, {3, 4, 7}});
+        bench.add_frame({2, 1, 1, 0, 0, true, false, 0, FramePhase::measured, 10.0, 1.5, {0.5, 0.75}, {3, 4, 7}});
         bench.set_cpu_ms(3.0);
         pyroclast::GpuTimings measured{0.02, 2.0};
         measured.frame_ms = 2.5;
@@ -200,15 +200,16 @@ int main()
         const bool csv_ok = text.find(",cpu_ms,phase,frame_ms,submit_ms,wait_ms,present_ms,gpu_frame_ms,dispatches,passes,draws,region:Scene\n") !=
                 std::string::npos &&
             text.find("0.5000,warmup,4.000000,0.250000,0.100000,0.050000,0.450000,0,2,4,0.300000\n") != std::string::npos &&
-            text.find("2.0000,measured,6.000000,1.000000,0.200000,0.250000,2.500000,3,3,6,1.750000\n") != std::string::npos &&
-            text.find("3.0000,measured,,1.500000,0.400000,0.750000,,3,4,7,\n") != std::string::npos;
+            text.find("2.0000,measured,6.000000,1.000000,0.250000,0.250000,2.500000,3,3,6,1.750000\n") != std::string::npos &&
+            text.find("3.0000,measured,,1.500000,0.500000,0.750000,,3,4,7,\n") != std::string::npos;
         const bool summary_ok = summary.frames == 2 && summary.cpu && summary.cpu->average == 2.5 && summary.frame &&
-            summary.frame->max == 6.0 && summary.gpu_samples == 1 && summary.draw && summary.draw->average == 2.0 && summary.gpu_frame &&
+            summary.frame->average == 6.0 && summary.frame->median == 6.0 && summary.frame->max == 6.0 && summary.gpu_samples == 1 && summary.draw && summary.draw->average == 2.0 && summary.gpu_frame &&
             summary.gpu_frame->average == 2.5 && summary.counter_records == 1 && summary.peak_alive == 50 &&
             summary.checksum == pyroclast::counter_checksum(pyroclast::checksum_basis, first) && summary.peak_active == 1 &&
             summary.work_min.draws == 6 && summary.work_max.draws == 7 && summary.work_max.passes == 4 && summary.regions.size() == 1 &&
             summary.regions[0].samples == 1 && summary.regions[0].statistics.average == 1.75 && !summary.visible && !summary.offscreen &&
-            summary.wait && summary.wait->max == 0.4 && summary.present && summary.present->average == 0.5 && bench.mismatches() == 0;
+            summary.wait && summary.wait->average == 0.375 && summary.wait->max == 0.5 && summary.present && summary.present->average == 0.5 &&
+            bench.mismatches() == 0;
         if (!csv_ok || !summary_ok)
         {
             std::fprintf(stderr, "FAIL: benchmark counter log (csv %d, summary %d)\n%s", csv_ok, summary_ok, text.c_str());

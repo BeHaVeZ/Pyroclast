@@ -150,6 +150,7 @@ bool VulkanRenderer::resize(int width, int height)
     {
         return false;
     }
+    ++swapchain_rebuilds_;
     if (swapchain_.handle)
     {
         SDL_Log("Vulkan swapchain resized: %ux%u", swapchain_.extent.width, swapchain_.extent.height);

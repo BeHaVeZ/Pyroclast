@@ -18,7 +18,7 @@ A session is a directory out/bench/<UTC yyyymmdd-hhmmss>-<label>/ holding:
 Preflight: the exe must exist, and the session refuses to start while Pyroclast.exe, MSBuild.exe, cl.exe or
 link.exe runs (one tasklist call; nothing may build or run during a measurement). A remote-desktop session is
 allowed but warned about, recorded (host.remote_session) and labelled (-remote is appended to the label):
-focus loss over remote desktop invalidates launches, which are then retried.
+focus loss over remote desktop invalidates launches, which are then tried again.
 
 Host facts are read once, before the first launch; a fact that cannot be read is null, with its reason under
 host.reasons: CPU (registry ProcessorNameString, os.cpu_count), RAM (GlobalMemoryStatusEx), OS (registry
@@ -31,7 +31,8 @@ Order: one discarded warm-up launch per renderer (the first benchmark and varian
 then --runs runs, each launching every case (benchmark x renderer x variant) once, in reverse order on odd runs,
 so slow drift affects every case alike. Each launch is
   bin/Pyroclast.exe --renderer=R --benchmark=B <variant args> --counter-log=raw/<id>.csv
-through tools/ab.py's launch (an invalidated sample is retried up to 3 times; --timeout seconds per attempt).
+through tools/ab.py's launch (an invalidated sample is tried up to 3 times in all; --timeout seconds per attempt; the
+invalidated attempts' reasons go to runs.jsonl as "invalidated").
 A failed launch is recorded and the session continues; the script exits 1 at the end if any launch failed.
 
 --variant NAME=ARGS (repeatable) names an argument list appended to every launch, e.g.
@@ -351,7 +352,7 @@ def main():
     host = host_facts()
     label = re.sub(r"[^\w.-]", "_", arguments.label or ("quick" if arguments.quick else "bench"))
     if host["remote_session"]:
-        print("Warning: this is a remote-desktop session. Focus loss invalidates launches (they are retried), and the "
+        print("Warning: this is a remote-desktop session. Focus loss invalidates launches (they are tried again), and the "
               "session is labelled -remote.", flush=True)
         label += "-remote"
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%S")
@@ -386,11 +387,12 @@ def main():
             command = [str(exe), f"--renderer={launch.renderer}", f"--benchmark={launch.benchmark}",
                        *variant_flags[launch.variant], f"--counter-log={csv_path}"]
             start = time.monotonic()
-            status, _, record = ab.launch(command, True, timeout=arguments.timeout, log=log_path)
+            invalidated = []
+            status, _, record = ab.launch(command, True, timeout=arguments.timeout, log=log_path, invalidated=invalidated)
             seconds = time.monotonic() - start
             durations.setdefault(launch.benchmark, []).append(seconds)
             failures += status != "ok"
-            entry = {**launch._asdict(), "args": command[1:], "status": status, "seconds": round(seconds, 3),
+            entry = {**launch._asdict(), "args": command[1:], "status": status, "seconds": round(seconds, 3), "invalidated": invalidated,
                      "csv": f"raw/{csv_path.name}" if csv_path.is_file() else None,
                      "log": f"raw/{log_path.name}" if log_path.is_file() else None, "record": record}
             with (session / "runs.jsonl").open("a", encoding="utf-8") as handle:

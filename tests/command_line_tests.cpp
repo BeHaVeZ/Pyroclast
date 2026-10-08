@@ -383,7 +383,10 @@ int main()
     for (const char* refused : {"--scenario=single", "--explosions=10", "--preset=heavy", "--view=ground", "--camera=0,1,2,3,4,5",
         "--profile-tick=10", "--exit-after=10", "--ui=on", "--debug-views=all", "--effect-lines"})
     {
-        if (benchmark_error({"--benchmark=single", refused}).find("cannot be combined with") == std::string::npos)
+        std::string flag(refused);
+        if (flag != "--ui=on" && flag.find('=') != std::string::npos) flag.resize(flag.find('='));
+        if (benchmark_error({"--benchmark=single", refused}) != "--benchmark=NAME fixes the script, preset and pose and runs to its end; it cannot be "
+            "combined with " + flag + ".")
         {
             std::fprintf(stderr, "FAIL: --benchmark refuses %s\n", refused);
             ++failures;
@@ -402,7 +405,9 @@ int main()
     if (benchmark_error({"--benchmark=single", "--capture=a.png", "--capture-tick=5"}) != "" ||
         benchmark_error({"--benchmark=storm"}).find("Expected --benchmark=single, simultaneous-10") == std::string::npos ||
         benchmark_error({"--benchmark=single", "--benchmark=single"}).find("only once") == std::string::npos ||
-        benchmark_error({"--benchmark=accumulation", "--smoke-resolution=auto", "--half-light"}) != "")
+        benchmark_error({"--benchmark=accumulation", "--smoke-resolution=auto", "--half-light"}) != "" ||
+        benchmark_error({"--benchmark=single", "--capture=a.png"}) != "--capture with --benchmark requires --capture-tick=N." ||
+        benchmark_error({"--benchmark=single", "--capture-tick=5"}) != "--capture-tick requires --capture.")
     {
         std::fputs("FAIL: --benchmark captures, unknown and repeated names\n", stderr);
         ++failures;

@@ -248,13 +248,19 @@ RenderResult VulkanRenderer::render(const Frame& frame)
         }
     }
     auto& slot = frames_[frame_index_];
-    const auto wait_begin = SDL_GetPerformanceCounter();
+    const auto fence_begin = SDL_GetPerformanceCounter();
     if (!check(vkWaitForFences(vk_.device, 1, &slot.submitted, VK_TRUE,
-        std::numeric_limits<std::uint64_t>::max()), "Wait for frame command buffer") || !read_timestamps(frame_index_))
+        std::numeric_limits<std::uint64_t>::max()), "Wait for frame command buffer"))
+    {
+        return RenderResult::failed;
+    }
+    const auto fence_end = SDL_GetPerformanceCounter();
+    if (!read_timestamps(frame_index_))
     {
         return RenderResult::failed;
     }
     read_readback(slot);
+    const auto acquire_begin = SDL_GetPerformanceCounter();
     std::uint32_t image_index = 0;
     const VkResult acquired = vkAcquireNextImageKHR(vk_.device, swapchain_.handle,
         std::numeric_limits<std::uint64_t>::max(), slot.acquired, VK_NULL_HANDLE, &image_index);
@@ -510,7 +516,8 @@ RenderResult VulkanRenderer::render(const Frame& frame)
     const VkResult result = vkQueuePresentKHR(vk_.queue, &present);
     const auto present_end = SDL_GetPerformanceCounter();
     const double milliseconds = 1000.0 / static_cast<double>(SDL_GetPerformanceFrequency());
-    submit_timings_ = {static_cast<double>(wait_end - wait_begin) * milliseconds, static_cast<double>(present_end - present_begin) * milliseconds};
+    submit_timings_ = {static_cast<double>((fence_end - fence_begin) + (wait_end - acquire_begin)) * milliseconds,
+        static_cast<double>(present_end - present_begin) * milliseconds};
     image.present_pending = vk_.present_fences && (result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR ||
         result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_ERROR_SURFACE_LOST_KHR);
     frame_index_ = (frame_index_ + 1) % frames_.size();

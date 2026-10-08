@@ -157,6 +157,7 @@ public:
     SubmitTimings last_submit_timings() const override { return submit_timings_; }
     PresentInfo present_info() const override { return {present_mode_, static_cast<std::uint32_t>(swapchain_.images.size())}; }
     std::optional<GpuMemory> memory_usage() const override;
+    std::uint64_t swapchain_rebuilds() const override { return swapchain_rebuilds_; }
 
 private:
     static constexpr VkFormat depth_format = VK_FORMAT_D32_SFLOAT;
@@ -222,6 +223,7 @@ private:
     std::optional<GpuTimings> gpu_timings_;
     std::uint64_t timing_sample_id_ = 0;
     SubmitTimings submit_timings_;
+    std::uint64_t swapchain_rebuilds_ = 0;
     std::string_view present_mode_ = "fifo";
     std::optional<ReadbackData> readback_;
     std::uint64_t readback_sample_id_ = 0;

@@ -426,6 +426,7 @@ bool D3D12Renderer::resize(int width, int height)
     {
         return false;
     }
+    ++swapchain_rebuilds_;
     SDL_Log("D3D12 swapchain resized: %dx%d", width_, height_);
     return true;
 }

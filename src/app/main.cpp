@@ -117,6 +117,11 @@ public:
         invalidate("a frame was skipped while measuring");
     }
     std::size_t skipped_frames() const { return skipped_frames_; }
+    void swapchain_rebuilt()
+    {
+        if (benchmark_.empty() || warming()) return;
+        invalidate("the swapchain was rebuilt while measuring");
+    }
     const pyroclast::Scenario& script() const { return scenario_; }
     void submit_due(Sandbox& sandbox)
     {
@@ -253,8 +258,8 @@ private:
 };
 
 std::string benchmark_tail(const ScenarioRun& run, const pyroclast::CounterLog::Summary& summary, const pyroclast::GraphicsDevice& device,
-    pyroclast::Renderer renderer, std::optional<float> display_hz, bool focused, const std::optional<pyroclast::GpuMemory>& memory_start,
-    const std::optional<pyroclast::GpuMemory>& memory_end)
+    pyroclast::Renderer renderer, bool gpu_validation, std::optional<float> display_hz, bool focused,
+    const std::optional<pyroclast::GpuMemory>& memory_start, const std::optional<pyroclast::GpuMemory>& memory_end)
 {
     const auto memory_json = [](const pyroclast::GpuMemory& memory) {
         char text[192];
@@ -274,8 +279,9 @@ std::string benchmark_tail(const ScenarioRun& run, const pyroclast::CounterLog::
     std::string tail = ",\"schema\":1,\"invalid_reason\":";
     tail += run.invalid_reason() ? "\"" + std::string(run.invalid_reason()) + "\"" : std::string("null");
     std::snprintf(text, sizeof(text),
-        ",\"warmup_frames\":%u,\"skipped_frames\":%zu,\"focused\":%s,\"vsync\":false,\"capacity\":%u,\"present_mode\":\"%.*s\",\"swapchain_images\":%u,",
-        pyroclast::benchmark_warmup_frames, run.skipped_frames(), focused ? "true" : "false", pyroclast::ParticleSystem::capacity,
+        ",\"warmup_frames\":%u,\"skipped_frames\":%zu,\"focused\":%s,\"vsync\":false,\"gpu_validation\":%s,\"capacity\":%u,\"present_mode\":\"%.*s\",\"swapchain_images\":%u,",
+        pyroclast::benchmark_warmup_frames, run.skipped_frames(), focused ? "true" : "false", gpu_validation ? "true" : "false",
+        pyroclast::ParticleSystem::capacity,
         static_cast<int>(present.mode.size()), present.mode.data(), present.images);
     tail += text;
     if (display_hz) std::snprintf(text, sizeof(text), "\"display_hz\":%.3f", static_cast<double>(*display_hz));
@@ -528,10 +534,12 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     if (scenario) scenario->invalidate("the window is not 1280x720");
                 }
                 const auto start = SDL_GetPerformanceCounter();
+                const auto rebuilds = renderer.swapchain_rebuilds();
                 if (!renderer.resize(width, height))
                 {
                     return 1;
                 }
+                if (scenario && renderer.swapchain_rebuilds() != rebuilds) scenario->swapchain_rebuilt();
                 const double elapsed = static_cast<double>(start - previous_time) /
                     static_cast<double>(SDL_GetPerformanceFrequency());
                 previous_time = start;
@@ -664,8 +672,8 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                             const auto summary = counter_log->summary();
                             if (counter_log->mismatches() != 0) scenario->invalidate("counter log samples did not match their frames");
                             if (summary.gpu_samples == 0) scenario->invalidate("no GPU timestamps arrived");
-                            const auto tail = benchmark_tail(*scenario, summary, renderer, options.renderer, display_hz, focused, memory_start,
-                                renderer.memory_usage());
+                            const auto tail = benchmark_tail(*scenario, summary, renderer, options.renderer, options.gpu_validation, display_hz,
+                                focused, memory_start, renderer.memory_usage());
                             return scenario->report(sandbox, options, renderer.adapter_name(), width, height, ui != nullptr, scalability_json(),
                                 &summary, tail);
                         }
@@ -815,7 +823,8 @@ int run_application(const pyroclast::ApplicationOptions& options)
         const auto& settings = options.scalability;
         counter_log.emplace(settings.coverage || automatic_smoke, automatic_smoke, settings.smoke_lod > 0 || settings.faint_floor > 0,
             settings.slot_policy == pyroclast::SlotPolicy::evict_oldest, !options.benchmark.empty());
-        counter_log->reserve(scripted_frames);
+        counter_log->reserve(std::max({scripted_frames, static_cast<std::size_t>(options.exit_after.value_or(0)),
+            options.profile_tick ? static_cast<std::size_t>(*options.profile_tick) + 720 : std::size_t{0}}));
     }
     int exit_code = run_event_loop(window.get(), device, *sandbox, ui.get(), options, std::move(scenario), counter_log ? &*counter_log : nullptr);
     if (counter_log && !options.counter_log.empty())

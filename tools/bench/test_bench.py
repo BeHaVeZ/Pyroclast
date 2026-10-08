@@ -436,6 +436,13 @@ class ReportTests(unittest.TestCase):
         rows.insert(1, {"counter_tick": "", "alive": ""})
         self.assertEqual(report.rows_checksum(rows), f"{expected:016x}")
         self.assertEqual(report.rows_checksum([]), f"{report.FNV_BASIS:016x}")
+        self.assertEqual(report.counter_checksum(report.FNV_BASIS, (1, 2, 3, 4)), 0x84c39a079fc08121)
+
+    def test_report_names_are_benchmarks(self):
+        for name in report.PUBLISHED_CHECKSUMS:
+            self.assertIn(name, run.BENCHMARKS)
+        for name, _ in report.SCALING:
+            self.assertIn(name, run.BENCHMARKS)
 
     def test_region_columns(self):
         record, columns, rows = self.synthetic(regions=True)
@@ -477,6 +484,16 @@ class ReportTests(unittest.TestCase):
             (session / "runs.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
             self.assertEqual(report.build(session), 1)
             self.assertIn("FAIL JSON = CSV", (session / "summary.md").read_text(encoding="utf-8"))
+
+    def test_interrupted_session_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            session = write_session(Path(directory) / "20261008-000000-interrupted")
+            lines = (session / "runs.jsonl").read_text(encoding="utf-8").splitlines()
+            (session / "runs.jsonl").write_text("\n".join(lines[:5]) + "\n", encoding="utf-8")
+            self.assertGreater(report.build(session), 0)
+            markdown = (session / "summary.md").read_text(encoding="utf-8")
+            self.assertIn("planned but not run", markdown)
+            self.assertIn("present)", markdown)
 
 
 class SvgTests(unittest.TestCase):
