@@ -59,6 +59,27 @@ It is not affiliated with Bohemia Interactive, Arma, Enfusion, or Blastcore, and
 
 ## Current milestone
 
+**M18 - Showcase mode** (complete)
+
+- Aim and fire: the crosshair (or the cursor) picks a point on the terrain or a prop; keys 1-7 pick the preset,
+  C the count (1, 10, 50, 100: the aimed explosion and the rest dropped around it on a fixed spiral), F or a
+  click fires. B walks an 80-impact artillery barrage across the view; V starts or stops a continuous
+  bombardment around the aim (rate and radius in the overlay). Every pattern is seeded and placed by index, so
+  the same keys give the same explosions however frames fall.
+- Walk (G) at eye height on the terrain and on prop tops, blocked by walls and in through the hut's door, or fly
+  as before; per-mode speeds; F2-F7 recall six camera bookmarks (the named views), Ctrl+F2-F7 store them.
+- Slow motion (T, 0.25x) on the fixed-step clock, with pause and single steps as before.
+- Debug views: effect bounds and collision boxes (L), spawn regions (F8: where F, B and V will land, the
+  barrage's corridor, the bombardment's disc and the next impact, draped on the ground) and a wind arrow (F9).
+- The overlay has two windows: the engine (GPU, frame times, the clock, effect slots, particles, drops) and the
+  showcase (aim readout, presets, counts, barrage, bombardment, wind with a compass, camera and bookmarks, views,
+  layers). When all 128 effect slots are busy, new events are dropped, counted and logged once a second.
+- `--scenario=bombardment` fires 400 impacts within 30 m, 20 a second: the saturation workload (small-he drops
+  64 of them, artillery-he 144; identical checksums on both APIs).
+- Measured (RTX 4090): scripted runs, frozen states and every image are unchanged from M17 (192 of 192
+  captures identical, the same checksums, every timing within noise). With the overlay open, Vulkan's CPU frame
+  costs 7-10 µs more than M17's; firing 100 explosions takes 0.1-0.6 ms of CPU.
+
 **M17 - Test range and environmental interaction** (complete)
 
 - The range has props: blast walls, a hut with a door and a roof, a crate stack, a truck, jersey barriers and
@@ -290,21 +311,25 @@ windows pause rendering and wait for events.
 
 Controls:
 
-- **Left click:** an explosion of the selected preset where the cursor points on the terrain or a prop,
-  responding to the surface there (a prop's material: concrete, rock and metal like concrete, wood like dirt;
-  they add up; slots that are still busy drop new events, counted in the overlay).
-  The overlay selects the preset and shows or hides each layer and the lights.
-- **Space:** trigger/restart the selected deterministic explosion group, including while paused; it
-  replaces every effect.
-- **R:** clear every effect; retain the pause setting.
+- **Left click:** the selected count of the selected preset where the cursor points on the terrain or a prop
+  (at the crosshair while looking around), responding to the surface there (a prop's material: concrete, rock
+  and metal like concrete, wood like dirt). When every effect slot is busy, new events are dropped and counted
+  in the overlay and the log.
+- **1-7:** select the preset (small impact, small HE, artillery HE, heavy, fuel/fire, dust blast, stress
+  test). **C:** cycle the count (1, 10, 50, 100). **F:** fire at the crosshair.
+- **B:** start an artillery barrage walking across the view through the crosshair. **V:** start or stop a
+  continuous bombardment around the crosshair.
+- **T:** slow motion (0.25x) on or off. **P:** pause or resume. **N:** advance one 1/60-second step while
+  paused.
+- **Space:** trigger/restart the startup explosion group, including while paused; it replaces every effect
+  and stops the barrage and bombardment. **R:** clear every effect and stop them; retain the pause setting.
 - **L:** show or hide each effect's origin, surface normal and nominal reach, and the props' collision
-  boxes, as lines.
-- **P:** pause or resume simulation.
-- **N:** advance one 1/60-second step while paused.
-- **W/A/S/D:** fly forward, left, back, right; **Q/E:** down, up; hold **Shift** to fly four times
-  faster. Hold the **right mouse button** and move the mouse to look around; the **mouse wheel**
-  changes the flight speed.
-- **F1:** hide or show the overlay. Its buttons do the same as the keys above; while you type into or
+  boxes, as lines. **F8:** spawn regions. **F9:** wind arrow.
+- **W/A/S/D:** move forward, left, back, right; **Q/E:** down, up (flying); hold **Shift** to move four times
+  faster. Hold the **right mouse button** and move the mouse to look around; the **mouse wheel** changes the
+  speed of the current mode. **G:** walk or fly. **F2-F7:** recall a camera bookmark (overview, ground, hill,
+  aerial, range, yard); **Ctrl+F2-F7:** store the current pose there.
+- **F1:** hide or show the overlay. Its controls do the same as the keys above; while you type into or
   click on the overlay, the keys do not reach the application.
 
 In the default small HE preset, fireball particles last 0.35-0.8 seconds, sparks 1-2.2 seconds, debris
@@ -335,6 +360,7 @@ Scripted scenarios replace the group and the interactive clock; each run ends wi
 .\out\build\windows-x64\Release\Pyroclast.exe --renderer=vulkan --scenario=grid-100 --smoke-resolution=half
 .\out\build\windows-x64\Release\Pyroclast.exe --scenario=presets
 .\out\build\windows-x64\Release\Pyroclast.exe --scenario=range --view=range
+.\out\build\windows-x64\Release\Pyroclast.exe --scenario=bombardment --preset=artillery-he
 ```
 
 Presets, layers, smoke features and the wind apply to groups, profiles and scenarios:
@@ -348,6 +374,7 @@ Presets, layers, smoke features and the wind apply to groups, profiles and scena
 
 `--view=range` and `--view=yard` look at the props in the north yard; `--disable=props` removes them (no
 drawing, clicks or collision), `--disable=collision` keeps them drawn while particles pass through.
+`--debug-views=bounds,boxes,regions,wind` (or `all`) starts an interactive run with debug views on.
 
 Renderer selection happens at startup and defaults to D3D12:
 
@@ -377,7 +404,7 @@ In Visual Studio, open this repository with **File > Open > Folder**, select the
 right-click the executable in CMake Targets View and select **Add Debug
 Configuration**. Set `args` in the generated `launch.vs.json`, for example
 `"args": ["--renderer=vulkan"]`. Keep the generated target and executable fields.
-The local `.vs/` settings are ignored by Git. Run the `command_line`, `particle_controls`, `draw_validation`, `frame_statistics`, `image_compare`, `math`, `terrain`, `environment`, `explosion_system` and `explosion_presets` tests from
+The local `.vs/` settings are ignored by Git. Run the `command_line`, `particle_controls`, `draw_validation`, `frame_statistics`, `image_compare`, `math`, `terrain`, `environment`, `explosion_system`, `explosion_presets` and `showcase` tests from
 **Test > Test Explorer**, or run the CTest commands above in Developer PowerShell.
 
 For Vulkan Debug with a copy-only SDK, also add an `env` property to that launch
@@ -509,7 +536,7 @@ python tools/ab.py --a C:/baseline/out/build/windows-x64/Release --b out/build/w
 python tools/ab.py --a C:/baseline/out/build/windows-x64/Release --b out/build/windows-x64/Release --matrix scenarios
 # One build under two settings, on a named scenario
 python tools/ab.py --a out/build/windows-x64/Release --b out/build/windows-x64/Release --scenarios range --a-args=--disable=collision
-# Interactive lifecycle under native validation: controls, 30 resizes, minimize/restore, minimized start
+# Interactive lifecycle under native validation: controls, the showcase keys, 30 resizes, minimize/restore, minimized start
 powershell -File tools/lifecycle.ps1 -Configuration Debug -Renderer vulkan -SmokeResolution half
 ```
 
