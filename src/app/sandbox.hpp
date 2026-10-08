@@ -1,5 +1,6 @@
 #pragma once
 
+#include "camera_controls.hpp"
 #include "explosion_renderer.hpp"
 #include "test_range.hpp"
 #include "../simulation/explosion_system.hpp"
@@ -20,6 +21,7 @@ struct Sandbox
     ExplosionSystem effects{ParticleSystem::effect_slots};
     ExplosionRenderer renderer;
     std::vector<ExplosionEvent> group;
+    CameraRig camera;
     bool debug_lines = false;
     std::uint32_t next_seed = 100000;
     ExplosionPreset click_preset = ExplosionPreset::small_he;

@@ -52,10 +52,26 @@ struct DiagnosticsSnapshot
 
 struct UiCommand
 {
-    enum class Kind { trigger, clear, toggle_pause, step, toggle_debug_lines, select_preset, toggle_layer, set_wind, toggle_slow_motion };
+    enum class Kind
+    {
+        trigger,
+        clear,
+        toggle_pause,
+        step,
+        toggle_debug_lines,
+        select_preset,
+        toggle_layer,
+        set_wind,
+        toggle_slow_motion,
+        toggle_walk,
+        recall_bookmark,
+        store_bookmark,
+        set_camera_speed,
+    };
     Kind kind;
     std::uint32_t value = 0;
     WindSettings wind;
+    float scalar = 0;
 };
 
 class DebugUi final

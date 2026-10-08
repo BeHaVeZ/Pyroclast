@@ -14,6 +14,19 @@ constexpr std::array bindings{
     KeyBinding{SDLK_N, false, {Kind::step}, "step"},
     KeyBinding{SDLK_L, false, {Kind::toggle_debug_lines}, "lines"},
     KeyBinding{SDLK_T, false, {Kind::toggle_slow_motion}, "0.25x"},
+    KeyBinding{SDLK_G, false, {Kind::toggle_walk}, "walk"},
+    KeyBinding{SDLK_F2, false, {Kind::recall_bookmark, 0}, "views"},
+    KeyBinding{SDLK_F3, false, {Kind::recall_bookmark, 1}, ""},
+    KeyBinding{SDLK_F4, false, {Kind::recall_bookmark, 2}, ""},
+    KeyBinding{SDLK_F5, false, {Kind::recall_bookmark, 3}, ""},
+    KeyBinding{SDLK_F6, false, {Kind::recall_bookmark, 4}, ""},
+    KeyBinding{SDLK_F7, false, {Kind::recall_bookmark, 5}, ""},
+    KeyBinding{SDLK_F2, true, {Kind::store_bookmark, 0}, "store a view"},
+    KeyBinding{SDLK_F3, true, {Kind::store_bookmark, 1}, ""},
+    KeyBinding{SDLK_F4, true, {Kind::store_bookmark, 2}, ""},
+    KeyBinding{SDLK_F5, true, {Kind::store_bookmark, 3}, ""},
+    KeyBinding{SDLK_F6, true, {Kind::store_bookmark, 4}, ""},
+    KeyBinding{SDLK_F7, true, {Kind::store_bookmark, 5}, ""},
 };
 }
 

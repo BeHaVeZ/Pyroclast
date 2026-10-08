@@ -198,7 +198,6 @@ struct FlightControls
 {
     bool looking = false;
     pyroclast::float2 look;
-    float speed = 15;
 
     void stop_looking(SDL_Window* window)
     {
@@ -228,7 +227,17 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
 {
     const auto window_id = SDL_GetWindowID(window);
     auto& demo = sandbox.particles;
-    auto camera = sandbox.range.view(options.view);
+    {
+        std::array<pyroclast::Camera, pyroclast::CameraRig::bookmark_count> views;
+        std::array<std::string_view, pyroclast::CameraRig::bookmark_count> names;
+        for (std::size_t index = 0; index < views.size(); ++index)
+        {
+            const auto view = static_cast<pyroclast::RangeView>(index);
+            views[index] = sandbox.range.view(view);
+            names[index] = pyroclast::view_name(view);
+        }
+        sandbox.camera = pyroclast::CameraRig(sandbox.range.view(options.view), views, names);
+    }
     FlightControls flight;
     const auto profile_tick = options.profile_tick;
     const bool unattended = scenario.has_value() || !options.capture_path.empty();
@@ -294,10 +303,16 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
             }
             if (event.type == SDL_EVENT_MOUSE_WHEEL && event.wheel.windowID == window_id)
             {
-                flight.speed = std::clamp(flight.speed * std::pow(1.25f, event.wheel.y), 1.0f, 400.0f);
+                sandbox.camera.scale_speed(event.wheel.y);
             }
             if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.windowID == window_id &&
-                event.button.button == SDL_BUTTON_LEFT && !flight.looking)
+                event.button.button == SDL_BUTTON_LEFT && flight.looking)
+            {
+                sandbox.spawn(pyroclast::crosshair_ray(sandbox.camera.camera()));
+                baseline.disable();
+            }
+            else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.windowID == window_id &&
+                event.button.button == SDL_BUTTON_LEFT)
             {
                 int window_width = 0;
                 int window_height = 0;
@@ -306,7 +321,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     const float w = static_cast<float>(window_width);
                     const float h = static_cast<float>(window_height);
                     const auto ndc = pyroclast::window_to_ndc(event.button.x, event.button.y, w, h);
-                    sandbox.spawn(camera.ray_through(ndc.x, ndc.y, w / h));
+                    sandbox.spawn(sandbox.camera.camera().ray_through(ndc.x, ndc.y, w / h));
                     baseline.disable();
                 }
             }
@@ -344,11 +359,11 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     static_cast<double>(SDL_GetPerformanceFrequency());
                 previous_time = start;
                 const auto input = flight.input(!unattended && (!ui || !ui->wants_keyboard()));
-                if (input.move.x != 0 || input.move.y != 0 || input.move.z != 0 || input.look.x != 0 || input.look.y != 0)
+                if (sandbox.camera.update(input, static_cast<float>(elapsed), sandbox.range.environment(), sandbox.props_shown()))
                 {
                     baseline.disable();
-                    pyroclast::fly(camera, input, static_cast<float>(elapsed), flight.speed);
                 }
+                const auto& camera = sandbox.camera.camera();
                 ImDrawData* overlay = nullptr;
                 if (ui)
                 {
@@ -363,7 +378,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                         options.half_smoke,
                         pyroclast::scene_format_name(options.scene_format), pyroclast::TestRange::exposure,
                         {camera.position.x, camera.position.y, camera.position.z},
-                        camera.yaw * 180 / std::numbers::pi_v<float>, camera.pitch * 180 / std::numbers::pi_v<float>, flight.speed,
+                        camera.yaw * 180 / std::numbers::pi_v<float>, camera.pitch * 180 / std::numbers::pi_v<float>, sandbox.camera.speed(),
                         sandbox.click_preset, sandbox.layer_mask, sandbox.renderer.lights(), sandbox.wind,
                         static_cast<float>(demo.time_scale()), demo.capped_frames()};
                     commands.clear();

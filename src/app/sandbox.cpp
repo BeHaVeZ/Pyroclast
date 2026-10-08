@@ -81,6 +81,37 @@ void apply(UiCommand command, Sandbox& sandbox)
         if (const auto wind = validated(command.wind)) sandbox.wind = *wind;
         break;
     case Kind::toggle_slow_motion: sandbox.particles.set_time_scale(sandbox.particles.time_scale() == 1 ? 0.25 : 1); break;
+    case Kind::toggle_walk:
+        if (!sandbox.camera.toggle_walk(sandbox.range.environment(), sandbox.props_shown()))
+        {
+            SDL_Log("Camera: cannot walk here, nothing below.");
+        }
+        else if (sandbox.camera.mode() == CameraMode::walk)
+        {
+            SDL_Log("Camera: walk (%.0f m/s, eye %.1f m).", static_cast<double>(sandbox.camera.speed()), static_cast<double>(walk_eye_height));
+        }
+        else SDL_Log("Camera: fly (%.0f m/s).", static_cast<double>(sandbox.camera.speed()));
+        break;
+    case Kind::recall_bookmark:
+        if (sandbox.camera.recall(command.value))
+        {
+            const auto& bookmark = sandbox.camera.bookmarks()[command.value];
+            SDL_Log("Camera bookmark %u (%.*s) recalled: %s.", command.value + 1,
+                static_cast<int>(bookmark.stored ? 6 : bookmark.name.size()), bookmark.stored ? "stored" : bookmark.name.data(),
+                bookmark.mode == CameraMode::walk ? "walk" : "fly");
+        }
+        break;
+    case Kind::store_bookmark:
+        if (sandbox.camera.store(command.value))
+        {
+            const auto& camera = sandbox.camera.camera();
+            SDL_Log("Camera bookmark %u stored: position (%.2f, %.2f, %.2f), heading %.2f deg, elevation %.2f deg, %s.",
+                command.value + 1, static_cast<double>(camera.position.x), static_cast<double>(camera.position.y),
+                static_cast<double>(camera.position.z), static_cast<double>(camera.yaw * 57.29578f),
+                static_cast<double>(camera.pitch * 57.29578f), sandbox.camera.mode() == CameraMode::walk ? "walk" : "fly");
+        }
+        break;
+    case Kind::set_camera_speed: sandbox.camera.set_speed(command.scalar); break;
     }
 }
 }

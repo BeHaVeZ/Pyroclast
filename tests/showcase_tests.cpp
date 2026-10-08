@@ -1,7 +1,10 @@
+#include "app/camera_controls.hpp"
 #include "app/key_bindings.hpp"
+#include "app/test_range.hpp"
 #include "simulation/explosion_scenarios.hpp"
 #include "simulation/impact_patterns.hpp"
 
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -85,6 +88,123 @@ int main()
         movement_free &= !command(key);
     }
     check(movement_free, "movement keys and F1 are not bound");
+
+    check(command(SDLK_G) && command(SDLK_G)->kind == Kind::toggle_walk, "G switches walk and fly");
+    bool bookmark_keys = true;
+    const SDL_Keycode function_keys[] = {SDLK_F2, SDLK_F3, SDLK_F4, SDLK_F5, SDLK_F6, SDLK_F7};
+    for (std::uint32_t index = 0; index < 6; ++index)
+    {
+        const auto recall = command(function_keys[index]);
+        const auto store = command(function_keys[index], SDL_KMOD_LCTRL);
+        bookmark_keys &= recall && recall->kind == Kind::recall_bookmark && recall->value == index && store &&
+            store->kind == Kind::store_bookmark && store->value == index;
+        const auto shifted = command(function_keys[index], SDL_KMOD_LSHIFT);
+        bookmark_keys &= shifted && shifted->kind == Kind::recall_bookmark;
+    }
+    check(bookmark_keys, "F2-F7 recall bookmarks 1-6, Ctrl+F2-F7 store them, Shift does not store");
+    check(command(SDLK_R, SDL_KMOD_LCTRL) && command(SDLK_R, SDL_KMOD_LCTRL)->kind == Kind::clear,
+        "Ctrl does not change a key without a Ctrl binding");
+
+    TestRange test_range;
+    const auto& world = test_range.environment();
+    std::array<Camera, CameraRig::bookmark_count> views;
+    std::array<std::string_view, CameraRig::bookmark_count> names{"overview", "ground", "hill", "aerial", "range", "yard"};
+    for (std::size_t index = 0; index < views.size(); ++index) views[index] = test_range.view(static_cast<RangeView>(index));
+    const auto same_pose = [](const Camera& a, const Camera& b) {
+        return a.position.x == b.position.x && a.position.y == b.position.y && a.position.z == b.position.z && a.yaw == b.yaw &&
+            a.pitch == b.pitch;
+    };
+    CameraRig rig(test_range.view(RangeView::overview), views, names);
+    bool defaults = true;
+    for (std::size_t index = 0; index < views.size(); ++index)
+    {
+        defaults &= rig.recall(index) && same_pose(rig.camera(), views[index]) && rig.mode() == CameraMode::fly;
+    }
+    check(defaults, "the six bookmarks recall the named views exactly, flying");
+    check(!rig.recall(6) && !rig.store(6), "bookmarks beyond the sixth are rejected");
+    rig.recall(0);
+    const auto still = rig.camera();
+    check(!rig.update(CameraInput{}, 1.0f / 60, world, true) && same_pose(rig.camera(), still), "flying without input never moves");
+    CameraInput forward{};
+    forward.move = {0, 0, 1};
+    check(rig.update(forward, 1.0f, world, true) && std::abs(rig.camera().position.z - (still.position.z + rig.camera().forward().z * 15)) < 1e-3f,
+        "flying moves at the fly speed along the view");
+    rig.store(2);
+    rig.recall(1);
+    check(rig.recall(2) && rig.camera().position.z == still.position.z + rig.camera().forward().z * 15 && rig.bookmarks()[2].stored &&
+        !rig.bookmarks()[1].stored, "a stored bookmark recalls its pose; the others keep their views");
+    rig.scale_speed(1);
+    check(rig.speed() == 15 * 1.25f, "the wheel scales the active mode's speed");
+    rig.set_speed(1000);
+    check(rig.speed() == CameraRig::fly_speed_max, "the fly speed is clamped to 400 m/s");
+    rig.set_speed(15);
+
+    const auto walk_at = [&](float x, float z, float yaw) {
+        Camera start;
+        start.position = {x, 20, z};
+        start.yaw = yaw;
+        start.pitch = -0.3f;
+        CameraRig walker(start, views, names);
+        walker.toggle_walk(world, true);
+        return walker;
+    };
+    const auto walk = [&](CameraRig& walker, float3 move, int frames, bool props = true) {
+        CameraInput input{};
+        input.move = move;
+        bool clear = true;
+        for (int frame = 0; frame < frames; ++frame)
+        {
+            walker.update(input, 0.1f, world, props);
+            const auto eye = walker.camera().position;
+            clear &= !props || (!world.inside(eye) && !world.inside(eye - float3{0, walk_eye_height - walk_knee_height, 0}));
+        }
+        return clear;
+    };
+    auto walker = walk_at(0, 58, 0);
+    check(walker.mode() == CameraMode::walk && std::abs(walker.camera().position.y - (world.terrain().height(0, 58) + walk_eye_height)) < 1e-4f,
+        "walking stands at eye height on the terrain");
+    check(!walk(walker, {0, 1, 0}, 5) || walker.camera().position.y == world.terrain().height(0, 58) + walk_eye_height,
+        "walking ignores up and down");
+    walker = walk_at(-14, -45, 0);
+    const bool wall_clear = walk(walker, {0, 0, 1}, 40);
+    check(wall_clear && walker.camera().position.z >= -53.8f + walk_radius && walker.camera().position.z <= -53.8f + walk_radius + walk_substep,
+        "walking north stops a body radius before wall A, never inside it");
+    walker = walk_at(-17, -50, 0);
+    walk(walker, {1, 0, 1}, 16);
+    check(walker.camera().position.x > -12 && walker.camera().position.x < -9 && walker.camera().position.z >= -53.8f + walk_radius,
+        "a diagonal push slides along the wall");
+    const auto through = walk_move(world, true, {3, 0, -54}, {10, 0, 0});
+    check(through.x <= 5.0f - walk_radius, "one long move does not pass through the hut's 0.3 m wall");
+    walker = walk_at(8, -45, 0);
+    const bool door_clear = walk(walker, {0, 0, 1}, 40);
+    check(door_clear && walker.camera().position.z < -54 && walker.camera().position.z >= -56.2f + walk_radius &&
+        std::abs(walker.camera().position.y - walk_eye_height) < 1e-4f, "the hut's door admits the walker, under the roof on the ground");
+    walker = walk_at(-31.4f, -45, 0);
+    walk(walker, {0, 0, 1}, 40);
+    check(walker.camera().position.z >= -50 + 0.215f + walk_radius, "a jersey barrier blocks the walker");
+    walker = walk_at(-2, -50, 0);
+    check(std::abs(walker.camera().position.y - (2.4f + walk_eye_height)) < 1e-3f, "landing above the crate stack stands on its top");
+    walk(walker, {1, 0, 0}, 10);
+    check(std::abs(walker.camera().position.y - (world.terrain().height(walker.camera().position.x, walker.camera().position.z) +
+        walk_eye_height)) < 1e-4f, "walking off a top drops to the ground");
+    Camera inside;
+    inside.position = {-14, walk_eye_height, -54};
+    CameraRig trapped(inside, views, names);
+    trapped.toggle_walk(world, true);
+    walk(trapped, {0, 0, -1}, 10);
+    check(trapped.camera().position.z > -53.8f, "a camera inside a wall walks out of it");
+    walker = walk_at(-14, -45, 0);
+    walk(walker, {0, 0, 1}, 40, false);
+    check(walker.camera().position.z < -60, "with props hidden the walker passes through them");
+    check(walk_move(world, true, {250, 0, 0}, {20, 0, 0}).x == Terrain::half_extent - walk_edge_margin, "walking stops at the terrain's edge");
+    check(!walk_landing(world, true, {300, 10, 0}), "there is nothing to walk on beyond the terrain");
+    walker = walk_at(0, 58, 0);
+    const auto before = walker.camera().position;
+    CameraInput run{};
+    run.move = {0, 0, 1};
+    walker.update(run, 1.0f, world, true);
+    check(std::abs(walker.camera().position.z - before.z) <= 5 * 0.1f + 1e-4f, "a stall walks at most 0.1 s worth");
+    check(walker.toggle_walk(world, true) && walker.mode() == CameraMode::fly, "G returns to flight");
 
     if (failures == 0) std::puts("showcase tests passed");
     return failures == 0 ? 0 : 1;
