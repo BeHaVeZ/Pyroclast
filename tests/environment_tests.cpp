@@ -374,7 +374,7 @@ int main()
         for (const auto& scripted : make_scenario(name, environment)->events) measure(scripted.event);
     }
     std::printf("nearest scripted explosion %.2f m from a prop\n", nearest);
-    check(nearest >= clearance, "the startup groups and the M16 scenarios keep 6 m from every prop");
+    check(nearest >= clearance, "the startup groups and every scenario but range keep 6 m from every prop");
 
     const auto scenario_fingerprint = [&environment](const char* name) {
         const auto scenario = make_scenario(name, environment, ExplosionPreset::artillery_he);
@@ -391,6 +391,7 @@ int main()
         scenario_fingerprint("grid-50") == 0xa1a405044b206195ull && scenario_fingerprint("grid-100") == 0xdd30e413978d4105ull &&
         scenario_fingerprint("barrage") == 0xa86c4b90ec96e8f4ull && scenario_fingerprint("presets") == 0x42f709503bf0f6c7ull,
         "the scripted event lists are M16's");
+    check(scenario_fingerprint("bombardment") == 0x748a20614bf24c7eull, "the bombardment's event list is pinned");
     check(fingerprint(group_events(environment.terrain(), 100), {}) == 0x9810dcdfc42fd365ull,
         "the startup group is M16's");
 

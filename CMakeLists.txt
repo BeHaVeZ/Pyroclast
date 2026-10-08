@@ -117,8 +117,8 @@ if(BUILD_TESTING)
     add_executable(ParticleControlTests tests/particle_control_tests.cpp src/simulation/particle_system.cpp
         src/simulation/explosion_system.cpp src/simulation/explosion_scenarios.cpp src/simulation/impact_patterns.cpp src/simulation/explosion_presets.cpp
         src/simulation/effect_lights.cpp src/simulation/wind.cpp src/simulation/terrain.cpp src/simulation/environment.cpp src/simulation/range_props.cpp
-        src/core/math.cpp src/app/explosion_renderer.cpp src/app/camera.cpp
-        src/app/test_range.cpp src/app/prop_mesh.cpp src/graphics/draw_validation.cpp)
+        src/core/math.cpp src/app/explosion_renderer.cpp src/app/camera.cpp src/app/camera_controls.cpp src/app/sandbox.cpp
+        src/app/showcase.cpp src/app/key_bindings.cpp src/app/test_range.cpp src/app/prop_mesh.cpp src/graphics/draw_validation.cpp)
     target_include_directories(ParticleControlTests PRIVATE src)
     target_link_libraries(ParticleControlTests PRIVATE SDL3::SDL3-static pyroclast_shader_list)
     add_test(NAME particle_controls COMMAND ParticleControlTests)

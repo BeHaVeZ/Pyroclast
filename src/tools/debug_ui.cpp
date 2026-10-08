@@ -174,7 +174,7 @@ void engine_window(const DiagnosticsSnapshot& snapshot)
     ImGui::End();
 }
 
-void showcase_window(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>& commands)
+void showcase_window(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>& commands, float& radius_edit, bool& radius_editing)
 {
     const auto& showcase = snapshot.showcase;
     const auto& camera = snapshot.camera;
@@ -265,10 +265,14 @@ void showcase_window(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>
         ImGui::EndCombo();
     }
     ImGui::SameLine();
-    float radius = showcase.bombardment_radius;
+    if (!radius_editing) radius_edit = showcase.bombardment_radius;
     ImGui::SetNextItemWidth(110);
-    ImGui::SliderFloat("Radius", &radius, 5, 60, "%.0f m", ImGuiSliderFlags_AlwaysClamp);
-    if (ImGui::IsItemDeactivatedAfterEdit()) commands.push_back({UiCommand::Kind::set_bombardment, showcase.bombardment_interval, {}, radius});
+    ImGui::SliderFloat("Radius", &radius_edit, 5, 60, "%.0f m", ImGuiSliderFlags_AlwaysClamp);
+    radius_editing = ImGui::IsItemActive();
+    if (ImGui::IsItemDeactivatedAfterEdit())
+    {
+        commands.push_back({UiCommand::Kind::set_bombardment, showcase.bombardment_interval, {}, radius_edit});
+    }
     if (showcase.preset_ticks != 0)
     {
         ImGui::TextDisabled("Expected ~%u of %u slots; %.1f impacts/s sustainable", showcase.preset_ticks / showcase.bombardment_interval,
@@ -317,7 +321,7 @@ void showcase_window(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>
         ImGui::Text("Now %.1f m/s towards %.0f deg", wind.now_speed, wind.now_heading);
         ImGui::TextDisabled("(+x is 0, +z is 90; gusts %s)", (snapshot.layer_mask >> particle_layout::gusts_mask_bit) & 1 ? "on" : "off");
         bool arrow = views.wind_arrow;
-        if (ImGui::Checkbox("Wind arrow (F9)", &arrow)) commands.push_back({UiCommand::Kind::toggle_debug_view, 3});
+        if (ImGui::Checkbox("Wind arrow (F9)##compass", &arrow)) commands.push_back({UiCommand::Kind::toggle_debug_view, 3});
         ImGui::EndGroup();
     }
 
@@ -413,7 +417,7 @@ ImDrawData* DebugUi::build(const DiagnosticsSnapshot& snapshot, std::vector<UiCo
     {
         crosshair(snapshot);
         engine_window(snapshot);
-        showcase_window(snapshot, commands);
+        showcase_window(snapshot, commands, radius_edit_, radius_editing_);
     }
     ImGui::Render();
     return visible_ ? ImGui::GetDrawData() : nullptr;

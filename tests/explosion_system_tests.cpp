@@ -172,7 +172,7 @@ int main()
         busiest = std::max(busiest, saturated.active().size());
     }
     std::printf("bombardment: peak %zu effects, %llu dropped of 400\n", busiest, static_cast<unsigned long long>(saturated.dropped()));
-    check(busiest == 128 && saturated.dropped() > 0 && saturated.started() + saturated.dropped() == 400,
+    check(busiest == 128 && saturated.dropped() == 64 && saturated.started() + saturated.dropped() == 400,
         "the bombardment fills the 128 slots and drops the rest");
     return failures == 0 ? 0 : 1;
 }

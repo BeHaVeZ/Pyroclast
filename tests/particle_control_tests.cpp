@@ -1,7 +1,9 @@
 #include "app/explosion_renderer.hpp"
+#include "app/sandbox.hpp"
 #include "graphics/draw_validation.hpp"
 #include "simulation/explosion_scenarios.hpp"
 
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -461,6 +463,127 @@ int main()
     check(half_resolution.render(device, rendered, half_effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::submitted &&
         device.valid_frame && device.half_resolution_passes,
         "half resolution draws smoke into the target, then composites it under full-resolution light");
+
+    {
+        Sandbox sandbox;
+        std::array<Camera, CameraRig::bookmark_count> views;
+        const std::array<std::string_view, CameraRig::bookmark_count> names{"overview", "ground", "hill", "aerial", "range", "yard"};
+        for (std::size_t index = 0; index < views.size(); ++index) views[index] = sandbox.range.view(static_cast<RangeView>(index));
+        sandbox.camera = CameraRig(views[0], views, names);
+        using Kind = UiCommand::Kind;
+        const auto command = [](Kind kind, std::uint32_t value = 0, float scalar = 0) {
+            UiCommand made{kind, value};
+            made.scalar = scalar;
+            return made;
+        };
+        const auto same_pose = [](const Camera& a, const Camera& b) {
+            return a.position.x == b.position.x && a.position.y == b.position.y && a.position.z == b.position.z && a.yaw == b.yaw &&
+                a.pitch == b.pitch;
+        };
+
+        apply(command(Kind::set_count, 2), sandbox);
+        bool counted_ok = sandbox.showcase.count == 1;
+        for (const std::uint32_t count : {10u, 50u, 100u, 1u})
+        {
+            apply(command(Kind::set_count, count), sandbox);
+            counted_ok &= sandbox.showcase.count == count;
+        }
+        apply(command(Kind::set_count), sandbox);
+        counted_ok &= sandbox.showcase.count == 10;
+        check(counted_ok, "set_count takes 1, 10, 50 or 100, steps to the next on 0 and ignores other counts");
+        apply(command(Kind::select_preset, 3), sandbox);
+        apply(command(Kind::select_preset, preset_count), sandbox);
+        check(sandbox.showcase.preset == static_cast<ExplosionPreset>(3), "select_preset ignores an index past the presets");
+
+        apply(command(Kind::fire), sandbox);
+        const auto salvo = sandbox.effects.pending();
+        apply(command(Kind::fire, 1), sandbox);
+        check(salvo == 10 && sandbox.effects.pending() == 11, "fire queues the selected count at the crosshair, or the number it carries");
+        apply(command(Kind::barrage), sandbox);
+        apply(command(Kind::toggle_bombardment), sandbox);
+        check(sandbox.showcase.barrage && sandbox.showcase.bombardment && sandbox.showcase.barrage->preset == sandbox.showcase.preset,
+            "barrage and toggle_bombardment start both at the crosshair with the selected preset");
+        apply(command(Kind::set_bombardment, 4, 12), sandbox);
+        const bool resized = sandbox.showcase.bombardment && sandbox.showcase.bombardment->interval == 4 &&
+            sandbox.showcase.bombardment->radius == 12;
+        apply(command(Kind::set_bombardment, 5, 100), sandbox);
+        check(resized && sandbox.showcase.bombardment_interval == 4 && sandbox.showcase.bombardment_radius == Showcase::bombardment_radius_max,
+            "set_bombardment restarts the running bombardment, ignores an unlisted interval and clamps the radius");
+        apply(command(Kind::fire, 100), sandbox);
+        apply(command(Kind::fire, 100), sandbox);
+        sandbox.effects.start(0);
+        sandbox.pressure.record(0, 0.0, static_cast<std::uint32_t>(sandbox.effects.active().size()), sandbox.effects.dropped());
+        const bool pressed = sandbox.pressure.dropped_since_clear() > 0 && sandbox.pressure.peak_since_clear() == ParticleSystem::effect_slots;
+        apply(command(Kind::clear), sandbox);
+        check(pressed && !sandbox.showcase.barrage && !sandbox.showcase.bombardment && sandbox.effects.active().empty() &&
+            sandbox.effects.pending() == 0 && sandbox.pressure.dropped_since_clear() == 0 && sandbox.pressure.peak_since_clear() == 0,
+            "clear stops the barrage and bombardment, empties the slots and rebases the slot pressure");
+        apply(command(Kind::barrage), sandbox);
+        apply(command(Kind::toggle_bombardment), sandbox);
+        sandbox.group = group_events(sandbox.range.terrain(), 10);
+        apply(command(Kind::trigger), sandbox);
+        check(!sandbox.showcase.barrage && !sandbox.showcase.bombardment && sandbox.effects.pending() == 10,
+            "trigger stops both and restarts the startup group");
+        apply(command(Kind::toggle_bombardment), sandbox);
+        apply(command(Kind::toggle_bombardment), sandbox);
+        check(!sandbox.showcase.bombardment, "toggle_bombardment stops a running bombardment");
+
+        apply(command(Kind::toggle_slow_motion), sandbox);
+        const bool slow = sandbox.particles.time_scale() == 0.25;
+        apply(command(Kind::toggle_slow_motion), sandbox);
+        check(slow && sandbox.particles.time_scale() == 1, "toggle_slow_motion switches between 0.25x and 1x");
+        apply(command(Kind::toggle_pause), sandbox);
+        const bool paused = sandbox.particles.paused();
+        apply(command(Kind::toggle_pause), sandbox);
+        check(paused && !sandbox.particles.paused(), "toggle_pause pauses and resumes");
+
+        apply(command(Kind::toggle_walk), sandbox);
+        const bool walking = sandbox.camera.mode() == CameraMode::walk;
+        apply(command(Kind::toggle_walk), sandbox);
+        check(walking && sandbox.camera.mode() == CameraMode::fly, "toggle_walk walks from the overview and flies again");
+        apply(command(Kind::set_camera_speed, 0, 40), sandbox);
+        check(sandbox.camera.speed() == 40, "set_camera_speed sets the active mode's speed");
+        apply(command(Kind::recall_bookmark, 0), sandbox);
+        const bool recalled = same_pose(sandbox.camera.camera(), views[0]);
+        CameraInput forward{};
+        forward.move = {0, 0, 1};
+        sandbox.camera.update(forward, 1, sandbox.range.environment(), true);
+        const auto moved = sandbox.camera.camera();
+        apply(command(Kind::store_bookmark, 4), sandbox);
+        apply(command(Kind::recall_bookmark, 1), sandbox);
+        const bool other = same_pose(sandbox.camera.camera(), views[1]);
+        apply(command(Kind::recall_bookmark, 4), sandbox);
+        const bool stored = same_pose(sandbox.camera.camera(), moved) && sandbox.camera.bookmarks()[4].stored;
+        apply(command(Kind::recall_bookmark, 6), sandbox);
+        check(recalled && !same_pose(moved, views[0]) && other && stored && same_pose(sandbox.camera.camera(), moved),
+            "store_bookmark keeps the pose, recall_bookmark returns to it, and a bookmark past the sixth is ignored");
+
+        sandbox.views = {};
+        apply(command(Kind::toggle_debug_lines), sandbox);
+        const bool both_on = sandbox.views.effect_bounds && sandbox.views.collision_boxes && !sandbox.views.spawn_regions &&
+            !sandbox.views.wind_arrow;
+        apply(command(Kind::toggle_debug_view, 0), sandbox);
+        const bool boxes_left = !sandbox.views.effect_bounds && sandbox.views.collision_boxes;
+        apply(command(Kind::toggle_debug_lines), sandbox);
+        check(both_on && boxes_left && !sandbox.views.effect_bounds && !sandbox.views.collision_boxes,
+            "toggle_debug_lines turns the bounds and boxes on together, and both off while either is on");
+        bool one_view = true;
+        for (std::uint32_t view = 0; view < 4; ++view)
+        {
+            apply(command(Kind::toggle_debug_view, view), sandbox);
+            const bool flags[] = {sandbox.views.effect_bounds, sandbox.views.collision_boxes, sandbox.views.spawn_regions,
+                sandbox.views.wind_arrow};
+            for (std::uint32_t index = 0; index < 4; ++index) one_view &= flags[index] == (index == view);
+            apply(command(Kind::toggle_debug_view, view), sandbox);
+        }
+        apply(command(Kind::toggle_debug_view, 4), sandbox);
+        check(one_view && !sandbox.views.effect_bounds && !sandbox.views.collision_boxes && !sandbox.views.spawn_regions &&
+            !sandbox.views.wind_arrow, "toggle_debug_view flips only its view and ignores an unknown one");
+        apply(command(Kind::toggle_layer, layout::props_mask_bit), sandbox);
+        const bool hidden_props = !sandbox.props_shown();
+        apply(command(Kind::toggle_layer, layout::props_mask_bit), sandbox);
+        check(hidden_props && sandbox.props_shown() && sandbox.layer_mask == layout::full_mask, "toggle_layer flips one mask bit");
+    }
 
     return failures == 0 ? 0 : 1;
 }

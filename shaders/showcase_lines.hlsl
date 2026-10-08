@@ -75,7 +75,7 @@ PixelInput vs_main(uint vertex : SV_VertexID)
         float speed = length(drift);
         float3 direction = speed > 1e-3 ? drift / speed : float3(1, 0, 0);
         float3 side = float3(-direction.z, 0, direction.x);
-        float head = max(1.0, 0.2 * speed);
+        float head = speed > 1e-3 ? max(1.0, 0.2 * speed) : 0.0;
         float3 tip = top + drift;
         uint piece = min(vertex / 2, 3u);
         bool far_end = (vertex & 1) != 0;

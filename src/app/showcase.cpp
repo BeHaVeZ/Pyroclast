@@ -152,17 +152,31 @@ void Showcase::set_bombardment(std::uint32_t interval, float radius, std::uint32
 
 std::uint32_t Showcase::release_due(std::uint32_t tick, const Environment& environment, bool props, ExplosionSystem& effects)
 {
+    const auto due = [tick](const std::optional<ImpactSequence>& sequence) -> std::optional<std::uint32_t> {
+        if (!sequence || finished(*sequence)) return std::nullopt;
+        const auto at = sequence->start_tick + sequence->next * sequence->interval;
+        return at <= tick ? std::optional(at) : std::nullopt;
+    };
     std::uint32_t released = 0;
-    if (barrage)
+    for (;;)
     {
-        released += pyroclast::release_due(*barrage, tick, environment, props, next_seed, effects);
-        if (finished(*barrage))
+        const auto barrage_due = due(barrage);
+        const auto bombardment_due = due(bombardment);
+        if (barrage_due && (!bombardment_due || *barrage_due <= *bombardment_due))
         {
-            SDL_Log("Barrage finished: %u impacts, %u off the range.", barrage->released, barrage->off_range);
-            barrage.reset();
+            released += pyroclast::release_due(*barrage, *barrage_due, environment, props, next_seed, effects);
         }
+        else if (bombardment_due)
+        {
+            released += pyroclast::release_due(*bombardment, *bombardment_due, environment, props, next_seed, effects);
+        }
+        else break;
     }
-    if (bombardment) released += pyroclast::release_due(*bombardment, tick, environment, props, next_seed, effects);
+    if (barrage && finished(*barrage))
+    {
+        SDL_Log("Barrage finished: %u impacts, %u off the range.", barrage->released, barrage->off_range);
+        barrage.reset();
+    }
     return released;
 }
 

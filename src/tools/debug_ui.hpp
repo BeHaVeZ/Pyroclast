@@ -174,5 +174,7 @@ private:
     bool context_ = false;
     bool platform_ = false;
     bool visible_ = true;
+    float radius_edit_ = 0;
+    bool radius_editing_ = false;
 };
 }

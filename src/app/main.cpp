@@ -315,7 +315,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
             if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.windowID == window_id &&
                 event.button.button == SDL_BUTTON_LEFT && flight.looking)
             {
-                sandbox.spawn(pyroclast::crosshair_ray(sandbox.camera.camera()));
+                sandbox.spawn(pyroclast::crosshair_ray(sandbox.camera.camera()), "crosshair");
                 baseline.disable();
             }
             else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.windowID == window_id &&
@@ -328,14 +328,18 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     const float w = static_cast<float>(window_width);
                     const float h = static_cast<float>(window_height);
                     const auto ndc = pyroclast::window_to_ndc(event.button.x, event.button.y, w, h);
-                    sandbox.spawn(sandbox.camera.camera().ray_through(ndc.x, ndc.y, w / h));
+                    sandbox.spawn(sandbox.camera.camera().ray_through(ndc.x, ndc.y, w / h), "cursor");
                     baseline.disable();
                 }
             }
             if (event.type == SDL_EVENT_KEY_DOWN) baseline.disable();
             if (event.type == SDL_EVENT_KEY_DOWN && event.key.windowID == window_id && !event.key.repeat)
             {
-                if (const auto command = pyroclast::key_command(event.key.key, event.key.mod)) pyroclast::apply(*command, sandbox);
+                if (const auto command = pyroclast::key_command(event.key.key, event.key.mod))
+                {
+                    pyroclast::apply(*command, sandbox);
+                    if (command->kind == pyroclast::UiCommand::Kind::recall_bookmark) flight.look = {};
+                }
             }
         }
 
@@ -406,7 +410,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                 if (!unattended)
                 {
                     const double now = static_cast<double>(SDL_GetPerformanceCounter()) / static_cast<double>(SDL_GetPerformanceFrequency());
-                    if (const auto report = sandbox.pressure.record(demo.tick(), now,
+                    if (const auto report = sandbox.pressure.record(tick_before, now,
                             static_cast<std::uint32_t>(sandbox.effects.active().size()), sandbox.effects.dropped()))
                     {
                         sandbox.report_drops(*report);

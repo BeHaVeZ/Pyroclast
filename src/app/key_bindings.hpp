@@ -15,7 +15,6 @@ struct KeyBinding
     SDL_Keycode key = 0;
     bool ctrl = false;
     UiCommand command{};
-    std::string_view label;
 };
 
 std::span<const KeyBinding> key_bindings();

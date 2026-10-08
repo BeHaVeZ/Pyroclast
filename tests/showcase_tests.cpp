@@ -74,9 +74,12 @@ int main()
 
     const auto command = [](SDL_Keycode key, SDL_Keymod modifiers = SDL_KMOD_NONE) { return key_command(key, modifiers); };
     using Kind = UiCommand::Kind;
-    check(command(SDLK_SPACE) && command(SDLK_SPACE)->kind == Kind::trigger && command(SDLK_R)->kind == Kind::clear &&
-        command(SDLK_P)->kind == Kind::toggle_pause && command(SDLK_N)->kind == Kind::step &&
-        command(SDLK_L)->kind == Kind::toggle_debug_lines, "Space, R, P, N and L keep their actions");
+    const auto is = [&](SDL_Keycode key, Kind kind) {
+        const auto sent = command(key);
+        return sent && sent->kind == kind;
+    };
+    check(is(SDLK_SPACE, Kind::trigger) && is(SDLK_R, Kind::clear) && is(SDLK_P, Kind::toggle_pause) && is(SDLK_N, Kind::step) &&
+        is(SDLK_L, Kind::toggle_debug_lines), "Space, R, P, N and L keep their actions");
     check(command(SDLK_T) && command(SDLK_T)->kind == Kind::toggle_slow_motion, "T toggles slow motion");
     check(command(SDLK_R, SDL_KMOD_LSHIFT) && command(SDLK_R, SDL_KMOD_LSHIFT)->kind == Kind::clear,
         "Shift does not change a key's action");
@@ -97,8 +100,8 @@ int main()
         command(SDLK_F9)->value == 3, "F8 and F9 toggle the spawn regions and the wind arrow");
     check(command(SDLK_3) && command(SDLK_3)->kind == Kind::select_preset && command(SDLK_3)->value == 2 && command(SDLK_KP_7) &&
         command(SDLK_KP_7)->value == 6 && !command(SDLK_8), "1-7 and the keypad select the presets");
-    check(command(SDLK_C)->kind == Kind::set_count && command(SDLK_F)->kind == Kind::fire && command(SDLK_B)->kind == Kind::barrage &&
-        command(SDLK_V)->kind == Kind::toggle_bombardment, "C, F, B and V act at the crosshair");
+    check(is(SDLK_C, Kind::set_count) && is(SDLK_F, Kind::fire) && is(SDLK_B, Kind::barrage) && is(SDLK_V, Kind::toggle_bombardment),
+        "C, F, B and V act at the crosshair");
     bool reachable = true;
     for (const auto kind : {Kind::trigger, Kind::clear, Kind::toggle_pause, Kind::step, Kind::toggle_debug_lines, Kind::select_preset,
              Kind::toggle_slow_motion, Kind::toggle_walk, Kind::recall_bookmark, Kind::store_bookmark, Kind::set_count, Kind::fire,
@@ -149,9 +152,15 @@ int main()
     check(rig.update(forward, 1.0f, world, true) && std::abs(rig.camera().position.z - (still.position.z + rig.camera().forward().z * 15)) < 1e-3f,
         "flying moves at the fly speed along the view");
     rig.store(2);
-    rig.recall(1);
-    check(rig.recall(2) && rig.camera().position.z == still.position.z + rig.camera().forward().z * 15 && rig.bookmarks()[2].stored &&
-        !rig.bookmarks()[1].stored, "a stored bookmark recalls its pose; the others keep their views");
+    const auto stored_pose = rig.camera();
+    bool others = true;
+    for (std::size_t index = 0; index < views.size(); ++index)
+    {
+        if (index == 2) continue;
+        others &= rig.recall(index) && same_pose(rig.camera(), views[index]) && !rig.bookmarks()[index].stored && rig.mode() == CameraMode::fly;
+    }
+    check(rig.recall(2) && same_pose(rig.camera(), stored_pose) && rig.camera().position.z == still.position.z + rig.camera().forward().z * 15 &&
+        rig.bookmarks()[2].stored && others, "a stored bookmark recalls its pose; the others keep their views");
     rig.scale_speed(1);
     check(rig.speed() == 15 * 1.25f, "the wheel scales the active mode's speed");
     rig.set_speed(1000);
@@ -182,7 +191,7 @@ int main()
     auto walker = walk_at(0, 58, 0);
     check(walker.mode() == CameraMode::walk && std::abs(walker.camera().position.y - (world.terrain().height(0, 58) + walk_eye_height)) < 1e-4f,
         "walking stands at eye height on the terrain");
-    check(!walk(walker, {0, 1, 0}, 5) || walker.camera().position.y == world.terrain().height(0, 58) + walk_eye_height,
+    check(walk(walker, {0, 1, 0}, 5) && walker.camera().position.y == world.terrain().height(0, 58) + walk_eye_height,
         "walking ignores up and down");
     walker = walk_at(-14, -45, 0);
     const bool wall_clear = walk(walker, {0, 0, 1}, 40);
@@ -364,6 +373,27 @@ int main()
             release_by(sequence, 4, false) == reference && release_by(sequence, 1, true) == reference;
     }
     check(grouping, "barrage and bombardment release the same events whatever the ticks per frame");
+    const auto release_both = [&](std::uint32_t step, bool repeat) {
+        Showcase showcase;
+        showcase.barrage = walk_line;
+        showcase.bombardment = storm;
+        showcase.bombardment->interval = 1;
+        ExplosionSystem effects(1024);
+        std::vector<std::pair<float, std::uint32_t>> order;
+        for (std::uint32_t tick = 0; tick <= 720; tick += step)
+        {
+            showcase.release_due(tick, world, true, effects);
+            if (repeat) showcase.release_due(tick, world, true, effects);
+            effects.start(tick);
+            auto started = newly_started(effects, tick);
+            std::sort(started.begin(), started.end(), [](const EffectSlot& a, const EffectSlot& b) { return a.seed < b.seed; });
+            for (const auto& slot : started) order.push_back({slot.origin.x, slot.seed});
+        }
+        return order;
+    };
+    const auto both = release_both(1, false);
+    check(both.size() > 721 && release_both(2, false) == both && release_both(3, false) == both && release_both(4, false) == both &&
+        release_both(1, true) == both, "a barrage and a bombardment together keep every impact's seed whatever the ticks per frame");
     {
         bool inside_disc = true;
         for (std::uint32_t k = 0; k < 400; ++k)
@@ -376,6 +406,7 @@ int main()
         check(inside_disc && !finished(storm) && impact_position(other, 3).x != impact_position(storm, 3).x,
             "a bombardment stays in its disc, never finishes, and its key changes its scatter");
     }
+    bool endless = true;
     const auto saturate = [&](std::uint32_t interval) {
         ImpactSequence sequence = storm;
         sequence.interval = interval;
@@ -388,6 +419,7 @@ int main()
             effects.start(tick);
             peak = std::max(peak, effects.active().size());
         }
+        endless &= !finished(sequence) && sequence.next == 3000 / interval;
         return std::pair{peak, effects.dropped()};
     };
     const auto steady = saturate(15);
@@ -397,6 +429,18 @@ int main()
     check(steady.first == effect_ticks(ExplosionPreset::small_he, SurfaceType::dirt) / 15 && steady.second == 0,
         "a bombardment every 15 ticks keeps lifetime / 15 effects and drops nothing");
     check(flood.first == 128 && flood.second > 0, "a bombardment every 3 ticks fills the 128 slots and drops the rest");
+    {
+        Showcase showcase;
+        showcase.bombardment = storm;
+        ExplosionSystem effects(128);
+        for (std::uint32_t tick = 0; tick < 3000; ++tick)
+        {
+            showcase.release_due(tick, world, true, effects);
+            effects.start(tick);
+        }
+        endless &= showcase.bombardment && showcase.bombardment->next == 3000 / storm.interval;
+    }
+    check(endless, "a bombardment releases every impact due and runs until stopped");
 
     {
         SlotPressure pressure;

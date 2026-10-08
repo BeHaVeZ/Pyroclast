@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 namespace pyroclast
@@ -38,7 +39,7 @@ struct Sandbox
     void start_group();
     void trigger_group();
     void clear();
-    void spawn(const Ray& ray);
+    void spawn(const Ray& ray, std::string_view source);
     void release_due();
     void update_aim(bool needed);
     void build_marks();

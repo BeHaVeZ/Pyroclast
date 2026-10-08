@@ -41,9 +41,9 @@ void Sandbox::clear()
     SDL_Log("Particle pool cleared.");
 }
 
-void Sandbox::spawn(const Ray& ray)
+void Sandbox::spawn(const Ray& ray, std::string_view source)
 {
-    showcase.fire(range.environment(), props_shown(), ray, showcase.count, "cursor", effects);
+    showcase.fire(range.environment(), props_shown(), ray, showcase.count, source, effects);
 }
 
 void Sandbox::report_drops(const SlotPressure::Report& report, bool before_clear) const
