@@ -17,6 +17,7 @@ struct FrameStatistics
     double p99;
     double p95;
     double max;
+    double worst_1_percent = 0;
 };
 
 FrameStatistics summarize(std::span<double> samples);

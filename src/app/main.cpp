@@ -120,14 +120,7 @@ public:
         ++counter_samples_;
         peak_alive_ = std::max(peak_alive_, counters.alive);
         alive_sum_ += counters.alive;
-        const std::uint32_t words[] = {counters.tick, counters.alive, counters.smoke, counters.light};
-        for (const auto word : words)
-        {
-            for (int byte = 0; byte < 4; ++byte)
-            {
-                checksum_ = (checksum_ ^ ((word >> (8 * byte)) & 0xff)) * 0x100000001b3ull;
-            }
-        }
+        checksum_ = pyroclast::counter_checksum(checksum_, counters);
     }
     int report(const Sandbox& sandbox, const pyroclast::ApplicationOptions& options, std::string_view gpu_name, int width, int height,
         bool overlay, const std::string& extra)
@@ -201,7 +194,7 @@ private:
     std::size_t counter_samples_ = 0;
     std::uint32_t peak_alive_ = 0;
     std::uint64_t alive_sum_ = 0;
-    std::uint64_t checksum_ = 0xcbf29ce484222325ull;
+    std::uint64_t checksum_ = pyroclast::checksum_basis;
     bool valid_ = true;
 };
 

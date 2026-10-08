@@ -11,6 +11,9 @@
 
 namespace pyroclast
 {
+inline constexpr std::uint64_t checksum_basis = 0xcbf29ce484222325ull;
+std::uint64_t counter_checksum(std::uint64_t checksum, const ParticleCounters& counters);
+
 class CounterLog final
 {
 public:

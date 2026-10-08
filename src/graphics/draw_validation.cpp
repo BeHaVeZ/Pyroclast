@@ -1,6 +1,7 @@
 #include "draw_validation.hpp"
 
 #include <algorithm>
+#include <cstdint>
 
 namespace pyroclast
 {
@@ -134,5 +135,12 @@ const char* validate_frame(const Frame& frame)
         }
     }
     return nullptr;
+}
+
+FrameWork count_work(const Frame& frame)
+{
+    FrameWork work{static_cast<std::uint32_t>(frame.dispatches.size()), static_cast<std::uint32_t>(frame.passes.size()), 0};
+    for (const auto& pass : frame.passes) work.draws += static_cast<std::uint32_t>(pass.draws.size());
+    return work;
 }
 }

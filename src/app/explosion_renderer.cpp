@@ -148,6 +148,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
         if (automatic) smoke_policy_.commit(half);
         else smoke_policy_.follow(half);
         half_smoke_ = half;
+        submitted_work_ = count_work(frame);
     }
     return result;
 }

@@ -50,6 +50,39 @@ int main()
         std::fprintf(stderr, "FAIL: p95 and max (20: %.1f %.1f; 1000: %.1f %.1f %.1f)\n", tail.p95, tail.max, large.p95, large.p99, large.max);
         ++failures;
     }
+    auto worst_600 = sequence(600);
+    auto worst_100 = sequence(100);
+    auto worst_101 = sequence(101);
+    auto worst_1000 = sequence(1000);
+    std::vector<double> worst_single{4.25};
+    std::vector<double> six_spikes(600, 2.0);
+    for (int index = 0; index < 6; ++index) six_spikes[static_cast<std::size_t>(index) * 100] = 9.0;
+    if (summarize(worst_600).worst_1_percent != 597.5 || summarize(worst_100).worst_1_percent != 100 ||
+        summarize(worst_101).worst_1_percent != 100.5 || summarize(worst_1000).worst_1_percent != 995.5 ||
+        summarize(worst_single).worst_1_percent != 4.25 || summarize(six_spikes).worst_1_percent != 9.0)
+    {
+        std::fputs("FAIL: the 1% worst is the mean of the slowest ceil(n/100) samples\n", stderr);
+        ++failures;
+    }
+
+    pyroclast::ParticleCounters first_record;
+    first_record.tick = 1;
+    first_record.alive = 2;
+    first_record.smoke = 3;
+    first_record.light = 4;
+    std::uint64_t expected_checksum = 0xcbf29ce484222325ull;
+    for (const std::uint32_t word : {1u, 2u, 3u, 4u})
+    {
+        for (int byte = 0; byte < 4; ++byte) expected_checksum = (expected_checksum ^ ((word >> (8 * byte)) & 0xff)) * 0x100000001b3ull;
+    }
+    first_record.debris = 99;
+    if (pyroclast::counter_checksum(pyroclast::checksum_basis, first_record) != expected_checksum ||
+        pyroclast::counter_checksum(pyroclast::checksum_basis, {}) == expected_checksum)
+    {
+        std::fputs("FAIL: counter_checksum folds tick, alive, smoke and light, not debris\n", stderr);
+        ++failures;
+    }
+    std::printf("counter checksum of {1, 2, 3, 4}: %016llx\n", static_cast<unsigned long long>(expected_checksum));
 
     pyroclast::TickRate rate;
     if (rate.rate() != 0)

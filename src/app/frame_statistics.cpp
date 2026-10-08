@@ -17,7 +17,10 @@ FrameStatistics summarize(std::span<double> samples)
     std::sort(samples.begin(), samples.end());
     const double median = count % 2 == 1 ? samples[count / 2] : (samples[count / 2 - 1] + samples[count / 2]) * 0.5;
     const auto at_least = [&samples, count](std::size_t percent) { return samples[(count * percent + 99) / 100 - 1]; };
-    return {average, median, at_least(99), at_least(95), samples.back()};
+    const auto worst = (count + 99) / 100;
+    double tail = 0;
+    for (auto index = count - worst; index < count; ++index) tail += samples[index];
+    return {average, median, at_least(99), at_least(95), samples.back(), tail / static_cast<double>(worst)};
 }
 
 void TickRate::add(double seconds, std::uint32_t tick)

@@ -4,6 +4,16 @@
 
 namespace pyroclast
 {
+std::uint64_t counter_checksum(std::uint64_t checksum, const ParticleCounters& counters)
+{
+    const std::uint32_t words[] = {counters.tick, counters.alive, counters.smoke, counters.light};
+    for (const auto word : words)
+    {
+        for (int byte = 0; byte < 4; ++byte) checksum = (checksum ^ ((word >> (8 * byte)) & 0xff)) * 0x100000001b3ull;
+    }
+    return checksum;
+}
+
 void CounterLog::add_frame(const Frame& frame)
 {
     rows_.push_back({frame, std::nullopt, std::nullopt, 0});

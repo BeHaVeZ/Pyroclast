@@ -8,6 +8,7 @@
 #include "../simulation/explosion_system.hpp"
 #include "../simulation/particle_system.hpp"
 #include "../simulation/wind.hpp"
+#include "../graphics/draw_validation.hpp"
 
 namespace pyroclast
 {
@@ -31,6 +32,7 @@ public:
         const Camera& camera, int width, int height, double elapsed_seconds, const FrameOptions& options);
     std::uint32_t lights() const { return lights_; }
     bool half_smoke() const { return half_smoke_; }
+    const FrameWork& submitted_work() const { return submitted_work_; }
     const SmokeResolutionPolicy& smoke_policy() const { return smoke_policy_; }
 
 private:
@@ -43,6 +45,7 @@ private:
     std::unique_ptr<GraphicsPipeline> composite_;
     std::uint32_t lights_ = 0;
     bool half_smoke_ = false;
+    FrameWork submitted_work_;
     SmokeResolutionPolicy smoke_policy_;
 };
 }

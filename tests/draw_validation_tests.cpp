@@ -155,5 +155,17 @@ int main()
     check("a readback of a partial word", with_readback({&arguments, 0, 6}), "readback");
     check("an unaligned readback", with_readback({&arguments, 2, 16}), "readback");
     check("depth writes against read-only depth", validate({opaque, {&scene, {}, {&terrain, 1}, nullptr, true, &depth, false}, present}), "depth-writing");
+
+    const std::vector<std::byte> no_constants;
+    const auto counted = count_work({std::span(&dispatch, 1), two_passes, {}, no_constants});
+    const auto drawn = count_work({{}, one_pass, {}, no_constants});
+    const std::vector<Pass> clears{{}, {}};
+    const auto cleared = count_work({{}, clears, {}, no_constants});
+    if (counted.dispatches != 1 || counted.passes != 2 || counted.draws != 2 || drawn.dispatches != 0 || drawn.passes != 1 ||
+        drawn.draws != 2 || cleared.passes != 2 || cleared.draws != 0)
+    {
+        std::fputs("FAIL: count_work counts dispatches, passes and draws\n", stderr);
+        ++failures;
+    }
     return failures == 0 ? 0 : 1;
 }
