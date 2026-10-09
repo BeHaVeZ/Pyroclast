@@ -33,7 +33,7 @@ struct TestCase
     std::string_view scenario;
     bool effect_lines = false;
     pyroclast::ExplosionPreset preset = pyroclast::ExplosionPreset::small_he;
-    std::uint32_t layer_mask = pyroclast::particle_layout::full_mask;
+    std::uint32_t layer_mask = pyroclast::realism_layout::realism_full_mask;
     pyroclast::WindSettings wind;
 };
 }
@@ -67,26 +67,26 @@ int main()
         {"invalid preset", {"--preset=nuke"}, d3d12, false, "Expected --preset=small-impact, small-he, artillery-he, heavy, fuel-fire, dust-blast or stress-test"},
         {"duplicate preset", {"--preset=heavy", "--preset=heavy"}, d3d12, false, "only once"},
         {"disable layers", {"--disable=debris,lights,smoke"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {}, {}, {},
-            false, pyroclast::ExplosionPreset::small_he, pyroclast::particle_layout::full_mask & ~((1u << 6) | (1u << 7) | (1u << 1))},
+            false, pyroclast::ExplosionPreset::small_he, pyroclast::realism_layout::realism_full_mask & ~((1u << 6) | (1u << 7) | (1u << 1))},
         {"disable smoke features", {"--disable=curl,vortex,gusts,shading,shadow,emission"}, d3d12, false, {}, false, 1, {}, false, {}, {},
-            false, {}, false, {}, {}, {}, {}, false, pyroclast::ExplosionPreset::small_he, pyroclast::particle_layout::full_mask & ~0x3f00u},
+            false, {}, false, {}, {}, {}, {}, false, pyroclast::ExplosionPreset::small_he, pyroclast::realism_layout::realism_full_mask & ~0x3f00u},
         {"disable props", {"--disable=props"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {}, {}, {},
-            false, pyroclast::ExplosionPreset::small_he, pyroclast::particle_layout::full_mask & ~(1u << 14)},
+            false, pyroclast::ExplosionPreset::small_he, pyroclast::realism_layout::realism_full_mask & ~(1u << 14)},
         {"disable collision", {"--disable=collision"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {}, {}, {},
-            false, pyroclast::ExplosionPreset::small_he, pyroclast::particle_layout::full_mask & ~(1u << 15)},
+            false, pyroclast::ExplosionPreset::small_he, pyroclast::realism_layout::realism_full_mask & ~(1u << 15)},
         {"disable the props' interaction", {"--disable=props,collision,deflection"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false,
-            {}, false, {}, {}, {}, {}, false, pyroclast::ExplosionPreset::small_he, 0x3fffu},
+            {}, false, {}, {}, {}, {}, false, pyroclast::ExplosionPreset::small_he, pyroclast::realism_layout::realism_full_mask & ~0x1c000u},
         {"wind", {"--wind=6.5,-45,0.8"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {}, {}, {}, false,
-            pyroclast::ExplosionPreset::small_he, pyroclast::particle_layout::full_mask, {6.5f, -45.0f, 0.8f}},
+            pyroclast::ExplosionPreset::small_he, pyroclast::realism_layout::realism_full_mask, {6.5f, -45.0f, 0.8f}},
         {"wind too strong", {"--wind=41,0,0"}, d3d12, false, "Expected --wind"},
         {"wind too gusty", {"--wind=5,0,1.5"}, d3d12, false, "Expected --wind"},
         {"wind with two values", {"--wind=5,0"}, d3d12, false, "Expected --wind"},
         {"wind with four values", {"--wind=5,0,0,1"}, d3d12, false, "Expected --wind"},
         {"wind not a number", {"--wind=fast,0,0"}, d3d12, false, "Expected --wind"},
         {"wind heading wraps", {"--wind=2,450,0"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {}, {}, {}, false,
-            pyroclast::ExplosionPreset::small_he, pyroclast::particle_layout::full_mask, {2.0f, 90.0f, 0.0f}},
+            pyroclast::ExplosionPreset::small_he, pyroclast::realism_layout::realism_full_mask, {2.0f, 90.0f, 0.0f}},
         {"huge wind heading wraps", {"--wind=2,3e38,0"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {}, {}, {}, false,
-            pyroclast::ExplosionPreset::small_he, pyroclast::particle_layout::full_mask,
+            pyroclast::ExplosionPreset::small_he, pyroclast::realism_layout::realism_full_mask,
             {2.0f, std::remainder(3e38f, 360.0f), 0.0f}},
         {"infinite wind", {"--wind=inf,0,0"}, d3d12, false, "Expected --wind"},
         {"duplicate wind", {"--wind=1,0,0", "--wind=1,0,0"}, d3d12, false, "only once"},
@@ -315,10 +315,12 @@ int main()
         ++failures;
     }
 
-    const char* evicting[] = {"--slot-policy=evict-oldest"};
+    const char* evicting[] = {"--realism=off", "--slot-policy=evict-oldest"};
+    const char* legacy[] = {"--realism=off"};
     const char* bad_policy[] = {"--slot-policy=random"};
     if (pyroclast::parse_command_line(evicting).options.scalability.slot_policy != pyroclast::SlotPolicy::evict_oldest ||
-        pyroclast::parse_command_line({}).options.scalability.slot_policy != pyroclast::SlotPolicy::drop_new ||
+        pyroclast::parse_command_line({}).options.scalability.slot_policy != pyroclast::SlotPolicy::graduate_oldest ||
+        pyroclast::parse_command_line(legacy).options.scalability.slot_policy != pyroclast::SlotPolicy::drop_new ||
         pyroclast::parse_command_line(bad_policy).error.find("Expected --slot-policy") == std::string::npos)
     {
         std::fputs("FAIL: --slot-policy\n", stderr);
@@ -442,17 +444,18 @@ int main()
             off.options.layer_mask == pyroclast::particle_layout::full_mask && !pyroclast::realism_enabled(off.options.layer_mask) &&
             without_linger.error.empty() && without_linger.options.layer_mask == (realism::realism_full_mask & ~linger & ~2u) &&
             legacy_parts.error.empty() && legacy_parts.options.layer_mask == (realism::realism_full_mask & ~(1u << pyroclast::particle_layout::props_mask_bit)) &&
-            !pyroclast::realism_enabled(pyroclast::parse_command_line({}).options.layer_mask) && pyroclast::disable_bit("linger") == realism::linger_mask_bit &&
+            pyroclast::parse_command_line({}).options.layer_mask == realism::realism_full_mask && pyroclast::disable_bit("linger") == realism::linger_mask_bit &&
             (realism::realism_full_mask & pyroclast::particle_layout::full_mask) == pyroclast::particle_layout::full_mask;
         const auto refused = [&parsed](std::initializer_list<const char*> arguments, std::string_view message) {
             return parsed(arguments).error.find(message) != std::string::npos;
         };
-        const bool rules = refused({"--disable=linger"}, "requires --realism=on") && refused({"--realism=off", "--disable=linger"}, "requires --realism=on") &&
+        const bool rules = parsed({"--disable=linger"}).error.empty() && refused({"--realism=off", "--disable=linger"}, "which --realism=off turns off") &&
             refused({"--realism=on", "--slot-policy=evict-oldest"}, "evict-oldest") && refused({"--realism=maybe"}, "Expected --realism=on or off") &&
-            refused({"--realism=on", "--realism=on"}, "only once") && parsed({"--slot-policy=evict-oldest"}).error.empty() &&
-            refused({"--slot-policy=graduate-oldest"}, "requires --realism=on") && refused({"--linger=60"}, "requires --realism=on") &&
-            refused({"--disable=haze"}, "requires --realism=on") && refused({"--disable=rise,shear"}, "requires --realism=on") &&
-            refused({"--disable=waves"}, "requires --realism=on") && refused({"--humidity=90"}, "requires --realism=on") &&
+            refused({"--realism=on", "--realism=on"}, "only once") && parsed({"--realism=off", "--slot-policy=evict-oldest"}).error.empty() &&
+            refused({"--slot-policy=evict-oldest"}, "evict-oldest") && parsed({"--linger=60"}).options.linger_seconds == 60 &&
+            refused({"--realism=off", "--slot-policy=graduate-oldest"}, "which --realism=off turns off") && refused({"--realism=off", "--linger=60"}, "which --realism=off turns off") &&
+            refused({"--realism=off", "--disable=haze"}, "which --realism=off turns off") && refused({"--realism=off", "--disable=rise,shear"}, "which --realism=off turns off") &&
+            refused({"--realism=off", "--disable=waves"}, "which --realism=off turns off") && refused({"--realism=off", "--humidity=90"}, "which --realism=off turns off") &&
             refused({"--realism=on", "--humidity=101"}, "--humidity=P") && refused({"--realism=on", "--humidity=50", "--humidity=60"}, "only once") &&
             parsed({"--realism=on", "--humidity=95"}).options.humidity_percent == 95 && parsed({"--realism=on"}).options.humidity_percent == 80 &&
             parsed({"--realism=on", "--disable=waves,skirt,condensation,push,shake"}).options.layer_mask ==
@@ -465,7 +468,8 @@ int main()
             on.options.scalability.slot_policy == pyroclast::SlotPolicy::graduate_oldest && on.options.linger_seconds == 75 &&
             parsed({"--realism=on", "--slot-policy=drop-new"}).options.scalability.slot_policy == pyroclast::SlotPolicy::drop_new &&
             parsed({"--realism=on", "--linger=300"}).options.linger_seconds == 300 &&
-            pyroclast::parse_command_line({}).options.scalability.slot_policy == pyroclast::SlotPolicy::drop_new;
+            parsed({"--realism=off"}).options.scalability.slot_policy == pyroclast::SlotPolicy::drop_new &&
+            pyroclast::parse_command_line({}).options.scalability.slot_policy == pyroclast::SlotPolicy::graduate_oldest;
         if (!accepted || !rules)
         {
             std::fprintf(stderr, "FAIL: --realism (accepted %d, rules %d)\n", accepted, rules);

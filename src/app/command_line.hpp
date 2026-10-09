@@ -72,7 +72,7 @@ struct BenchmarkWorkload
     bool borderless = false;
 };
 inline constexpr WindowSize realism_benchmark_window{1920, 1080};
-inline constexpr std::array<BenchmarkWorkload, 9> benchmark_workloads{{
+inline constexpr std::array<BenchmarkWorkload, 10> benchmark_workloads{{
     {"single", "single", ExplosionPreset::small_he, RangeView::overview},
     {"simultaneous-10", "grid-10", ExplosionPreset::small_he, RangeView::overview},
     {"simultaneous-50", "grid-50", ExplosionPreset::small_he, RangeView::overview},
@@ -83,9 +83,12 @@ inline constexpr std::array<BenchmarkWorkload, 9> benchmark_workloads{{
     {"linger-barrage", "linger-barrage", ExplosionPreset::artillery_he, RangeView::overview, realism_benchmark_window,
         realism_layout::realism_full_mask, {2, 270, 0.3f}, true},
     {"linger-far", "linger-barrage", ExplosionPreset::artillery_he, RangeView::far, realism_benchmark_window,
-        realism_layout::realism_full_mask, {2, 300, 0.3f}, true}}};
+        realism_layout::realism_full_mask, {2, 300, 0.3f}, true},
+    {"linger-ground", "linger-barrage", ExplosionPreset::artillery_he, RangeView::ground, realism_benchmark_window,
+        realism_layout::realism_full_mask, {2, 270, 0.3f}, true}}};
 inline constexpr std::string_view benchmark_names =
-    "single, simultaneous-10, simultaneous-50, simultaneous-100, sustained-barrage, smoke-field, accumulation, linger-barrage, linger-far";
+    "single, simultaneous-10, simultaneous-50, simultaneous-100, sustained-barrage, smoke-field, accumulation, linger-barrage, linger-far, "
+    "linger-ground";
 inline constexpr std::uint32_t benchmark_warmup_frames = 120;
 constexpr const BenchmarkWorkload* benchmark_workload(std::string_view name)
 {

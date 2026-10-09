@@ -95,12 +95,12 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     for (std::size_t rank = 0; rank < order.size(); ++rank) constants.effect_order[rank / 4][rank % 4] = order[rank];
     std::array<PointLight, particle_layout::maximum_lights> lights;
     const bool lit = ((options.layer_mask >> particle_layout::lights_mask_bit) & 1) != 0;
-    const auto light_count = lit ? select_lights(slots, active, particles.tick() + work.steps, lights) : 0;
+    const auto light_count = lit ? select_lights(slots, active, particles.tick() + work.steps, lights, realism) : 0;
     for (std::uint32_t index = 0; index < light_count; ++index)
     {
         const auto& light = lights[index];
         constants.light_positions[index] = {light.position.x, light.position.y, light.position.z, light.radius};
-        constants.light_colors[index] = {light.color.x, light.color.y, light.color.z, 0};
+        constants.light_colors[index] = {light.color.x, light.color.y, light.color.z, light.source_radius};
     }
     constants.light_state = {light_count, options.layer_mask, 0, 0};
     lights_ = light_count;
@@ -125,6 +125,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
             constants.blast_slots[entry / 4] |= blasts.slots[entry] << ((entry % 4) * 8);
             constants.blast_rings[entry] = blasts.rings[entry];
             constants.blast_fronts[entry] = blasts.fronts[entry];
+            constants.blast_returns[entry] = blasts.returns[entry];
         }
     }
     const bool waves = blasts.count > 0 && ((options.layer_mask >> realism_layout::waves_mask_bit) & 1) != 0;

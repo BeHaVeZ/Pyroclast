@@ -8,9 +8,11 @@ SamplerState linear_clamp : register(s0);
 static const float maximum_wave_pixels = 24;
 static const float air_fade_metres = 10;
 
-float2 ring_offset(float2 pixel, float3 at, float3 outward, float x, float width, float amplitude, float view_depth, float cap)
+float2 ring_offset(float2 pixel, float3 at, float3 outward, float x, float width, float amplitude, float view_depth, float cap, float gain)
 {
-    float pixels = amplitude * frame.projection.x / max(view_depth, 0.1) * (-x / width) * exp(-x * x / (2 * width * width));
+    float edge = max(0.15 * width, 1.5 * view_depth / max(frame.projection.x, 1e-3));
+    float profile = (x <= 0 ? exp(x / width) : 0) - width / (edge * 2.5066283) * exp(-x * x / (2 * edge * edge));
+    float pixels = gain * 0.6 * amplitude * frame.projection.x / max(view_depth, 0.1) * profile;
     float4 clip = mul(frame.view_projection, float4(at + outward * (0.01 * view_depth), 1));
     if (clip.w < 1e-3) return 0;
     float2 direction = (clip.xy / clip.w * float2(0.5, -0.5) + 0.5) * frame.viewport.xy - pixel;
@@ -47,9 +49,9 @@ float2 wave_offset(float2 pixel)
             float3 offset = point_behind - origin;
             float reach = length(offset);
             float x = reach - radius;
-            if (abs(x) < 4 * width && reach > 1e-3)
+            if (x > -5 * width && x < 4 * width && reach > 1e-3)
             {
-                total += ring_offset(pixel, point_behind, offset / reach, x, width, amplitude, surface_depth, cap);
+                total += ring_offset(pixel, point_behind, offset / reach, x, width, amplitude, surface_depth, cap, 1);
             }
         }
         float closest = dot(origin - camera, ray);
@@ -60,9 +62,10 @@ float2 wave_offset(float2 pixel)
             float reach = length(offset);
             float x = reach - radius;
             float fade = saturate(closest * along / air_fade_metres) * saturate((nearest.y - origin.y + 0.5) / 0.5);
-            if (fade > 0 && abs(x) < 4 * width && reach > 1e-3)
+            if (fade > 0 && x > -5 * width && x < 4 * width && reach > 1e-3)
             {
-                total += fade * ring_offset(pixel, nearest, offset / reach, x, width, amplitude, closest * along, cap);
+                float limb = min(sqrt(2 * radius / max(width, 1e-3)), 2.5);
+                total += ring_offset(pixel, nearest, offset / reach, x, width, amplitude, closest * along, cap, fade * limb);
             }
         }
     }

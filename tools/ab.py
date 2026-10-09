@@ -23,6 +23,9 @@ benchmark:NAME, which is what the CSV's scenario column and the case labels show
 
 --a-args and --b-args append flags to every launch of that side, so one build can be compared
 under two settings (pass the same directory to --a and --b), e.g. a format or a feature toggle.
+Builds from M25 on run the realism model by default: a fixed-state or scenario A/B of the legacy
+model against them needs --realism=off on their side (builds before M22 do not know the flag, and
+--benchmarks refuse it; the seven M20 benchmarks run the legacy model on every build).
 Write them with "=" (--a-args=--scene-format=rgba8): argparse reads a separate value that starts
 with "--" as another option. --a-smoke and --b-smoke replace that side's --smoke-resolution value
 (passed verbatim, e.g. auto); the case keeps its --smoke label and the CSV's smoke_arg records the value.

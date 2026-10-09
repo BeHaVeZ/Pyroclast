@@ -30,10 +30,18 @@ struct BlastList
     std::array<std::uint32_t, realism_layout::maximum_blasts> slots{};
     std::array<float4, realism_layout::maximum_blasts> rings{};
     std::array<float4, realism_layout::maximum_blasts> fronts{};
+    std::array<float4, realism_layout::maximum_blasts> returns{};
 };
 BlastList select_blasts(const ExplosionSystem& effects, std::span<const BlastParameters> classes, std::uint32_t tick_before, std::uint32_t tick_drawn,
     float humidity);
 float wilson_opacity(const BlastParameters& blast, float ticks, float humidity);
+struct WilsonShell
+{
+    float outer = 0;
+    float inner = 0;
+    float opacity = 0;
+};
+WilsonShell wilson_shell(const BlastParameters& blast, float ticks, float humidity);
 
 float blast_arrival_ticks(const BlastParameters& blast, float metres);
 float shake_angle(const ExplosionSystem& effects, std::span<const BlastParameters> classes, float3 camera, std::uint32_t tick);

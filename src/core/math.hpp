@@ -1,7 +1,9 @@
 #pragma once
 
 #include <array>
+#include <bit>
 #include <cmath>
+#include <cstdint>
 #include <optional>
 
 namespace pyroclast
@@ -37,6 +39,20 @@ constexpr float3& operator+=(float3& a, float3 b) { return a = a + b; }
 constexpr float dot(float3 a, float3 b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
 constexpr float3 cross(float3 a, float3 b) { return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x}; }
 inline float length(float3 a) { return std::sqrt(dot(a, a)); }
+
+inline std::uint32_t half_bits(float value)
+{
+    const auto bits = std::bit_cast<std::uint32_t>(value);
+    const std::uint32_t sign = (bits >> 16) & 0x8000u;
+    const int exponent = static_cast<int>((bits >> 23) & 0xffu) - 127 + 15;
+    if (exponent <= 0) return sign;
+    if (exponent >= 31) return sign | 0x7bffu;
+    const std::uint32_t mantissa = bits & 0x7fffffu;
+    std::uint32_t half = sign | (static_cast<std::uint32_t>(exponent) << 10) | (mantissa >> 13);
+    const std::uint32_t rest = mantissa & 0x1fffu;
+    if (rest > 0x1000u || (rest == 0x1000u && (half & 1u) != 0)) ++half;
+    return half;
+}
 inline float3 normalize(float3 a) { return a / length(a); }
 constexpr float4 operator*(float4 a, float s) { return {a.x * s, a.y * s, a.z * s, a.w * s}; }
 constexpr float4 operator+(float4 a, float4 b) { return {a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w}; }

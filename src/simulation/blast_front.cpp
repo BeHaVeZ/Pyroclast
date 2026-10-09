@@ -1,6 +1,7 @@
 #include "blast_front.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <numbers>
 
@@ -129,11 +130,21 @@ std::uint32_t blast_arrival_tick(const BlastParameters& blast, std::uint32_t rad
 
 float wilson_opacity(const BlastParameters& blast, float ticks, float humidity)
 {
-    const float first = blast.wilson.y;
-    const float last = blast.wilson.z;
-    if (blast.wilson.x <= 0 || ticks <= first || ticks >= last) return 0;
-    const float window = std::sin(std::numbers::pi_v<float> * (ticks - first) / (last - first));
-    return blast.wilson.x * window * std::clamp((humidity - 0.7f) / 0.2f, 0.0f, 1.0f);
+    if (blast.wilson.x <= 0 || ticks <= 0) return 0;
+    const float rising = std::clamp(ticks / std::max(blast.wilson.y, 1e-3f), 0.0f, 1.0f);
+    return blast.wilson.x * rising * std::clamp((humidity - 0.7f) / 0.2f, 0.0f, 1.0f);
+}
+
+WilsonShell wilson_shell(const BlastParameters& blast, float ticks, float humidity)
+{
+    WilsonShell shell;
+    if (blast.wilson.x <= 0 || ticks <= 0) return shell;
+    shell.outer = std::min(0.9f * blast_radius(blast, ticks), blast.wilson.w);
+    const float lagged = ticks - blast.wilson.z;
+    shell.inner = lagged <= 0 ? 0.0f : std::min(0.9f * blast_radius(blast, lagged), shell.outer);
+    const float clearing = std::clamp((shell.outer - shell.inner) / (0.3f * shell.outer), 0.0f, 1.0f);
+    shell.opacity = shell.outer - shell.inner > 0.02f * shell.outer ? wilson_opacity(blast, ticks, humidity) * clearing : 0.0f;
+    return shell;
 }
 
 float push_speed(const BlastParameters& blast, float metres)
@@ -155,10 +166,8 @@ float blast_arrival_ticks(const BlastParameters& blast, float metres)
 
 float shake_angle(const ExplosionSystem& effects, std::span<const BlastParameters> classes, float3 camera, std::uint32_t tick)
 {
-    constexpr float per_overpressure = 0.05f;
+    constexpr float per_overpressure = 0.04f;
     constexpr float largest = 0.02f;
-    constexpr float decay_seconds = 0.25f;
-    constexpr float frequency = 9.0f;
     constexpr float window_seconds = 1.5f;
     float angle = 0;
     const auto slots = effects.slots();
@@ -171,8 +180,10 @@ float shake_angle(const ExplosionSystem& effects, std::span<const BlastParameter
         const float distance = std::sqrt(dot(offset, offset));
         const float since = (static_cast<float>(tick - slot.start_tick) - blast_arrival_ticks(blast, distance)) / 60.0f;
         if (since < 0 || since > window_seconds) continue;
-        const float amplitude = std::min(per_overpressure * blast_overpressure(blast, distance), largest);
-        angle += amplitude * std::exp(-since / decay_seconds) * std::sin(2 * std::numbers::pi_v<float> * frequency * since);
+        const float amplitude = std::min(per_overpressure * std::sqrt(blast_overpressure(blast, distance)), largest);
+        const float sway = 0.7f * std::exp(-since / 0.35f) * std::sin(2 * std::numbers::pi_v<float> * 4.5f * since);
+        const float rattle = 0.3f * std::exp(-since / 0.08f) * std::sin(2 * std::numbers::pi_v<float> * 19.0f * since);
+        angle += amplitude * (sway + rattle);
     }
     return std::clamp(angle, -largest, largest);
 }
@@ -190,7 +201,7 @@ BlastList select_blasts(const ExplosionSystem& effects, std::span<const BlastPar
     {
         const auto& slot = slots[index];
         if (slot.effect_class >= classes.size() || tick_drawn < slot.start_tick) continue;
-        if (tick_drawn - slot.start_tick >= classes[slot.effect_class].wave_ticks) continue;
+        if (tick_drawn - slot.start_tick >= classes[slot.effect_class].wave_ticks + realism_layout::push_return_ticks) continue;
         std::uint32_t at = count;
         while (at > 0 && newer(index, chosen[at - 1]))
         {
@@ -208,12 +219,22 @@ BlastList select_blasts(const ExplosionSystem& effects, std::span<const BlastPar
         const auto& blast = classes[slot.effect_class];
         const float ticks = static_cast<float>(tick_drawn - slot.start_tick);
         const float radius = blast_radius(blast, ticks);
-        const float before = tick_before < slot.start_tick ? 0.0f : blast_radius(blast, static_cast<float>(tick_before - slot.start_tick));
+        const auto front_at = [&blast, &slot](std::uint32_t tick, std::uint32_t lag) {
+            return blast_radius(blast, tick < slot.start_tick + lag ? 0.0f : static_cast<float>(tick - slot.start_tick - lag));
+        };
+        const float before = tick_before < slot.start_tick ? 0.0f : front_at(tick_before, 0);
+        const bool drawn = tick_drawn - slot.start_tick < blast.wave_ticks;
         list.slots[entry] = chosen[entry];
-        list.rings[entry] = {radius, blast.wave.x * blast_overpressure(blast, radius), blast.wave.y + blast.wave.z * radius,
-            wilson_opacity(blast, ticks, humidity)};
-        const float shell = blast.wilson.x > 0 ? std::min(0.85f * radius, blast.wilson.w) : 0.0f;
-        list.fronts[entry] = {before, push_speed(blast, std::max(before, 0.01f)), push_speed(blast, radius), shell};
+        const auto shell = wilson_shell(blast, ticks, humidity);
+        list.rings[entry] = {radius, drawn ? blast.wave.x * std::pow(blast_overpressure(blast, radius), blast.wave.w) : 0.0f, blast.wave.y + blast.wave.z * radius,
+            shell.opacity};
+        const float return_before = front_at(tick_before, realism_layout::push_return_ticks);
+        const float return_after = front_at(tick_drawn, realism_layout::push_return_ticks);
+        list.returns[entry] = {return_before, push_speed(blast, std::max(return_before, 0.01f)), push_speed(blast, std::max(return_after, 0.01f)),
+            return_after};
+        const std::uint32_t radii = shell.opacity > 0 ? half_bits(shell.outer) | (half_bits(shell.inner) << 16) : 0u;
+        const float pushing = drawn ? 1.0f : 0.0f;
+        list.fronts[entry] = {before, pushing * push_speed(blast, std::max(before, 0.01f)), pushing * push_speed(blast, radius), std::bit_cast<float>(radii)};
     }
     return list;
 }

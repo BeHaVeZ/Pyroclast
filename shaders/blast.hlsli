@@ -63,21 +63,31 @@ float blast_overpressure(ByteAddressBuffer classes, uint effect_class, float met
     return near.overpressure * exp2(exponent * log2(clamped / near_radius));
 }
 
-float3 blast_push(float3 position, uint mask, uint own_slot)
+float3 blast_push(float3 position, uint mask, uint own_slot, float age)
 {
     float3 push = 0;
     if (!mask_enabled(mask, push_mask_bit)) return push;
+    bool returns = age >= float(push_return_ticks) / 60.0;
     for (uint index = 0; index < blast_count(); ++index)
     {
         uint slot = blast_slot(index);
         if (slot == own_slot) continue;
-        float before = frame.blast_fronts[index].x;
-        float after = frame.blast_rings[index].x;
         float3 offset = position - frame.effect_origins[slot].xyz;
         float reach = length(offset);
-        if (reach <= before || reach > after || reach < 1e-3) continue;
-        float share = (reach - before) / max(after - before, 1e-3);
-        push += offset / reach * lerp(frame.blast_fronts[index].y, frame.blast_fronts[index].z, share);
+        if (reach < 1e-3) continue;
+        float before = frame.blast_fronts[index].x;
+        float after = frame.blast_rings[index].x;
+        if (reach > before && reach <= after)
+        {
+            float share = (reach - before) / max(after - before, 1e-3);
+            push += offset / reach * lerp(frame.blast_fronts[index].y, frame.blast_fronts[index].z, share);
+        }
+        float4 back = frame.blast_returns[index];
+        if (returns && reach > back.x && reach <= back.w)
+        {
+            float share = (reach - back.x) / max(back.w - back.x, 1e-3);
+            push -= offset / reach * lerp(back.y, back.z, share);
+        }
     }
     return push;
 }

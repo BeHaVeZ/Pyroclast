@@ -109,7 +109,7 @@ struct RealismParameters
     std::uint32_t graduation_ticks = 0;
     std::uint32_t residual_records = 0;
     std::uint32_t residual_groups = 0;
-    std::uint32_t reserved = 0;
+    float late_dilution = 0;
     float4 rise{};
     std::array<RealismLayer, 3> layers{};
     float4 spread{};
@@ -138,6 +138,19 @@ struct BlastParameters
 static_assert(sizeof(BlastKnot) == 16 && sizeof(BlastParameters) == 320 && offsetof(BlastParameters, wave) == 256 &&
     offsetof(BlastParameters, skirt) == 272 && offsetof(BlastParameters, wilson) == 288 && offsetof(BlastParameters, wave_ticks) == 304);
 
+struct RealismLook
+{
+    float3 smoke_soot;
+    float young_seconds = 0;
+    float3 plume_soot;
+    float boost = 0;
+    float boost_seconds = 1;
+    float jet_speed = 0;
+    float vortex_scale = 1;
+    float charge_scale = 0;
+};
+static_assert(sizeof(RealismLook) == 48);
+
 struct EventVariation
 {
     std::uint32_t key = 0;
@@ -155,10 +168,11 @@ struct EffectClass
     FlowParameters flow;
     RealismParameters realism;
     BlastParameters blast;
-    std::array<std::uint8_t, particle_layout::class_stride - realism_layout::class_blast_offset - sizeof(BlastParameters)> padding{};
+    RealismLook look;
 };
 static_assert(sizeof(EffectClass) == particle_layout::class_stride && offsetof(EffectClass, flow) == particle_layout::class_flow_offset &&
     offsetof(EffectClass, realism) == realism_layout::class_realism_offset && offsetof(EffectClass, blast) == realism_layout::class_blast_offset &&
+    offsetof(EffectClass, look) == realism_layout::class_look_offset &&
     particle_layout::slab_groups <= particle_layout::class_layers_offset);
 
 inline constexpr std::string_view preset_names = "small-impact, small-he, artillery-he, heavy, fuel-fire, dust-blast, stress-test";
@@ -191,7 +205,9 @@ struct LightCurve
     float3 color{1, 1, 1};
     float radius = 0;
     float height = 0;
+    float source_radius = 0;
 };
 LightCurve light_curve(ExplosionPreset preset);
+LightCurve realism_light_curve(ExplosionPreset preset);
 float light_intensity(const LightCurve& curve, float seconds);
 }

@@ -256,7 +256,7 @@ int main()
             {
                 if (effect.layers[index].count == 0) continue;
                 const auto& albedo = effect.realism.layers[index].albedo;
-                palettes = palettes && albedo.x > 0 && albedo.x < 1 && albedo.w == 1 && (index != 0 || effect.realism.layers[index].settling > 0);
+                palettes = palettes && albedo.x > 0 && albedo.x < 1 && albedo.w > 0 && (index != 0 || effect.realism.layers[index].settling > 0);
             }
         }
         check(heights, "stabilization heights: 15.6, 27.7, 45, 73.6, 100, 20 and 54.4 m by preset");
@@ -341,8 +341,20 @@ int main()
         const auto heavy_blast = make_effect_class(ExplosionPreset::heavy, SurfaceType::dirt).blast;
         const auto artillery_blast = make_effect_class(ExplosionPreset::artillery_he, SurfaceType::dirt).blast;
         check(wilson_opacity(heavy_blast, 8.0f, 0.8f) > 0.29f && wilson_opacity(heavy_blast, 8.0f, 0.95f) == wilson_opacity(heavy_blast, 8.0f, 1.0f) &&
-            wilson_opacity(heavy_blast, 8.0f, 0.7f) == 0 && wilson_opacity(heavy_blast, 24, 0.95f) == 0 && wilson_opacity(heavy_blast, 1, 0.95f) == 0 &&
-            wilson_opacity(artillery_blast, 8.0f, 1.0f) == 0, "a Wilson shell only around heavy charges, only above 70% humidity, inside its window");
+            wilson_opacity(heavy_blast, 8.0f, 0.7f) == 0 && wilson_opacity(heavy_blast, 0, 0.95f) == 0 &&
+            wilson_opacity(artillery_blast, 8.0f, 1.0f) == 0, "a Wilson shell only around heavy charges, only above 70% humidity");
+        bool grows = true;
+        bool clears = false;
+        float last_outer = 0;
+        for (float ticks = 1; ticks < 120; ticks += 1)
+        {
+            const auto shell = wilson_shell(heavy_blast, ticks, 0.95f);
+            grows = grows && shell.outer >= last_outer && shell.outer <= heavy_blast.wilson.w && shell.inner <= shell.outer;
+            last_outer = shell.outer;
+            if (ticks > 2 && shell.opacity == 0) clears = true;
+            if (clears) grows = grows && shell.opacity == 0;
+        }
+        check(grows && clears && wilson_shell(heavy_blast, 3, 0.95f).opacity > 0.5f, "the dome grows with the front, then clears for good");
     }
     {
         ExplosionSystem effects(64);
@@ -362,13 +374,27 @@ int main()
         const auto& first = effects.slots()[list.slots[0]];
         const auto& blast = blasts[first.effect_class];
         newest = newest && first.start_tick == 95 && list.rings[0].x == blast_radius(blast, 5) && list.fronts[0].x == blast_radius(blast, 4) &&
-            list.rings[0].y == blast.wave.x * blast_overpressure(blast, list.rings[0].x) && list.rings[0].w == 0 && list.fronts[0].z == push_speed(blast, list.rings[0].x);
+            list.rings[0].y == blast.wave.x * std::pow(blast_overpressure(blast, list.rings[0].x), blast.wave.w) && list.rings[0].w == 0 && list.fronts[0].z == push_speed(blast, list.rings[0].x);
         check(newest, "the blast list holds the 16 newest fronts, newest first, with their radius before and after the frame");
         const auto late = select_blasts(effects, blasts, 149, 150, 0.8f);
         bool young = true;
-        for (std::uint32_t entry = 0; entry < late.count; ++entry) young = young && 150 - effects.slots()[late.slots[entry]].start_tick < blast.wave_ticks;
+        for (std::uint32_t entry = 0; entry < late.count; ++entry)
+        {
+            const auto age = 150 - effects.slots()[late.slots[entry]].start_tick;
+            young = young && age < blast.wave_ticks + realism_layout::push_return_ticks &&
+                (age < blast.wave_ticks || (late.rings[entry].y == 0 && late.fronts[entry].y == 0 && late.fronts[entry].z == 0));
+        }
         check(young && late.count < 16 && late.count > 0 && select_blasts(effects, blasts, 299, 300, 0.8f).count == 0,
-            "a front leaves the list once it has reached 600 m");
+            "a front leaves the list once its return has reached 600 m, and draws nothing after the front has");
+        const auto& oldest = effects.slots()[list.slots[15]];
+        const float lagged = static_cast<float>(100 - oldest.start_tick - realism_layout::push_return_ticks);
+        const float first_knot = blast_radius(blast, 0);
+        check(list.returns[0].x == first_knot && list.returns[0].w == first_knot && list.returns[15].w == blast_radius(blast, lagged) &&
+            list.returns[15].x == blast_radius(blast, lagged - 1) && list.returns[15].z == push_speed(blast, list.returns[15].w),
+            "the push's return is the same front push_return_ticks later");
+        const auto crossing = select_blasts(effects, blasts, 95 + realism_layout::push_return_ticks - 1, 95 + realism_layout::push_return_ticks, 0.8f);
+        check(crossing.returns[0].x == first_knot && crossing.returns[0].w == first_knot && list.fronts[0].x >= first_knot,
+            "the frame that crosses the return's lag returns nothing inside the first knot");
         check(push_speed(blast, 1) == blast.push_cap && push_speed(blast, 100) < 1, "the push is capped near the origin and fades with distance");
     }
     {

@@ -11,20 +11,6 @@ namespace layout = realism_layout;
 
 namespace
 {
-std::uint32_t to_half(float value)
-{
-    const auto bits = std::bit_cast<std::uint32_t>(value);
-    const std::uint32_t sign = (bits >> 16) & 0x8000u;
-    const int exponent = static_cast<int>((bits >> 23) & 0xffu) - 127 + 15;
-    if (exponent <= 0) return sign;
-    if (exponent >= 31) return sign | 0x7bffu;
-    const std::uint32_t mantissa = bits & 0x7fffffu;
-    std::uint32_t half = sign | (static_cast<std::uint32_t>(exponent) << 10) | (mantissa >> 13);
-    const std::uint32_t rest = mantissa & 0x1fffu;
-    if (rest > 0x1000u || (rest == 0x1000u && (half & 1u) != 0)) ++half;
-    return half;
-}
-
 struct UnitKey
 {
     std::uint32_t id;
@@ -33,6 +19,27 @@ struct UnitKey
     std::uint64_t serial;
     bool cluster;
 };
+}
+
+float pall_shadow_power(const ExplosionSystem& effects, std::uint32_t tick)
+{
+    const auto ease = [](float x) {
+        x = std::clamp(x, 0.0f, 1.0f);
+        return x * x * (3 - 2 * x);
+    };
+    float pall = 0;
+    for (const auto& cluster : effects.residual().clusters())
+    {
+        if (tick < cluster.graduation_tick || tick >= cluster.visible_end()) continue;
+        float weight = ease(static_cast<float>(tick - cluster.graduation_tick) / static_cast<float>(pall_ease_in_ticks)) *
+            ease(static_cast<float>(cluster.natural_end - tick) / static_cast<float>(pall_ease_out_ticks));
+        if (cluster.fade_end != layout::no_fade)
+        {
+            weight *= ease(static_cast<float>(cluster.fade_end - tick) / static_cast<float>((cluster.fade_code + 1) * layout::fade_unit_ticks));
+        }
+        pall += weight;
+    }
+    return 1 + std::min(pall / 64.0f, 2.0f);
 }
 
 FrameUnits count_units(const ExplosionSystem& effects, std::uint32_t tick)
@@ -72,7 +79,7 @@ RealismUnits fill_realism_constants(FrameConstants& constants, const ExplosionSy
         {
             const auto carried = drift - slot.drift_start;
             constants.effect_residual[index] = {link->ring_group | (link->cluster << layout::effect_cluster_shift) | (link->tag << layout::effect_tag_shift),
-                link->graduation_tick, link->longest_ticks | slot.latched, to_half(carried.x) | (to_half(carried.z) << 16)};
+                link->graduation_tick, link->longest_ticks | slot.latched, half_bits(carried.x) | (half_bits(carried.z) << 16)};
         }
     }
     constants.clusters = {};
@@ -105,7 +112,7 @@ RealismUnits fill_realism_constants(FrameConstants& constants, const ExplosionSy
     assert(groups <= layout::maximum_unit_groups);
     const auto units = static_cast<std::uint32_t>(keys.size());
     constants.unit_state = {units, groups, listed, 0};
-    constants.residual = {static_cast<float>(layout::crossfade_ticks), static_cast<float>(linger.linger_ticks), 0, 0};
+    constants.residual = {static_cast<float>(layout::crossfade_ticks), static_cast<float>(linger.linger_ticks), pall_shadow_power(effects, key_tick), 0};
     return {{units, groups}, listed};
 }
 }

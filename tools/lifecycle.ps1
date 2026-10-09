@@ -2,7 +2,8 @@
 # pause/clear/trigger/single steps, a click on the terrain or a prop, effect lines, the showcase's keys (preset,
 # count, fire at the crosshair, slot saturation, barrage, bombardment, slow motion, walk, two bookmarks), 30 odd-size resizes,
 # three minimize/restore cycles, a running trigger, a normal close, and separately a start in a minimized
-# window that is later restored. -Realism runs the realism model (M22), where Space adds the group to the scene.
+# window that is later restored. -Realism runs the realism model (M22; the application's default since M25), where Space
+# adds the group to the scene; without it the run passes --realism=off and checks the legacy model.
 # Passes when every launch exits 0, logs no ERROR/WARN lines (Vulkan loader notices excepted), in
 # Debug reports "validation summary: 0 warnings, 0 errors", and the interactive run's log shows that
 # the injected keys and resizes reached the application. Logs go to -OutDir; nothing else is written.
@@ -52,7 +53,7 @@ if (Test-Path $layers) { $env:VK_ADD_LAYER_PATH = $layers }
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 $name = "$Renderer-$SmokeResolution-$Explosions-$Configuration" + $(if ($Realism) { '-realism' } else { '' })
 $arguments = "--renderer=$Renderer --explosions=$Explosions --smoke-resolution=$SmokeResolution $ExtraArguments" +
-    $(if ($Realism) { ' --realism=on' } else { '' })
+    $(if ($Realism) { ' --realism=on' } else { ' --realism=off' })
 
 function Send-Key([IntPtr]$window, [int]$key, [int]$scan) {
     [void][LifecycleWindow]::PostMessage($window, 0x100, [IntPtr]$key, [IntPtr](($scan -shl 16) -bor 1))

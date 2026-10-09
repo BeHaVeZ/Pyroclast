@@ -800,6 +800,31 @@ int main()
             for (float drift = -60; drift <= 60; drift += 2.5f) steady = steady && order_with(drift) == first;
             check(steady, "a common drift never reorders the draw units under a still camera (the deeper effect first)");
         }
+        {
+            ExplosionSystem barrage(particle_layout::maximum_effects);
+            const RealismStart start{realism_layout::realism_full_mask, {}, {}};
+            float last = pall_shadow_power(barrage, 0);
+            float largest_step = 0;
+            float lowest = last;
+            float highest = last;
+            for (std::uint32_t tick = 0; tick < 9000; ++tick)
+            {
+                if (tick % 2 == 0 && tick < 2400)
+                {
+                    const std::uint32_t index = tick / 2;
+                    barrage.submit({{static_cast<float>(index % 7) * 4 - 12, 0, static_cast<float>(index % 5) * 4 - 8}, {0, 1, 0}, index + 1,
+                        index % 4 == 0 ? ExplosionPreset::heavy : ExplosionPreset::small_impact});
+                }
+                barrage.start(tick, SlotPolicy::graduate_oldest, &start);
+                const float power = pall_shadow_power(barrage, tick);
+                largest_step = std::max(largest_step, std::abs(power - last));
+                lowest = std::min(lowest, power);
+                highest = std::max(highest, power);
+                last = power;
+            }
+            check(barrage.residual().forced_fades() > 0 && lowest == 1 && highest > 2 && highest <= 3 && largest_step < 0.01f && last == 1,
+                "the pall's shadow power grows with the pall and moves smoothly as clusters come, go and are forced out");
+        }
         check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::submitted &&
             device.constant_bytes == legacy_frame_constant_bytes, "a legacy frame uploads exactly M21's frame constants");
     }

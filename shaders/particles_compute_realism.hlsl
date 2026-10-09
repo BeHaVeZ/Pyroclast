@@ -17,6 +17,11 @@ struct Lift
     float rise_scale;
     float spread_scale;
     float since;
+    float graduation_seconds;
+    float settling_scale;
+    bool jet;
+    float vortex_scale;
+    float3 offset;
 };
 
 void lingering_step(inout float4 position, inout float4 velocity, float size, Layer layer, RealismLayer lingering, bool ring,
@@ -30,30 +35,35 @@ void lingering_step(inout float4 position, inout float4 velocity, float size, La
     float terrain = terrain_height(environment, position.xz);
     uint2 near = props ? nearby_boxes(environment, position.xyz, !ring) : uint2(0, 0);
     float3 air = lingering_wind(position.y - terrain, mask);
-    if (crossfade > 0 && mask_enabled(mask, rise_mask_bit))
+    float lifting = max(crossfade, saturate(position.w / max(lift.graduation_seconds, 1e-3)));
+    if (lifting > 0 && mask_enabled(mask, rise_mask_bit))
     {
         float below = lift.neutral - position.y;
         float updraft = lift.rise.y * lift.rise_scale * saturate(below / 8) * exp(-lift.since / max(lift.rise.z, 1e-3));
         float sink = lift.rise.w * max(-below, 0);
         float band = below / max(lift.spread.y * lift.rise_scale, 1e-3);
         float spreading = lift.spread.x * lift.spread_scale * exp(-band * band) * exp(-lift.since / max(lift.spread.z, 1e-3));
-        air += crossfade * float3(lift.direction.x * spreading, updraft - sink - lingering.settling, lift.direction.y * spreading);
+        air += float3(crossfade * lift.direction.x * spreading, lifting * (updraft - sink) - crossfade * lingering.settling * lift.settling_scale,
+            crossfade * lift.direction.y * spreading);
     }
+    float ballistic = lift.jet ? saturate((1.2 - position.w) / 0.4) : 0;
     if (vortex_weight > 0 && flow.strength > 0 && mask_enabled(mask, vortex_mask_bit))
     {
-        air += vortex_flow(flow, effect_origin, position.xyz, seconds) * vortex_weight;
+        air += vortex_flow(flow, effect_origin, position.xyz, seconds) * (vortex_weight * lift.vortex_scale * (1 - ballistic));
     }
     if (curl && crossfade < 1 && layer.turbulence > 0)
     {
-        air += curl_noise(position.xyz * 0.125 - float3(0, seconds * 0.2, 0)) * (layer.turbulence * exp(-0.3 * position.w) * (1 - crossfade));
+        air += curl_noise(position.xyz * 0.125 + lift.offset - float3(0, seconds * 0.2, 0)) * (layer.turbulence * exp(-0.3 * position.w) * (1 - crossfade));
+        air += curl_noise(position.xyz * 0.4 + lift.offset * 1.7 + float3(0, seconds * 0.5, 0)) * (0.6 * layer.turbulence * exp(-0.5 * position.w) * (1 - crossfade));
     }
     if (curl && crossfade > 0 && lingering.residual_turbulence > 0)
     {
         air += curl_noise(position.xyz * lingering.turbulence_scale - float3(0, position.w * 0.05, 0)) * (lingering.residual_turbulence * crossfade);
     }
     if (deflect && any(near != 0)) air = deflect_air(environment, near, position.xyz, radius, air);
-    velocity.xyz += (air - velocity.xyz) * (lerp(layer.drag, lingering.residual_drag, crossfade) * dt);
-    if (layer.buoyancy > 0) velocity.y += layer.buoyancy * layer_temperature(layer, position.w) * dt;
+    velocity.xyz += (air - velocity.xyz) * (lerp(lerp(layer.drag, lingering.residual_drag, crossfade), 0.3, ballistic) * dt);
+    velocity.y -= 9.81 * ballistic * dt;
+    if (layer.buoyancy > 0) velocity.y += layer.buoyancy * layer_temperature(layer, position.w) * (1 - ballistic) * dt;
     float speed_squared = dot(velocity.xyz, velocity.xyz);
     if (speed_squared > lingering_speed_limit * lingering_speed_limit) velocity.xyz *= lingering_speed_limit * rsqrt(speed_squared);
     float3 start = position.xyz;
@@ -137,14 +147,36 @@ bool simulate_lingering(uint slot, uint local, uint record, uint layer_index, La
         size = layer.size_min + particle_random(id, 5) * layer.size_range;
         position.w = 0;
         if (layer.delay_range > 0) position.w = -particle_random(id, 7) * layer.delay_range;
+        RealismLook spawn_look = load_realism_look(classes, state.w);
+        if (jet_record(spawn_look, layer_index, index))
+        {
+            uint jets = 5 + realism_hash(state.x ^ 0x6a09e667u) % 5;
+            uint jet = (index >> 5) % jets;
+            uint jet_hash = realism_hash(state.x ^ (jet * 0x9e3779b9u + 0x3c6ef372u));
+            float azimuth = 6.2831853 * (float(jet) + 0.6 * float(jet_hash & 0xffff) / 65535) / float(jets);
+            float tilt = 0.17453 + 0.5236 * float(jet_hash >> 16) / 65535;
+            float3 along = float3(sin(tilt) * cos(azimuth), cos(tilt), sin(tilt) * sin(azimuth));
+            along = normalize(along + 0.07 * (particle_direction(id) * 0.5));
+            float3 jet_direction = around_normal(along, normal);
+            position.xyz = origin + jet_direction * 0.3;
+            if (props) position.xyz = prop_clip_spawn(environment, origin, position.xyz);
+            velocity.xyz = jet_direction * (spawn_look.jet_speed * (0.3 + 0.7 * particle_random(id, 2)));
+            size *= 0.5;
+        }
         if (link.skirt && layer_index == layer_ground_dust && ((index >> 3) & 1) != 0)
         {
             float4 skirt = load_blast_skirt(classes, state.w);
             uint inner_cm = uint(skirt.x * 100);
             uint outer_cm = max(uint(skirt.y * 100), inner_cm + 1);
-            uint radius_cm = inner_cm + realism_hash(id ^ 0x51ed270b) % (outer_cm - inner_cm);
+            uint ordinal = (index >> 4) * 8 + (index & 7);
+            uint total = max((layer.count / 16) * 8 + (layer.count % 16 > 8 ? layer.count % 16 - 8 : 0), 1);
+            uint span = max((outer_cm * outer_cm - inner_cm * inner_cm) / total, 1);
+            uint squared = inner_cm * inner_cm + min(ordinal, total - 1) * span + realism_hash(id ^ 0x51ed270b) % span;
+            uint radius_cm = uint(sqrt(float(squared)));
+            if (radius_cm * radius_cm > squared) --radius_cm;
+            if ((radius_cm + 1) * (radius_cm + 1) <= squared) ++radius_cm;
             float radius = float(radius_cm) / 100;
-            float angle = particle_random(id, 8) * 6.2831853;
+            float angle = 6.2831853 * frac(float(ordinal) * 0.381966 + 0.15 * particle_random(id, 8) + float(realism_hash(state.x ^ 0x7f4a7c15) & 0xffff) / 65536);
             float2 outward = float2(cos(angle), sin(angle));
             position.xz = origin.xz + outward * radius;
             position.y = terrain_height(environment, position.xz) + size;
@@ -168,6 +200,13 @@ bool simulate_lingering(uint slot, uint local, uint record, uint layer_index, La
     lift.neutral = frame.effect_origins[slot].y + neutral_height(lift.rise, link.varied, key, id, layer_index);
     lift.direction = float2(0, 0);
     lift.since = 0;
+    lift.graduation_seconds = float(load_graduation_ticks(classes, state.w)) / 60;
+    lift.settling_scale = ((index / max(lingering.survivor_stride, 1)) & 1) != 0 ? 2 : 1;
+    RealismLook look = load_realism_look(classes, state.w);
+    lift.jet = jet_record(look, layer_index, index);
+    lift.vortex_scale = look.vortex_scale;
+    uint offset_hash = realism_hash(state.x ^ 0x510e527fu);
+    lift.offset = float3(offset_hash & 1023u, (offset_hash >> 10) & 1023u, (offset_hash >> 20) & 1023u) * (100.0 / 1023.0);
     bool graduated = false;
     float graduation_age = 0;
     float shadow = 1;
@@ -177,7 +216,7 @@ bool simulate_lingering(uint slot, uint local, uint record, uint layer_index, La
         uint tick = tick_before + step + 1;
         position.w += dt;
         if (position.w < 0) continue;
-        if (step == 0) velocity.xyz += blast_push(position.xyz, mask, slot);
+        if (step == 0) velocity.xyz += blast_push(position.xyz, mask, slot, position.w);
         float seconds = float(tick - state.z) / 60.0;
         float vortex_weight = tick < graduation ? saturate(float(graduation - tick) / crossfade_ticks) : 0;
         if (!graduated)
@@ -192,11 +231,11 @@ bool simulate_lingering(uint slot, uint local, uint record, uint layer_index, La
         {
             graduated = true;
             graduation_age = position.w;
-            if (mask_enabled(mask, shading_mask_bit) && mask_enabled(mask, shadow_mask_bit))
-            {
-                shadow = cloud_shadow(layer, flow, effect_origin, position.xyz, seconds);
-            }
         }
+    }
+    if (graduated && mask_enabled(mask, shading_mask_bit) && mask_enabled(mask, shadow_mask_bit))
+    {
+        shadow = column_shadow(classes, state.w, frame.effect_origins[slot].xyz, link.drift, position.xyz, lift.neutral, link.varied, key);
     }
     particles.Store4(address + particle_position_offset, asuint(position));
     particles.Store4(address + particle_velocity_offset, asuint(velocity));
@@ -256,12 +295,17 @@ bool simulate_residual(uint cluster_index, uint group_in_cluster, uint thread)
     lift.spread_scale = variation_factor(stored.varied, stored.key, vary_spread, 0.7, 1.3);
     lift.neutral = stored.height;
     lift.direction = stored.direction;
+    lift.graduation_seconds = float(load_graduation_ticks(classes, effect_class)) / 60;
+    lift.settling_scale = ((index - lingering.residual_offset) & 1) != 0 ? 2 : 1;
+    lift.jet = false;
+    lift.vortex_scale = 1;
+    lift.offset = 0;
     uint steps = min(parameters.steps, maximum_simulation_steps);
     for (uint step = 0; step < steps && tick_before + step + 1 < end; ++step)
     {
         position.w += 1.0 / 60.0;
         lift.since = max(position.w - velocity.w, 0);
-        if (step == 0) velocity.xyz += blast_push(position.xyz, mask, maximum_effects);
+        if (step == 0) velocity.xyz += blast_push(position.xyz, mask, maximum_effects, position.w);
         lingering_step(position, velocity, size, layer, lingering, ring, 0, none, float3(0, 0, 0), 0, 1, mask, lift);
     }
     if (steps != 0)

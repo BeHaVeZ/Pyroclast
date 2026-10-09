@@ -50,6 +50,11 @@ float4 load_spread(ByteAddressBuffer classes, uint effect_class)
     return asfloat(classes.Load4(realism_address(effect_class) + 224));
 }
 
+float load_late_dilution(ByteAddressBuffer classes, uint effect_class)
+{
+    return asfloat(classes.Load(realism_address(effect_class) + 12));
+}
+
 uint variation_key(uint seed)
 {
     return realism_hash(seed ^ 0xa5a5a5a5) & 0xff;
@@ -99,7 +104,10 @@ Rise unpack_rise(uint word)
 float neutral_height(float4 rise, bool varied, uint key, uint record_id, uint layer_index)
 {
     float share = float(realism_hash(record_id ^ 0x2f1a9d3b) & 0xffff) / 65535;
-    float fraction = layer_index == layer_ground_dust ? 0.05 + 0.2 * share : 0.35 + 0.65 * share;
+    float fraction;
+    if (layer_index == layer_ground_dust) fraction = 0.03 + 0.42 * share * share;
+    else if (layer_index == layer_plume) fraction = 0.06 + 0.8 * share;
+    else fraction = share < 0.25 ? 0.12 + 1.6 * share : 0.52 + 0.48 * sqrt((share - 0.25) / 0.75);
     return rise.x * variation_factor(varied, key, vary_height, 0.8, 1.25) * fraction;
 }
 
@@ -124,6 +132,85 @@ RealismLayer load_realism_layer(ByteAddressBuffer classes, uint effect_class, ui
     layer.residual_offset = third.w;
     layer.albedo = asfloat(classes.Load4(address + 48));
     return layer;
+}
+
+struct RealismLook
+{
+    float3 smoke_soot;
+    float young_seconds;
+    float3 plume_soot;
+    float boost;
+    float boost_seconds;
+    float jet_speed;
+    float vortex_scale;
+    float charge_scale;
+};
+
+RealismLook load_realism_look(ByteAddressBuffer classes, uint effect_class)
+{
+    uint address = effect_class_address(effect_class) + class_look_offset;
+    float4 first = asfloat(classes.Load4(address));
+    float4 second = asfloat(classes.Load4(address + 16));
+    RealismLook look;
+    look.smoke_soot = first.xyz;
+    look.young_seconds = first.w;
+    look.plume_soot = second.xyz;
+    look.boost = second.w;
+    float4 third = asfloat(classes.Load4(address + 32));
+    look.boost_seconds = third.x;
+    look.jet_speed = third.y;
+    look.vortex_scale = third.z;
+    look.charge_scale = third.w;
+    return look;
+}
+
+bool jet_record(RealismLook look, uint layer_index, uint slab_index)
+{
+    return look.jet_speed > 0 && layer_index == layer_blast_smoke && ((slab_index >> 3) & 3) == 1;
+}
+
+float macro_shadow(float3 settled, float3 centre, float radius, float density)
+{
+    float3 offset = settled - centre;
+    float b = dot(offset, frame.sun_direction.xyz);
+    float c = dot(offset, offset) - radius * radius;
+    float disc = b * b - c;
+    if (disc <= 0) return 1;
+    float root = sqrt(disc);
+    float chord = max(-b + root - max(-b - root, 0), 0);
+    return exp(-density * chord / max(radius, 1e-3));
+}
+
+float column_shadow(ByteAddressBuffer classes, uint effect_class, float3 origin, float2 drift, float3 position, float neutral, bool varied,
+    uint key)
+{
+    float height = load_rise(classes, effect_class).x * variation_factor(varied, key, vary_height, 0.8, 1.25);
+    float3 centre = float3(origin.x + drift.x, origin.y + 0.6 * height, origin.z + drift.y);
+    return macro_shadow(float3(position.x, neutral, position.z), centre, 0.5 * height, load_spread(classes, effect_class).w);
+}
+
+float henyey_greenstein(float g, float cosine)
+{
+    return (1 - g * g) / pow(max(1 + g * g - 2 * g * cosine, 1e-4), 1.5);
+}
+
+static const float realism_light_cap = 6;
+
+float3 realism_point_lights(float3 position)
+{
+    float3 total = 0;
+    uint count = min(frame.light_state.x, maximum_lights);
+    for (uint index = 0; index < count; ++index)
+    {
+        float3 offset = frame.light_positions[index].xyz - position;
+        float distance_squared = dot(offset, offset);
+        float radius = frame.light_positions[index].w;
+        float source = frame.light_colors[index].w;
+        float window = saturate(1 - distance_squared / (radius * radius));
+        total += frame.light_colors[index].rgb * (window * window / max(source * source + distance_squared, 1));
+    }
+    float brightest = max(max(total.r, total.g), max(total.b, 1e-6));
+    return total * min(1, realism_light_cap / brightest);
 }
 
 struct Unit

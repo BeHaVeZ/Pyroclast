@@ -351,17 +351,25 @@ constexpr float survivor_area = 2.8284271f;
 constexpr float diffusion_seconds = 4;
 constexpr float size_cap_factor = 2.89f;
 
-constexpr float4 lingering_smoke{0.13f, 0.125f, 0.12f, 1};
-constexpr float4 lingering_plume{0.10f, 0.095f, 0.09f, 1};
-constexpr float4 lingering_soot{0.07f, 0.066f, 0.062f, 1};
+constexpr float3 smoke_grey{0.15f, 0.145f, 0.14f};
+constexpr float3 plume_grey{0.13f, 0.125f, 0.12f};
+constexpr float3 lingering_soot{0.08f, 0.075f, 0.07f};
+constexpr float he_glow_seconds = 1.2f;
+constexpr float fire_glow_seconds = 6.0f;
+
+float3 mix(float3 a, float3 b, float share)
+{
+    return {a.x + (b.x - a.x) * share, a.y + (b.y - a.y) * share, a.z + (b.z - a.z) * share};
+}
 
 RealismParameters realism_parameters(ExplosionPreset preset, const Layers& layers)
 {
     RealismParameters realism;
     realism.graduation_ticks = graduation_seconds(preset) * 60;
+    realism.late_dilution = 0.3f;
     const float height = stabilization_height(preset);
     realism.rise = {height, 0.06f * height, 25, 0.05f};
-    realism.spread = {0.03f * height, 0.25f * height, 20, 0};
+    realism.spread = {0.03f * height, 0.25f * height, 20, 0.8f};
     std::uint32_t records = 0;
     for (std::uint32_t index = 0; index < realism.layers.size(); ++index)
     {
@@ -376,18 +384,46 @@ RealismParameters realism_parameters(ExplosionPreset preset, const Layers& layer
         lingering.residual_drag = layer.drag;
         lingering.residual_turbulence = 0.5f * layer.turbulence;
         lingering.residual_offset = records;
+        lingering.end_share = 0.35f;
         const bool sooty = preset == ExplosionPreset::fuel_fire;
+        const float glow = sooty ? fire_glow_seconds : he_glow_seconds;
+        const auto& soil_layer = layers[layer_index(EffectLayer::ground_dust)];
+        const float3 soil{0.85f * soil_layer.first_color.x, 0.85f * soil_layer.first_color.y, 0.85f * soil_layer.first_color.z};
         if (index == layer_index(EffectLayer::ground_dust))
         {
-            lingering.albedo = {0.85f * layer.first_color.x, 0.85f * layer.first_color.y, 0.85f * layer.first_color.z, 1};
-            lingering.settling = 0.3f;
+            const float3 dust{0.75f * layer.first_color.x, 0.75f * layer.first_color.y, 0.75f * layer.first_color.z};
+            const float grey = (dust.x + dust.y + dust.z) / 3;
+            const float3 colour = mix(dust, {grey, grey, grey}, 0.25f);
+            lingering.albedo = {colour.x, colour.y, colour.z, glow};
+            lingering.settling = 0.5f;
         }
-        else lingering.albedo = sooty ? lingering_soot : index == layer_index(EffectLayer::plume) ? lingering_plume : lingering_smoke;
+        else
+        {
+            const float3 colour = sooty ? lingering_soot : index == layer_index(EffectLayer::plume) ? mix(plume_grey, soil, 0.3f) : mix(smoke_grey, soil, 0.45f);
+            lingering.albedo = {colour.x, colour.y, colour.z, glow};
+        }
         records += (layer.count + survivor_stride - 1) / survivor_stride;
     }
     realism.residual_records = records;
     realism.residual_groups = groups_for(records);
     return realism;
+}
+
+RealismLook realism_look(ExplosionPreset preset, const Layers& layers)
+{
+    RealismLook look;
+    if (preset == ExplosionPreset::fuel_fire) return look;
+    const auto& soil_layer = layers[layer_index(EffectLayer::ground_dust)];
+    const float3 soil{0.25f * soil_layer.first_color.x, 0.25f * soil_layer.first_color.y, 0.25f * soil_layer.first_color.z};
+    look.smoke_soot = mix({0.07f, 0.06f, 0.05f}, soil, 0.3f);
+    look.plume_soot = mix({0.06f, 0.055f, 0.05f}, soil, 0.3f);
+    look.young_seconds = 0.6f * static_cast<float>(graduation_seconds(preset));
+    look.boost = 2;
+    look.boost_seconds = 1.5f;
+    look.jet_speed = 18 * std::pow(charge_kilograms(preset) / 7, 1.0f / 6);
+    look.vortex_scale = 0.5f;
+    look.charge_scale = std::cbrt(charge_kilograms(preset));
+    return look;
 }
 
 BlastParameters blast_parameters(ExplosionPreset preset)
@@ -396,10 +432,11 @@ BlastParameters blast_parameters(ExplosionPreset preset)
     const float kilograms = charge_kilograms(preset);
     const float scale = std::cbrt(kilograms);
     blast.knots = make_blast_knots(kilograms);
-    blast.wave = {4.0f, 0.3f, 0.03f, 0};
+    blast.wave = {3.68f, 0.3f, 0.03f, 0.6f};
     blast.skirt = {4 * scale, 10 * scale, 0.3f, 2.0f};
-    if (preset == ExplosionPreset::heavy) blast.wilson = {0.6f, 1, 15, 5 * scale};
-    else if (preset == ExplosionPreset::stress_test) blast.wilson = {0.5f, 1, 12, 5 * scale};
+    const float lag = 6 * std::cbrt(kilograms / 50);
+    if (preset == ExplosionPreset::heavy) blast.wilson = {0.85f, 2, lag, 5 * scale};
+    else if (preset == ExplosionPreset::stress_test) blast.wilson = {0.7f, 2, lag, 5 * scale};
     blast.wave_ticks = (blast.knots.back().arrival_q16 + 0xffffu) >> 16;
     blast.charge_kilograms = kilograms;
     blast.push_share = 0.1f;
@@ -485,6 +522,7 @@ EffectClass make_effect_class(ExplosionPreset preset, SurfaceType surface)
 {
     auto effect = layered_effect_class(preset, surface);
     effect.blast = blast_parameters(preset);
+    effect.look = realism_look(preset, effect.layers);
     return effect;
 }
 
@@ -592,6 +630,17 @@ LightCurve light_curve(ExplosionPreset preset)
     case ExplosionPreset::stress_test: return {2000, 0.15f, 400, 1.5f, fire, 50, 3.0f};
     }
     return {};
+}
+
+LightCurve realism_light_curve(ExplosionPreset preset)
+{
+    auto curve = light_curve(preset);
+    const float scale = std::cbrt(charge_kilograms(preset));
+    curve.source_radius = 1.25f * scale;
+    if (preset == ExplosionPreset::fuel_fire) return curve;
+    curve.flash_seconds = 0.04f + 0.01f * scale;
+    curve.glow_seconds = 0.2f * scale;
+    return curve;
 }
 
 float light_intensity(const LightCurve& curve, float seconds)

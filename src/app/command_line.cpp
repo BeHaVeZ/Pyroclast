@@ -662,7 +662,7 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
         }
     }
 
-    std::uint32_t model = realism.value_or(false) ? realism_layout::realism_full_mask : particle_layout::full_mask;
+    std::uint32_t model = realism.value_or(true) ? realism_layout::realism_full_mask : particle_layout::full_mask;
     if (const auto workload = benchmark_workload(result.options.benchmark))
     {
         const char* conflict = scenario_specified ? "--scenario" : explosions_specified ? "--explosions" : preset_specified ? "--preset" :
@@ -688,18 +688,20 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
         scenario_specified = true;
     }
     result.options.layer_mask = model & ~disabled;
+    const std::string legacy_reason = result.options.benchmark.empty() ? std::string(", which --realism=off turns off.") :
+        "; --benchmark=" + result.options.benchmark + " runs the legacy model.";
     if ((disabled >> realism_layout::realism_mask_bit) != 0 && !realism_enabled(model))
     {
         result.error = "--disable names a part of the realism model (linger, rise, shear, variation, haze, waves, skirt, condensation, push or "
-                       "shake); it requires --realism=on.";
+                       "shake); it needs the realism model" + legacy_reason;
     }
     if (linger_specified && !realism_enabled(model))
     {
-        result.error = "--linger requires --realism=on.";
+        result.error = "--linger needs the realism model" + legacy_reason;
     }
     if (humidity_specified && !realism_enabled(model))
     {
-        result.error = "--humidity requires --realism=on.";
+        result.error = "--humidity needs the realism model" + legacy_reason;
     }
     if (realism_enabled(model) && result.options.scalability.slot_policy == SlotPolicy::evict_oldest)
     {
@@ -707,7 +709,7 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
     }
     if (!realism_enabled(model) && result.options.scalability.slot_policy == SlotPolicy::graduate_oldest)
     {
-        result.error = "--slot-policy=graduate-oldest requires --realism=on.";
+        result.error = "--slot-policy=graduate-oldest needs the realism model" + legacy_reason;
     }
     if (realism_enabled(model) && !policy_specified) result.options.scalability.slot_policy = SlotPolicy::graduate_oldest;
     if (capture_specified && !result.options.profile_tick && !(scenario_specified && result.options.capture_tick))

@@ -2,7 +2,7 @@
 #include "particles_lod.hlsl"
 #include "particle_realism_vertex.hlsli"
 
-PixelInput vs_realism_lod(uint vertex : SV_VertexID, uint instance : SV_InstanceID)
+RealismPixelInput vs_realism_lod(uint vertex : SV_VertexID, uint instance : SV_InstanceID)
 {
     uint record = drawn_record(instance);
     if (record < min(draw.record_count, pool_records))
@@ -10,8 +10,8 @@ PixelInput vs_realism_lod(uint vertex : SV_VertexID, uint instance : SV_Instance
         RealismFootprint realism = realism_footprint(particles, classes, record);
         if (realism.realism)
         {
-            PixelInput output = realism_vertex(vertex, realism);
-            float opacity = output.color.a;
+            RealismPixelInput output = realism_vertex(vertex, realism);
+            float opacity = output.base.color.a;
             if (draw.lod_pixels > 0)
             {
                 float weight = saturate((2 * draw.lod_pixels - realism.footprint.pixels) / draw.lod_pixels);
@@ -25,12 +25,12 @@ PixelInput vs_realism_lod(uint vertex : SV_VertexID, uint instance : SV_Instance
             if (draw.faint_floor > 0) opacity *= saturate((opacity - draw.faint_floor) / draw.faint_floor);
             if (opacity <= 0)
             {
-                output.position = float4(0, 0, 0, 1);
+                output.base.position = float4(0, 0, 0, 1);
                 return output;
             }
-            output.color.a = opacity;
+            output.base.color.a = opacity;
             return output;
         }
     }
-    return vs_lod(vertex, instance);
+    return plain_pixel_input(realism_light(vs_lod(vertex, instance), record));
 }
