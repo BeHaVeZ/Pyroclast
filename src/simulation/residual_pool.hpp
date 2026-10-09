@@ -55,7 +55,7 @@ class ResidualPool final
 {
 public:
     std::optional<ResidualLink> reserve(std::uint32_t tick, const RealismParameters& realism, const LingerSettings& settings, float3 origin,
-        float3 drift_start, ExplosionPreset preset, std::uint64_t serial);
+        float3 drift_start, ExplosionPreset preset, std::uint64_t serial, std::uint32_t variation = realism_layout::scale_one);
     std::optional<std::uint32_t> earliest_move(const ResidualLink& link, std::uint32_t tick) const;
     std::optional<ResidualLink> graduate_early(const ResidualLink& link, std::uint32_t tick, std::uint32_t graduation_tick);
     void clear();

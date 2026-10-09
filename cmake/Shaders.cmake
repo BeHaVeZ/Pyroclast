@@ -63,6 +63,7 @@ set(PYROCLAST_SHADERS
     particle_scatter_units_measure:particle_scatter_units:cs:cs_measure
     particle_realism_vertex:particles_realism:vs:vs_realism
     particle_realism_lod_vertex:particles_realism_lod:vs:vs_realism_lod
+    particle_realism_pixel:particles_realism_pixel:ps:ps_realism
 )
 
 # Vulkan bindings come from the shared binding layout, so C++ (binding_layout.hpp) and SPIR-V agree.

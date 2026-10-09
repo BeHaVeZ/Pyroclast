@@ -112,8 +112,19 @@ struct RealismParameters
     std::uint32_t reserved = 0;
     float4 rise{};
     std::array<RealismLayer, 3> layers{};
+    float4 spread{};
 };
-static_assert(sizeof(RealismParameters) == 224);
+static_assert(sizeof(RealismParameters) == 240 && offsetof(RealismParameters, layers) == 32 && offsetof(RealismParameters, spread) == 224);
+
+struct EventVariation
+{
+    std::uint32_t key = 0;
+    std::uint32_t life = 1024;
+};
+EventVariation event_variation(std::uint32_t seed);
+std::uint32_t particle_hash(std::uint32_t value);
+float charge_kilograms(ExplosionPreset preset);
+float stabilization_height(ExplosionPreset preset);
 
 struct EffectClass
 {

@@ -19,6 +19,13 @@ float3 wind_velocity(const WindSettings& settings, std::uint32_t tick, bool gust
 inline constexpr float maximum_wind_speed = 40;
 std::optional<WindSettings> validated(WindSettings settings);
 
+struct WindProfile
+{
+    float strength = 1;
+    float veer = 0;
+};
+WindProfile wind_at_height(float height);
+
 class WindDrift final
 {
 public:

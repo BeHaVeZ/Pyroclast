@@ -4,6 +4,15 @@
 #include "effect_classes.hlsli"
 #include "frame_constants.hlsli"
 
+uint realism_hash(uint value)
+{
+    value ^= value >> 16;
+    value *= 0x7feb352d;
+    value ^= value >> 15;
+    value *= 0x846ca68b;
+    return value ^ (value >> 16);
+}
+
 struct RealismLayer
 {
     uint survivor_stride;
@@ -29,6 +38,69 @@ uint realism_address(uint effect_class)
 uint load_graduation_ticks(ByteAddressBuffer classes, uint effect_class)
 {
     return classes.Load(realism_address(effect_class));
+}
+
+float4 load_rise(ByteAddressBuffer classes, uint effect_class)
+{
+    return asfloat(classes.Load4(realism_address(effect_class) + 16));
+}
+
+float4 load_spread(ByteAddressBuffer classes, uint effect_class)
+{
+    return asfloat(classes.Load4(realism_address(effect_class) + 224));
+}
+
+uint variation_key(uint seed)
+{
+    return realism_hash(seed ^ 0xa5a5a5a5) & 0xff;
+}
+
+uint variation_life(uint seed)
+{
+    return 888 + realism_hash(seed ^ 0x3c6ef372) % 342;
+}
+
+float variation_factor(bool varied, uint key, uint salt, float low, float high)
+{
+    return varied ? low + (high - low) * float(realism_hash(key ^ salt) & 0xff) / 255 : 1;
+}
+
+static const uint vary_height = 0x68e31da4;
+static const uint vary_diffusion = 0xb5297a4d;
+static const uint vary_darkness = 0x1b56c4e9;
+static const uint vary_spread = 0x7c8ba3e1;
+
+struct Rise
+{
+    float height;
+    float2 direction;
+    bool varied;
+    uint key;
+};
+
+uint pack_rise(float height, float2 direction, bool varied, uint key)
+{
+    float turn = atan2(direction.y, direction.x) * (1 / 6.2831853);
+    uint angle = uint(frac(turn) * 128 + 0.5) & 127;
+    return f32tof16(height) | (angle << 16) | ((varied ? 1u : 0u) << 23) | ((key & 0xff) << 24);
+}
+
+Rise unpack_rise(uint word)
+{
+    Rise rise;
+    rise.height = f16tof32(word & 0xffff);
+    float angle = float((word >> 16) & 127) * (6.2831853 / 128);
+    rise.direction = float2(cos(angle), sin(angle));
+    rise.varied = ((word >> 23) & 1) != 0;
+    rise.key = word >> 24;
+    return rise;
+}
+
+float neutral_height(float4 rise, bool varied, uint key, uint record_id, uint layer_index)
+{
+    float share = float(realism_hash(record_id ^ 0x2f1a9d3b) & 0xffff) / 65535;
+    float fraction = layer_index == layer_ground_dust ? 0.05 + 0.2 * share : 0.35 + 0.65 * share;
+    return rise.x * variation_factor(varied, key, vary_height, 0.8, 1.25) * fraction;
 }
 
 RealismLayer load_realism_layer(ByteAddressBuffer classes, uint effect_class, uint layer_index)
@@ -118,6 +190,8 @@ struct EffectResidual
     uint graduation_tick;
     uint longest_ticks;
     bool linger;
+    bool varied;
+    float2 drift;
 };
 
 EffectResidual load_effect_residual(uint slot)
@@ -130,6 +204,8 @@ EffectResidual load_effect_residual(uint slot)
     link.graduation_tick = words.y;
     link.longest_ticks = words.z & ((1u << effect_longest_bits) - 1);
     link.linger = (words.z & latched_linger) != 0;
+    link.varied = (words.z & latched_variation) != 0;
+    link.drift = float2(f16tof32(words.w & 0xffff), f16tof32(words.w >> 16));
     return link;
 }
 
@@ -176,6 +252,16 @@ uint packed_tag(uint packed)
 bool lingering_record(EffectResidual link, RealismLayer lingering, uint layer_index)
 {
     return link.linger && layer_index <= layer_plume && lingering.survivor_stride != 0;
+}
+
+float3 lingering_wind(float height, uint mask)
+{
+    if (!mask_enabled(mask, shear_mask_bit) || height <= 15) return frame.wind.xyz * (0.35 + 0.65 * saturate(height / 15));
+    float strength = pow(min(height, 200.0) / 15, 0.2);
+    float veer = 0.34906585 * saturate((height - 15) / 200);
+    float s = sin(veer);
+    float c = cos(veer);
+    return float3(frame.wind.x * c - frame.wind.z * s, frame.wind.y, frame.wind.x * s + frame.wind.z * c) * strength;
 }
 
 float cloud_shadow(Layer layer, Flow flow, float3 origin, float3 position, float seconds)

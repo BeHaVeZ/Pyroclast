@@ -17,6 +17,7 @@ struct RealismFootprint
     float heat;
     float temperature;
     float shadow;
+    float3 albedo;
     float softness;
 };
 
@@ -27,9 +28,12 @@ RealismFootprint realism_footprint(ByteAddressBuffer particles, ByteAddressBuffe
     result.residual = record >= residual_first;
     EffectResidual link = (EffectResidual)0;
     uint packed = 0;
+    Rise stored = (Rise)0;
     if (result.residual)
     {
-        packed = particles.Load(address + residual_packed_offset);
+        uint3 words = particles.Load3(address + residual_packed_offset);
+        packed = words.x;
+        stored = unpack_rise(words.z);
         result.effect_class = packed_class(packed);
         result.layer_index = packed_layer(packed);
         result.slot = maximum_effects;
@@ -50,10 +54,14 @@ RealismFootprint realism_footprint(ByteAddressBuffer particles, ByteAddressBuffe
     float spawn_size = asfloat(particles.Load(address + particle_size_offset));
     float age = max(position.w, 0);
     uint clock = frame.clock.x;
+    uint mask = frame.light_state.y;
+    bool varied = result.residual ? stored.varied : link.varied;
+    uint key = result.residual ? stored.key : (link.varied ? variation_key(frame.effect_states[result.slot].x) : 0);
     result.temperature = layer_temperature(layer, age);
     result.heat = result.temperature / max(layer.heat, 1e-3);
     float reference = spawn_size * (1 + layer.expansion * (1 - result.heat));
-    float size = min(reference * sqrt(1 + age / max(lingering.diffusion_seconds, 1e-3)), lingering.size_cap);
+    float diffusion = lingering.diffusion_seconds * variation_factor(varied, key, vary_diffusion, 0.7, 1.4);
+    float size = min(reference * sqrt(1 + age / max(diffusion, 1e-3)), lingering.size_cap);
     float depth = lingering.optical_depth * saturate(age * layer.fade_in_rate) * pow(saturate(reference / max(size, 1e-4)), lingering.dilution);
     float stride = float(max(lingering.survivor_stride, 1));
     bool survivor = true;
@@ -63,6 +71,11 @@ RealismFootprint realism_footprint(ByteAddressBuffer particles, ByteAddressBuffe
         result.survivor_index = record - residual_first - cluster.ring_group * simulation_group_size - lingering.residual_offset;
         result.crossfade = 1;
         result.shadow = packed_shadow(packed);
+        if (mask_enabled(mask, rise_mask_bit))
+        {
+            float column = exp(-0.015 * max(stored.height - position.y, 0));
+            result.shadow = lerp(result.shadow, column, saturate((age - velocity.w) / 10));
+        }
         uint death = particles.Load(address + residual_death_offset);
         float left = float(death > clock ? death - clock : 0);
         float life = left + max(age - velocity.w, 0) * 60;
@@ -81,6 +94,13 @@ RealismFootprint realism_footprint(ByteAddressBuffer particles, ByteAddressBuffe
         result.shadow = 1;
     }
     result.survivor = survivor;
+    result.albedo = lerp(layer.first_color, layer.second_color, result.heat);
+    if (varied)
+    {
+        float graduation_seconds = float(load_graduation_ticks(classes, result.effect_class)) / 60;
+        float turned = result.residual ? 1 : max(saturate(age / max(graduation_seconds, 1e-3)), result.crossfade);
+        result.albedo = lerp(result.albedo, lingering.albedo.rgb * variation_factor(varied, key, vary_darkness, 0.85, 1.1), turned);
+    }
     float growth = 1 + (lingering.survivor_area - 1) * result.crossfade;
     if (survivor)
     {

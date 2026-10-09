@@ -451,6 +451,10 @@ int main()
             refused({"--realism=on", "--slot-policy=evict-oldest"}, "evict-oldest") && refused({"--realism=maybe"}, "Expected --realism=on or off") &&
             refused({"--realism=on", "--realism=on"}, "only once") && parsed({"--slot-policy=evict-oldest"}).error.empty() &&
             refused({"--slot-policy=graduate-oldest"}, "requires --realism=on") && refused({"--linger=60"}, "requires --realism=on") &&
+            refused({"--disable=haze"}, "requires --realism=on") && refused({"--disable=rise,shear"}, "requires --realism=on") &&
+            parsed({"--realism=on", "--disable=rise,shear,variation,haze"}).options.layer_mask ==
+                (realism::realism_full_mask & ~((1u << realism::rise_mask_bit) | (1u << realism::shear_mask_bit) |
+                    (1u << realism::variation_mask_bit) | (1u << realism::haze_mask_bit))) &&
             refused({"--realism=on", "--linger=9"}, "Expected --linger") && refused({"--realism=on", "--linger=301"}, "Expected --linger") &&
             on.options.scalability.slot_policy == pyroclast::SlotPolicy::graduate_oldest && on.options.linger_seconds == 75 &&
             parsed({"--realism=on", "--slot-policy=drop-new"}).options.scalability.slot_policy == pyroclast::SlotPolicy::drop_new &&

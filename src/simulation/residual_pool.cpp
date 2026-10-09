@@ -60,7 +60,7 @@ void ResidualPool::force_fade(ResidualCluster& cluster, std::uint32_t tick, std:
 }
 
 std::optional<ResidualLink> ResidualPool::reserve(std::uint32_t tick, const RealismParameters& realism, const LingerSettings& settings,
-    float3 origin, float3 drift_start, ExplosionPreset preset, std::uint64_t serial)
+    float3 origin, float3 drift_start, ExplosionPreset preset, std::uint64_t serial, std::uint32_t variation)
 {
     const std::uint32_t groups = realism.residual_groups;
     assert(groups > 0 && groups <= layout::residual_groups && realism.graduation_ticks >= layout::fade_unit_ticks + 4);
@@ -122,7 +122,7 @@ std::optional<ResidualLink> ResidualPool::reserve(std::uint32_t tick, const Real
     cluster.start_tick = tick;
     cluster.graduation_tick = graduation;
     cluster.longest_ticks = (settings.linger_ticks * last_scale_) >> 10;
-    cluster.variation = settings.variation ? largest_variation : layout::scale_one;
+    cluster.variation = variation;
     cluster.natural_end = death_tick(tick, graduation, cluster.longest_ticks, cluster.variation, 0);
     cluster.origin = origin;
     cluster.drift_start = drift_start;

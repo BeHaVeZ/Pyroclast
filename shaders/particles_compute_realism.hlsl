@@ -7,8 +7,19 @@ RWByteAddressBuffer arguments : register(u2);
 static const float lingering_speed_limit = 114;
 static const float lingering_lifetime = 1e9;
 
+struct Lift
+{
+    float neutral;
+    float2 direction;
+    float4 rise;
+    float4 spread;
+    float rise_scale;
+    float spread_scale;
+    float since;
+};
+
 void lingering_step(inout float4 position, inout float4 velocity, float size, Layer layer, RealismLayer lingering, bool ring,
-    float vortex_weight, Flow flow, float3 effect_origin, float seconds, float crossfade, uint mask)
+    float vortex_weight, Flow flow, float3 effect_origin, float seconds, float crossfade, uint mask, Lift lift)
 {
     const float dt = 1.0 / 60.0;
     bool props = mask_enabled(mask, props_mask_bit) && mask_enabled(mask, collision_mask_bit);
@@ -17,7 +28,16 @@ void lingering_step(inout float4 position, inout float4 velocity, float size, La
     float radius = min(size, prop_contact_limit);
     float terrain = terrain_height(environment, position.xz);
     uint2 near = props ? nearby_boxes(environment, position.xyz, !ring) : uint2(0, 0);
-    float3 air = wind_at(position.y - terrain);
+    float3 air = lingering_wind(position.y - terrain, mask);
+    if (crossfade > 0 && mask_enabled(mask, rise_mask_bit))
+    {
+        float below = lift.neutral - position.y;
+        float updraft = lift.rise.y * lift.rise_scale * saturate(below / 8) * exp(-lift.since / max(lift.rise.z, 1e-3));
+        float sink = lift.rise.w * max(-below, 0);
+        float band = below / max(lift.spread.y * lift.rise_scale, 1e-3);
+        float spreading = lift.spread.x * lift.spread_scale * exp(-band * band) * exp(-lift.since / max(lift.spread.z, 1e-3));
+        air += crossfade * float3(lift.direction.x * spreading, updraft - sink - lingering.settling, lift.direction.y * spreading);
+    }
     if (vortex_weight > 0 && flow.strength > 0 && mask_enabled(mask, vortex_mask_bit))
     {
         air += vortex_flow(flow, effect_origin, position.xyz, seconds) * vortex_weight;
@@ -119,6 +139,18 @@ bool simulate_lingering(uint slot, uint local, uint record, uint layer_index, La
     }
     Flow flow = load_flow(classes, state.w);
     float3 effect_origin = frame.effect_origins[slot].xyz;
+    float2 cloud_centre = effect_origin.xz + link.drift;
+    if (mask_enabled(mask, shear_mask_bit)) effect_origin.xz = cloud_centre;
+    uint id = state.x * explosion_particles + local;
+    uint key = link.varied ? variation_key(state.x) : 0;
+    Lift lift;
+    lift.rise = load_rise(classes, state.w);
+    lift.spread = load_spread(classes, state.w);
+    lift.rise_scale = variation_factor(link.varied, key, vary_height, 0.8, 1.25);
+    lift.spread_scale = variation_factor(link.varied, key, vary_spread, 0.7, 1.3);
+    lift.neutral = frame.effect_origins[slot].y + neutral_height(lift.rise, link.varied, key, id, layer_index);
+    lift.direction = float2(0, 0);
+    lift.since = 0;
     bool graduated = false;
     float graduation_age = 0;
     float shadow = 1;
@@ -130,7 +162,14 @@ bool simulate_lingering(uint slot, uint local, uint record, uint layer_index, La
         if (position.w < 0) continue;
         float seconds = float(tick - state.z) / 60.0;
         float vortex_weight = tick < graduation ? saturate(float(graduation - tick) / crossfade_ticks) : 0;
-        lingering_step(position, velocity, size, layer, lingering, ring, vortex_weight, flow, effect_origin, seconds, 1 - vortex_weight, mask);
+        if (!graduated)
+        {
+            float2 outward = position.xz - cloud_centre;
+            float reach = length(outward);
+            lift.direction = reach > 1e-3 ? outward / reach : float2(1, 0);
+        }
+        lift.since = graduated ? position.w - graduation_age : 0;
+        lingering_step(position, velocity, size, layer, lingering, ring, vortex_weight, flow, effect_origin, seconds, 1 - vortex_weight, mask, lift);
         if (tick == graduation)
         {
             graduated = true;
@@ -146,9 +185,8 @@ bool simulate_lingering(uint slot, uint local, uint record, uint layer_index, La
     particles.Store3(address + particle_size_offset, uint3(asuint(size), generation, 0));
     if (survivor && graduated)
     {
-        uint id = state.x * explosion_particles + local;
         uint jitter = particle_hash(id ^ 0x9e3779b9) % 301;
-        uint death = residual_death_tick(state.z, graduation, link.longest_ticks, scale_one, jitter);
+        uint death = residual_death_tick(state.z, graduation, link.longest_ticks, link.varied ? variation_life(state.x) : scale_one, jitter);
         uint residual = residual_first + link.ring_group * simulation_group_size + lingering.residual_offset + index / lingering.survivor_stride;
         if (residual < min(parameters.record_count, pool_records))
         {
@@ -156,7 +194,7 @@ bool simulate_lingering(uint slot, uint local, uint record, uint layer_index, La
             particles.Store4(target + particle_position_offset, asuint(position));
             particles.Store4(target + particle_velocity_offset, asuint(float4(velocity.xyz, graduation_age)));
             particles.Store4(target + particle_size_offset, uint4(asuint(size), pack_residual(state.w, layer_index, link.cluster, shadow, link.tag),
-                death, 0));
+                death, pack_rise(lift.neutral, lift.direction, link.varied, key)));
         }
     }
     uint tick_after = tick_before + min(parameters.steps, maximum_simulation_steps);
@@ -174,6 +212,7 @@ bool simulate_residual(uint cluster_index, uint group_in_cluster, uint thread)
     uint3 words = particles.Load3(address + particle_size_offset + 4);
     uint packed = words.x;
     uint death = words.y;
+    Rise stored = unpack_rise(words.z);
     if (packed_tag(packed) != cluster.tag)
     {
         arguments.InterlockedAdd(counters_offset + counter_ghosts_word * 4, 1);
@@ -192,11 +231,19 @@ bool simulate_residual(uint cluster_index, uint group_in_cluster, uint thread)
     uint mask = frame.light_state.y;
     bool ring = layer.spawn == spawn_ring;
     Flow none = (Flow)0;
+    Lift lift;
+    lift.rise = load_rise(classes, effect_class);
+    lift.spread = load_spread(classes, effect_class);
+    lift.rise_scale = variation_factor(stored.varied, stored.key, vary_height, 0.8, 1.25);
+    lift.spread_scale = variation_factor(stored.varied, stored.key, vary_spread, 0.7, 1.3);
+    lift.neutral = stored.height;
+    lift.direction = stored.direction;
     uint steps = min(parameters.steps, maximum_simulation_steps);
     for (uint step = 0; step < steps && tick_before + step + 1 < end; ++step)
     {
         position.w += 1.0 / 60.0;
-        lingering_step(position, velocity, size, layer, lingering, ring, 0, none, float3(0, 0, 0), 0, 1, mask);
+        lift.since = max(position.w - velocity.w, 0);
+        lingering_step(position, velocity, size, layer, lingering, ring, 0, none, float3(0, 0, 0), 0, 1, mask, lift);
     }
     if (steps != 0)
     {

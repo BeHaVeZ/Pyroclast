@@ -1,4 +1,5 @@
 #include "app/explosion_renderer.hpp"
+#include "app/realism_constants.hpp"
 #include "app/sandbox.hpp"
 #include "graphics/draw_validation.hpp"
 #include "simulation/explosion_scenarios.hpp"
@@ -8,6 +9,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -777,6 +779,25 @@ int main()
         check(render() == RenderResult::submitted && realism_device.dispatches == 0 && realism_device.range_only &&
             !realism_renderer.particles_drawn() && lingering_effects.residual().clusters().empty(),
             "once its last record has died, nothing is simulated");
+        {
+            ExplosionSystem pair(4);
+            pair.submit({{30, 0, 0}, {0, 1, 0}, 1, ExplosionPreset::artillery_he});
+            pair.submit({{0, 0, -5}, {0, 1, 0}, 2, ExplosionPreset::artillery_he});
+            const RealismStart start{realism_layout::realism_full_mask, {}, {}};
+            pair.start(10, SlotPolicy::graduate_oldest, &start);
+            Camera still;
+            still.position = {0, 10, 40};
+            auto constants = std::make_unique<FrameConstants>();
+            const auto order_with = [&](float drift) {
+                fill_realism_constants(*constants, pair, 20, 20, still, EffectOrder::origin, {drift, 0, 0}, {});
+                return std::pair{constants->unit_order[0][0] & ((1u << realism_layout::unit_id_bits) - 1),
+                    constants->unit_order[0][1] & ((1u << realism_layout::unit_id_bits) - 1)};
+            };
+            const auto first = order_with(0);
+            bool steady = pair.active().size() == 2 && first == std::pair{1u, 0u};
+            for (float drift = -60; drift <= 60; drift += 2.5f) steady = steady && order_with(drift) == first;
+            check(steady, "a common drift never reorders the draw units under a still camera (the deeper effect first)");
+        }
         check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::submitted &&
             device.constant_bytes == legacy_frame_constant_bytes, "a legacy frame uploads exactly M21's frame constants");
     }

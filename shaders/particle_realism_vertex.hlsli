@@ -18,7 +18,7 @@ PixelInput realism_vertex(uint vertex, RealismFootprint realism)
     output.softness = realism.softness;
     output.uv = footprint.flat ? 0 : corner;
     uint mask = frame.light_state.y;
-    float3 albedo = lerp(layer.first_color, layer.second_color, realism.heat);
+    float3 albedo = realism.albedo;
     float3 added = albedo * point_lights(footprint.position, 0, false);
     if (mask_enabled(mask, emission_mask_bit))
     {
@@ -36,8 +36,9 @@ PixelInput realism_vertex(uint vertex, RealismFootprint realism)
             {
                 uint4 state = frame.effect_states[realism.slot];
                 float seconds = float(frame.clock.x - state.z) / 60.0;
-                shadow = cloud_transmittance(layer, load_flow(classes, realism.effect_class), frame.effect_origins[realism.slot].xyz,
-                    footprint.position, seconds);
+                float3 centre = frame.effect_origins[realism.slot].xyz;
+                if (mask_enabled(mask, shear_mask_bit)) centre.xz += load_effect_residual(realism.slot).drift;
+                shadow = cloud_transmittance(layer, load_flow(classes, realism.effect_class), centre, footprint.position, seconds);
                 if (realism.survivor && realism.crossfade >= 1) shadow = float(uint(saturate(shadow) * 255 + 0.5)) / 255;
             }
         }

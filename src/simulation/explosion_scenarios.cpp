@@ -1,5 +1,6 @@
 #include "explosion_scenarios.hpp"
 #include "impact_patterns.hpp"
+#include "../graphics/realism_layout.hpp"
 
 #include <algorithm>
 #include <array>
@@ -38,7 +39,8 @@ std::uint32_t accumulation_interval(ExplosionPreset preset)
     return (longest_life(preset) + slots - 1) / slots;
 }
 
-std::optional<Scenario> make_scenario(std::string_view name, const Environment& environment, ExplosionPreset preset)
+std::optional<Scenario> make_scenario(std::string_view name, const Environment& environment, ExplosionPreset preset,
+    std::uint32_t linger_ticks)
 {
     if (!is_scenario_name(name)) return std::nullopt;
     const auto& terrain = environment.terrain();
@@ -134,8 +136,13 @@ std::optional<Scenario> make_scenario(std::string_view name, const Environment& 
     {
         for (const auto& scripted : scenario.events)
         {
-            scenario.duration_ticks = std::max(scenario.duration_ticks,
-                scripted.tick + effect_ticks(scripted.event.preset, scripted.event.surface));
+            std::uint32_t ticks = effect_ticks(scripted.event.preset, scripted.event.surface);
+            if (linger_ticks > 0)
+            {
+                ticks = std::max({ticks, realism_effect_ticks(scripted.event.preset, scripted.event.surface) + realism_layout::crossfade_ticks + 60,
+                    linger_ticks * 1229 / 1024});
+            }
+            scenario.duration_ticks = std::max(scenario.duration_ticks, scripted.tick + ticks);
         }
     }
     return scenario;

@@ -4,7 +4,11 @@
 
 static const uint realism_mask_bit = 17;
 static const uint linger_mask_bit = 18;
-static const uint realism_full_mask = 0x7ffff;
+static const uint rise_mask_bit = 19;
+static const uint shear_mask_bit = 20;
+static const uint variation_mask_bit = 21;
+static const uint haze_mask_bit = 22;
+static const uint realism_full_mask = 0x7fffff;
 
 static const uint residual_groups = 1024;
 static const uint residual_records = residual_groups * simulation_group_size;
@@ -31,10 +35,12 @@ static const uint effect_cluster_shift = 11;
 static const uint effect_tag_shift = 20;
 static const uint effect_longest_bits = 15;
 static const uint latched_linger = 1u << 15;
+static const uint latched_variation = 1u << 16;
 static const uint scale_one = 1024;
 
 static const uint residual_packed_offset = 36;
 static const uint residual_death_offset = 40;
+static const uint residual_rise_offset = 44;
 static const uint packed_layer_shift = 4;
 static const uint packed_cluster_shift = 6;
 static const uint packed_shadow_shift = 15;

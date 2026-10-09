@@ -465,9 +465,16 @@ void showcase_window(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>
         if (ImGui::Checkbox("Realism model (clears)", &realism)) commands.push_back({UiCommand::Kind::toggle_layer, realism_layout::realism_mask_bit});
         if (realism_enabled(snapshot.layer_mask))
         {
-            bool linger = ((snapshot.layer_mask >> realism_layout::linger_mask_bit) & 1) != 0;
-            ImGui::SameLine();
-            if (ImGui::Checkbox("linger (new effects)", &linger)) commands.push_back({UiCommand::Kind::toggle_layer, realism_layout::linger_mask_bit});
+            constexpr std::pair<const char*, std::uint32_t> features[] = {{"linger (new effects)", realism_layout::linger_mask_bit},
+                {"rise", realism_layout::rise_mask_bit}, {"shear", realism_layout::shear_mask_bit},
+                {"variation (new effects)", realism_layout::variation_mask_bit}, {"haze", realism_layout::haze_mask_bit}};
+            for (std::size_t index = 0; index < std::size(features); ++index)
+            {
+                const auto [name, mask_bit] = features[index];
+                bool on = ((snapshot.layer_mask >> mask_bit) & 1) != 0;
+                if (index % 3 != 2) ImGui::SameLine();
+                if (ImGui::Checkbox(name, &on)) commands.push_back({UiCommand::Kind::toggle_layer, mask_bit});
+            }
         }
     }
 

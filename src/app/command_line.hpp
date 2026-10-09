@@ -111,6 +111,7 @@ inline constexpr WindowSize maximum_window{7680, 4320};
 const char* view_name(RangeView view);
 const char* scene_format_name(SceneFormat format);
 inline constexpr std::string_view disable_names = "dust, smoke, plume, flash, fireball, sparks, debris, lights, curl, vortex, gusts, "
-                                                  "shading, shadow, emission, props, collision, deflection, linger";
+                                                  "shading, shadow, emission, props, collision, deflection, linger, rise, shear, "
+                                                  "variation, haze";
 std::optional<std::uint32_t> disable_bit(std::string_view name);
 }

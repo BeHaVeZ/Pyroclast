@@ -57,7 +57,8 @@ std::optional<std::uint32_t> disable_bit(std::string_view name)
         {"shading", particle_layout::shading_mask_bit}, {"shadow", particle_layout::shadow_mask_bit},
         {"emission", particle_layout::emission_mask_bit}, {"props", particle_layout::props_mask_bit},
         {"collision", particle_layout::collision_mask_bit}, {"deflection", particle_layout::deflection_mask_bit},
-        {"linger", realism_layout::linger_mask_bit}};
+        {"linger", realism_layout::linger_mask_bit}, {"rise", realism_layout::rise_mask_bit}, {"shear", realism_layout::shear_mask_bit},
+        {"variation", realism_layout::variation_mask_bit}, {"haze", realism_layout::haze_mask_bit}};
     for (const auto& [other, bit] : others)
     {
         if (other == name) return bit;
@@ -670,7 +671,7 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
     result.options.layer_mask = model & ~disabled;
     if ((disabled >> realism_layout::realism_mask_bit) != 0 && !realism_enabled(model))
     {
-        result.error = "--disable=linger names a part of the realism model; it requires --realism=on.";
+        result.error = "--disable names a part of the realism model (linger, rise, shear, variation or haze); it requires --realism=on.";
     }
     if (linger_specified && !realism_enabled(model))
     {

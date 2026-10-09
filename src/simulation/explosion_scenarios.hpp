@@ -53,5 +53,5 @@ inline constexpr std::uint32_t accumulation_key = 12000;
 inline constexpr std::uint32_t accumulation_first_seed = 5000;
 std::uint32_t accumulation_interval(ExplosionPreset preset);
 std::optional<Scenario> make_scenario(std::string_view name, const Environment& environment,
-    ExplosionPreset preset = ExplosionPreset::small_he);
+    ExplosionPreset preset = ExplosionPreset::small_he, std::uint32_t linger_ticks = 0);
 }

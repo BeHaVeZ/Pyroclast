@@ -43,13 +43,13 @@ bool ParticleSystem::initialize(GraphicsDevice& device, const Buffer& environmen
     units_scatter_ = device.create_compute_pipeline(Shader::particle_scatter_units);
     units_scatter_measure_ = device.create_compute_pipeline(Shader::particle_scatter_units_measure);
     realism_graphics_ = device.create_graphics_pipeline(
-        {Shader::particle_realism_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha, DepthMode::test, targets.scene});
+        {Shader::particle_realism_vertex, Shader::particle_realism_pixel, BlendMode::premultiplied_alpha, DepthMode::test, targets.scene});
     realism_offscreen_graphics_ = device.create_graphics_pipeline(
-        {Shader::particle_realism_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha, DepthMode::none, targets.offscreen});
+        {Shader::particle_realism_vertex, Shader::particle_realism_pixel, BlendMode::premultiplied_alpha, DepthMode::none, targets.offscreen});
     realism_lod_graphics_ = device.create_graphics_pipeline(
-        {Shader::particle_realism_lod_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha, DepthMode::test, targets.scene});
+        {Shader::particle_realism_lod_vertex, Shader::particle_realism_pixel, BlendMode::premultiplied_alpha, DepthMode::test, targets.scene});
     realism_lod_offscreen_graphics_ = device.create_graphics_pipeline(
-        {Shader::particle_realism_lod_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha, DepthMode::none, targets.offscreen});
+        {Shader::particle_realism_lod_vertex, Shader::particle_realism_pixel, BlendMode::premultiplied_alpha, DepthMode::none, targets.offscreen});
     if (!particles_ || !alive_masks_ || !offsets_ || !alive_ || !arguments_ || !classes_ || !graphics_ || !offscreen_graphics_ ||
         !debris_graphics_ || !lod_graphics_ || !lod_offscreen_graphics_ || !compute_ || !scan_ || !scatter_ || !scatter_measure_ ||
         !realism_compute_ || !units_scan_ || !units_scatter_ || !units_scatter_measure_ || !realism_graphics_ || !realism_offscreen_graphics_ ||
@@ -139,7 +139,7 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_e
             {scatter_pipeline, scatter, scatter_parameters, {groups, 1, 1}, "Particle scatter"}}},
         {particle_pipeline, drawing, both_layers, 0, 0, "Particles", arguments_.get(), particle_layout::particle_arguments_offset},
         {offscreen_pipeline, drawing, smoke_layer, 0, 0, "Smoke", arguments_.get(), particle_layout::smoke_arguments_offset},
-        {*graphics_, drawing, light_layer, 0, 0, "Light", arguments_.get(), particle_layout::light_arguments_offset},
+        {units ? *realism_graphics_ : *graphics_, drawing, light_layer, 0, 0, "Light", arguments_.get(), particle_layout::light_arguments_offset},
         {offscreen_pipeline, drawing, every_layer, 0, 0, "Smoke and light", arguments_.get(), particle_layout::particle_arguments_offset},
         {*debris_graphics_, drawing, debris_list, 0, 0, "Debris", arguments_.get(), particle_layout::debris_arguments_offset},
         {arguments_.get(), particle_layout::counters_offset, whole_record ? particle_layout::counters_bytes : particle_layout::counters_basic_bytes},

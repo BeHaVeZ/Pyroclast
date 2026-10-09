@@ -1,5 +1,6 @@
 #include "wind.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 
@@ -19,6 +20,12 @@ float3 wind_velocity(const WindSettings& settings, std::uint32_t tick, bool gust
         heading += settings.gustiness * (12.0f * std::numbers::pi_v<float> / 180.0f) * std::sin(tau * seconds / 11.0f + 0.9f);
     }
     return {speed * std::cos(heading), 0, speed * std::sin(heading)};
+}
+
+WindProfile wind_at_height(float height)
+{
+    if (height <= 15) return {0.35f + 0.65f * std::clamp(height / 15, 0.0f, 1.0f), 0};
+    return {std::pow(std::min(height, 200.0f) / 15, 0.2f), 0.34906585f * std::clamp((height - 15) / 200, 0.0f, 1.0f)};
 }
 
 float3 WindDrift::at(std::uint32_t tick, const WindSettings& settings, bool gusts) const

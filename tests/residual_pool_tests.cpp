@@ -62,6 +62,7 @@ struct Stream
     std::uint32_t seed;
     std::uint32_t linger_seconds = 75;
     std::uint32_t split_seed = 0;
+    bool varied = true;
 };
 
 using Schedule = std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t>;
@@ -93,7 +94,8 @@ Outcome run(const Stream& stream, pyroclast::SlotPolicy policy = pyroclast::Slot
     namespace layout = realism_layout;
     ExplosionSystem system(particle_layout::maximum_effects);
     Random random{stream.seed};
-    RealismStart realism{layout::realism_full_mask, {stream.linger_seconds * 60, false}, {}};
+    const auto mask = stream.varied ? layout::realism_full_mask : layout::realism_full_mask & ~(1u << layout::variation_mask_bit);
+    RealismStart realism{mask, {stream.linger_seconds * 60, false}, {}};
     Outcome outcome;
     std::map<std::uint64_t, ResidualCluster> seen;
     std::map<std::uint64_t, float> previous_factor;
@@ -212,6 +214,22 @@ int main()
     using namespace pyroclast;
     namespace layout = realism_layout;
 
+    {
+        bool spread = true;
+        std::uint32_t lowest = 2000;
+        std::uint32_t highest = 0;
+        for (std::uint32_t seed = 0; seed < 4096; ++seed)
+        {
+            const auto variation = event_variation(seed);
+            spread = spread && variation.key < 256 && variation.life >= 888 && variation.life <= 1229;
+            lowest = std::min(lowest, variation.life);
+            highest = std::max(highest, variation.life);
+        }
+        check(spread && lowest == 888 && highest == 1229, "every seed's variation is in range, and the range is used");
+        check(particle_hash(0) == 0 && particle_hash(1) == 0x688990c0u && particle_hash(12345) == 0x912efcf7u && event_variation(7).key == (particle_hash(7u ^ 0xa5a5a5a5u) & 0xffu) &&
+            event_variation(7).life == 888 + particle_hash(7u ^ 0x3c6ef372u) % 342, "the variation hash is lowbias32");
+    }
+
     check(ResidualPool::death_tick(100, 580, 4500, 1024, 0) == 4600, "an artillery-he record lives 75 s from its start");
     check(ResidualPool::death_tick(100, 580, 4500, 1024, 300) == 4300, "jitter takes up to 300 ticks off");
     check(ResidualPool::death_tick(100, 580, 4500, 1229, 0) == 100 + ((4500 * 1229) >> 10), "variation lengthens the life");
@@ -232,7 +250,7 @@ int main()
 
     {
         ExplosionSystem system(4);
-        const RealismStart realism{layout::realism_full_mask, {4500, false}, {}};
+        const RealismStart realism{layout::realism_full_mask & ~(1u << layout::variation_mask_bit), {4500, false}, {}};
         system.submit({{0, 0, 0}, {0, 1, 0}, 7, ExplosionPreset::artillery_he});
         system.start(100, SlotPolicy::drop_new, &realism);
         const auto& slot = system.slots()[0];
@@ -248,6 +266,15 @@ int main()
         check(!system.slots()[1].residual && system.slots()[1].latched == 0 &&
             system.slots()[1].lifetime_ticks == effect_ticks(ExplosionPreset::artillery_he, SurfaceType::dirt),
             "an effect started without the linger bit keeps its legacy life");
+        system.submit({{0, 0, 0}, {0, 1, 0}, 9, ExplosionPreset::artillery_he});
+        const RealismStart varying{layout::realism_full_mask, {4500, true}, {}};
+        system.start(102, SlotPolicy::drop_new, &varying);
+        const auto& varied = system.slots()[2];
+        const auto* varied_cluster = varied.residual ? system.residual().find(*varied.residual) : nullptr;
+        const auto life = event_variation(9).life;
+        check(varied.latched == (layout::latched_linger | layout::latched_variation) && varied_cluster && life >= 888 && life <= 1229 &&
+            varied_cluster->natural_end == ResidualPool::death_tick(102, varied_cluster->graduation_tick, varied.residual->longest_ticks, life, 0),
+            "a varied effect's cluster ends where its own life factor puts its records");
         system.clear();
         check(system.residual().clusters().empty() && !system.slots()[0].residual, "clear forgets every cluster");
     }
@@ -271,7 +298,11 @@ int main()
         check(run(*stream).listings == outcome.listings, "a stream's listing is deterministic");
     }
     const auto calm = run(barrage);
-    check(calm.forced == 0 && calm.lowest_scale == layout::scale_one, "4 artillery-he impacts a second fit the ring without forced fades");
+    check(calm.forced == 0 && calm.lowest_scale == 970, "4 artillery-he impacts a second fit the ring without forced fades, at a linger scale of 970/1024");
+    auto plain_barrage = barrage;
+    plain_barrage.varied = false;
+    const auto plain = run(plain_barrage);
+    check(plain.forced == 0 && plain.lowest_scale == layout::scale_one, "without variation they keep the full linger");
     const auto busy = run(sustained);
     check(busy.lowest_scale < layout::scale_one, "12 impacts a second shorten the linger");
     const auto saturated = run(saturation);

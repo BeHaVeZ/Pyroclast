@@ -912,7 +912,10 @@ int run_application(const pyroclast::ApplicationOptions& options)
     std::size_t scripted_frames = 0;
     if (!options.scenario.empty())
     {
-        auto script = pyroclast::make_scenario(options.scenario, sandbox->range.environment(), options.preset);
+        const bool lingers = pyroclast::realism_enabled(options.layer_mask) &&
+            ((options.layer_mask >> pyroclast::realism_layout::linger_mask_bit) & 1) != 0;
+        const auto linger = lingers ? options.linger_seconds * 60 : 0u;
+        auto script = pyroclast::make_scenario(options.scenario, sandbox->range.environment(), options.preset, linger);
         if (!script) return 1;
         if (options.profile_tick && *options.profile_tick > script->duration_ticks)
         {
@@ -1060,10 +1063,12 @@ int main(int argc, char** argv)
             "  --disable=LIST     Hide layers, the lights, smoke features or the props: comma-separated dust, smoke, plume,\n"
             "                     flash, fireball, sparks, debris, lights, curl, vortex, gusts, shading, shadow, emission,\n"
             "                     props (no props drawn, hit or collided with), collision (props drawn, particles pass),\n"
-            "                     deflection (props do not turn the air aside); with --realism=on also linger (no smoke lingers).\n"
+            "                     deflection (props do not turn the air aside); with --realism=on also linger (no smoke lingers),\n"
+            "                     rise (no rising columns), shear (no wind shear), variation (identical effects) or haze.\n"
             "  --realism=on|off   The realism model (default off): smoke graduates from its effect into a residual pool and lingers,\n"
             "                     fading out instead of popping. Not with --benchmark, which fixes its model.\n"
-            "  --linger=S         With --realism=on: lingering smoke lives up to S seconds after its explosion, 10-300 (default 75).\n"
+            "  --linger=S         With --realism=on: lingering smoke lives about S seconds after its explosion (0.87-1.2 times S with\n"
+            "                     variation, less when the residual pool is busy), 10-300 (default 75).\n"
             "  --wind=S,D,G       Wind speed 0-40 m/s, heading in degrees from +x towards +z, gustiness 0-1 (default 3,0,0.3).\n"
             "  --effect-lines     Start with each effect's origin, normal and reach, and the props' collision boxes,\n"
             "                     drawn as lines (L toggles).\n"

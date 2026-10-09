@@ -241,6 +241,40 @@ int main()
             "the residual pool follows the slabs, and the scan's shared memory holds every unit group");
     }
 
+    {
+        const float expected[] = {15.56f, 27.67f, 45.0f, 73.57f, 100.0f, 20.0f, 54.45f};
+        bool heights = true;
+        bool palettes = true;
+        for (std::uint32_t preset = 0; preset < preset_count; ++preset)
+        {
+            const auto kind = static_cast<ExplosionPreset>(preset);
+            const auto effect = make_effect_class(kind, SurfaceType::dirt);
+            heights = heights && std::abs(stabilization_height(kind) - expected[preset]) < 0.01f && effect.realism.rise.x == stabilization_height(kind) &&
+                effect.realism.rise.y > 0 && effect.realism.rise.z > 0 && effect.realism.spread.x > 0 && effect.realism.spread.y > 0;
+            for (std::uint32_t index = 0; index < 3; ++index)
+            {
+                if (effect.layers[index].count == 0) continue;
+                const auto& albedo = effect.realism.layers[index].albedo;
+                palettes = palettes && albedo.x > 0 && albedo.x < 1 && albedo.w == 1 && (index != 0 || effect.realism.layers[index].settling > 0);
+            }
+        }
+        check(heights, "stabilization heights: 15.6, 27.7, 45, 73.6, 100, 20 and 54.4 m by preset");
+        check(palettes, "every lingering layer has a lingering colour, and dust settles");
+    }
+
+    {
+        const auto at = [](float height) { return wind_at_height(height); };
+        check(std::abs(at(0).strength - 0.35f) < 1e-6f && std::abs(at(15).strength - 1) < 1e-6f && std::abs(at(15.001f).strength - 1) < 1e-4f &&
+            at(15).veer == 0, "the profile is continuous at 15 m, unturned below it");
+        check(std::abs(at(200).strength - std::pow(200.0f / 15, 0.2f)) < 1e-6f && at(1000).strength == at(200).strength &&
+            at(200).strength < 1.69f && std::abs(at(215).veer - 0.34906585f) < 1e-6f && at(1000).veer == at(215).veer,
+            "above 15 m the wind strengthens to at most 1.68 times by 200 m and turns by at most 20 degrees");
+        bool rising = true;
+        for (float height = 0; height < 300; height += 0.5f) rising = rising && at(height + 0.5f).strength >= at(height).strength;
+        check(rising, "the wind never weakens with height");
+        check(maximum_wind_speed * 1.69f < 114, "the sheared wind stays below lingering smoke's 114 m/s limit");
+    }
+
     const WindSettings settings{4, 90, 0.5f};
     const auto steady = wind_velocity(settings, 1234, false);
     check(std::abs(steady.x) < 1e-5f && std::abs(steady.z - 4) < 1e-5f && steady.y == 0, "a steady wind blows at its speed towards its heading");

@@ -350,10 +350,17 @@ constexpr float survivor_area = 2.8284271f;
 constexpr float diffusion_seconds = 4;
 constexpr float size_cap_factor = 2.89f;
 
+constexpr float4 lingering_smoke{0.13f, 0.125f, 0.12f, 1};
+constexpr float4 lingering_plume{0.10f, 0.095f, 0.09f, 1};
+constexpr float4 lingering_soot{0.07f, 0.066f, 0.062f, 1};
+
 RealismParameters realism_parameters(ExplosionPreset preset, const Layers& layers)
 {
     RealismParameters realism;
     realism.graduation_ticks = graduation_seconds(preset) * 60;
+    const float height = stabilization_height(preset);
+    realism.rise = {height, 0.06f * height, 25, 0.05f};
+    realism.spread = {0.03f * height, 0.25f * height, 20, 0};
     std::uint32_t records = 0;
     for (std::uint32_t index = 0; index < realism.layers.size(); ++index)
     {
@@ -368,6 +375,13 @@ RealismParameters realism_parameters(ExplosionPreset preset, const Layers& layer
         lingering.residual_drag = layer.drag;
         lingering.residual_turbulence = 0.5f * layer.turbulence;
         lingering.residual_offset = records;
+        const bool sooty = preset == ExplosionPreset::fuel_fire;
+        if (index == layer_index(EffectLayer::ground_dust))
+        {
+            lingering.albedo = {0.85f * layer.first_color.x, 0.85f * layer.first_color.y, 0.85f * layer.first_color.z, 1};
+            lingering.settling = 0.3f;
+        }
+        else lingering.albedo = sooty ? lingering_soot : index == layer_index(EffectLayer::plume) ? lingering_plume : lingering_smoke;
         records += (layer.count + survivor_stride - 1) / survivor_stride;
     }
     realism.residual_records = records;
@@ -482,6 +496,42 @@ std::uint32_t realism_effect_ticks(ExplosionPreset preset, SurfaceType surface)
         ticks = std::max(ticks, static_cast<std::uint32_t>(std::ceil((layer.delay_range + layer.lifetime_min + layer.lifetime_range) * 60.0f)));
     }
     return ticks;
+}
+
+std::uint32_t particle_hash(std::uint32_t value)
+{
+    value ^= value >> 16;
+    value *= 0x7feb352du;
+    value ^= value >> 15;
+    value *= 0x846ca68bu;
+    return value ^ (value >> 16);
+}
+
+EventVariation event_variation(std::uint32_t seed)
+{
+    return {particle_hash(seed ^ 0xa5a5a5a5u) & 0xffu, 888 + particle_hash(seed ^ 0x3c6ef372u) % 342};
+}
+
+float charge_kilograms(ExplosionPreset preset)
+{
+    switch (preset)
+    {
+    case ExplosionPreset::small_impact: return 0.1f;
+    case ExplosionPreset::small_he: return 1;
+    case ExplosionPreset::artillery_he: return 7;
+    case ExplosionPreset::heavy: return 50;
+    case ExplosionPreset::fuel_fire: return 5;
+    case ExplosionPreset::dust_blast: return 10;
+    case ExplosionPreset::stress_test: return 15;
+    }
+    return 1;
+}
+
+float stabilization_height(ExplosionPreset preset)
+{
+    if (preset == ExplosionPreset::fuel_fire) return 100;
+    if (preset == ExplosionPreset::dust_blast) return 20;
+    return 45 * std::pow(charge_kilograms(preset) / 7, 0.25f);
 }
 
 std::uint32_t realism_early_ticks(ExplosionPreset preset, SurfaceType surface)
