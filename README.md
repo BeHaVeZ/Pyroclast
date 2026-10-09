@@ -8,9 +8,9 @@
 smoke risen into one pall, lit on top and dark beneath, carried downwind and fading into the haze. D3D12 in-app
 capture, the realism model.*
 
-**Status:** milestones M11-M25 complete. Windows x64, Direct3D 12 and Vulkan. The default is the realism model
-(lingering smoke without pops, smoke physics, visible blast waves); `--realism=off` runs the earlier model, which the
-seven M20 benchmarks keep.
+**Status:** milestones M11-M26 complete. Windows x64, Direct3D 12 and Vulkan. The default is the realism model
+(lingering smoke without pops, smoke physics, visible blast waves, and since M26 a helicopter whose rotor wash moves the
+smoke and raises dust); `--realism=off` runs the earlier model, which the seven M20 benchmarks keep.
 
 **Technology:** C++20, CMake 4.2, SDL 3.4.18, Direct3D 12, Vulkan 1.3, HLSL compiled by DXC to DXIL and SPIR-V,
 Dear ImGui 1.92.9b, GPU compute.
@@ -46,7 +46,9 @@ particle counts. Pyroclast investigates how to preserve the *perceived visual de
 the simulation and rendering workload bounded.
 
 The realism phase (M22-M25) adds the second half of the question: smoke that lingers for a minute or more and rises
-into columns, as artillery smoke does, without ever popping out of the scene when the particle budget runs out.
+into columns, as artillery smoke does, without ever popping out of the scene when the particle budget runs out. M26
+adds a source of moving air: a helicopter whose rotor downwash pushes that smoke around and blows dust up from the
+ground beneath it.
 
 The rendering side is held to one rule: build exactly enough rendering infrastructure to support and study scalable
 explosion and smoke simulation well, not a renderer that could theoretically support anything.
@@ -89,6 +91,10 @@ per launch; details under [Performance](#performance)); points 2 and 3 from the 
    1.5-2.7 times the median, with the next largest within 3% of it; over a barrage the larger steps are the four
    frames after each impact, as its smoke and the push move. M21's evict-oldest pop, for comparison, is one step 4.9
    times the median.
+8. **A helicopter in the smoke fits too.** Its rotor's air moves every lingering particle within reach, and its
+   brownout raises up to about 2,400 dust puffs. Over the same barrage it adds 1.57 / 1.75 ms of GPU frame at p95
+   (9.42 / 9.95 ms, D3D12 / Vulkan), nearly all of it drawing the dust: the air itself costs about 0.005 ms of compute.
+   On every scripted frame without explosions, the GPU's dust count equals the CPU's prediction.
 
 ![GPU frame average against the number of simultaneous explosions, D3D12 and Vulkan](media/charts/scaling.svg)
 
@@ -104,6 +110,13 @@ The realism model (the default since M25):
 |---|---|
 | ![The lingering barrage from the overview](media/screenshots/realism-overview-1800.png)<br>The lingering barrage at tick 1,800 (30 s), overview: older columns rise and drift behind the newest impact. D3D12, Debug. | ![A heavy charge's condensation dome and dust skirt](media/screenshots/realism-heavy-8.png)<br>One heavy charge at tick 8, humidity 80%: the brief condensation (Wilson) dome around the fireball, the dust skirt kicked up where the front passed, and the refraction ring bending the ground's lines far out. D3D12, Debug. |
 | ![The dust skirt of a heavy charge](media/screenshots/realism-heavy-60.png)<br>The same charge at tick 60 (1 s): the soot-dark young cloud with its ejecta above the skirt's dust, thrown outwards along the ground. D3D12, Debug. | ![The blast wave's refraction, amplified](media/screenshots/realism-waves-difference-6.png)<br>An artillery charge at tick 6: the refraction ring's effect on the image, the difference against `--disable=waves` amplified 40 times (the ground ring and the air shell's arc). D3D12, Debug. |
+
+The helicopter (M26), in the `heli-hover` script over the lingering barrage:
+
+| | |
+|---|---|
+| ![The helicopter descending through the pall](media/screenshots/heli-descent-3700.png)<br>Tick 3,700 (62 s): after 12 s hovering 70 m over the pall, the helicopter comes down through it at 3 m/s. The pall is pressed down and spread, its base turned into a sheet of brownout dust. D3D12, Debug. | ![The same frame without the rotor](media/screenshots/heli-no-rotor-3700.png)<br>The same frame with `--disable=rotor` (no air and no dust; the helicopter still flies): the pall keeps the barrage's shape and the ground stays clear. D3D12, Debug. |
+| ![The low hover in its brownout](media/screenshots/heli-low-hover-4800.png)<br>Tick 4,800: the low hover, the hub 8 m up, inside its own brownout, behind the range's crates and barrier. D3D12, Debug. | ![The climb-out](media/screenshots/heli-departure-5000.png)<br>Tick 5,000: climbing out east, the dust still rolling where it hovered. D3D12, Debug. |
 
 The earlier model (`--realism=off`), as M21 captured it:
 
@@ -123,8 +136,9 @@ The earlier model (`--realism=off`), as M21 captured it:
 | Environment | Sparks and debris collide with the terrain and the props (swept, so nothing tunnels through a thin wall); debris comes to rest on tops; dust is held back and stays on tops; the wind and each explosion's vortex ring turn aside and up over walls. |
 | Showcase | Aim and fire with the crosshair; counts 1, 10, 50 and 100 (the aimed explosion plus a Vogel disc of radius 16.3, 36.6 or 51.6 m around it); an 80-impact barrage across the view; a continuous bombardment; walk or fly; seven camera bookmarks; 0.25x slow motion; debug views (effect bounds, collision boxes, spawn regions, wind arrow). |
 | Realism model (default) | The default since M25 (`--realism=off` for the earlier model). Smoke lingers: when an explosion's energetic phase ends, every eighth dust, smoke and plume particle survives into a residual pool of 65,536 particles and takes over its neighbours' share of the smoke, then lives on for about `--linger` seconds (75 by default, varying by explosion) after the explosion. It rises towards a stabilization height that grows with the charge (about 45 m for artillery) and spreads there, so a cloud becomes a column; the wind strengthens and veers with height, so columns lean and drift; every explosion varies a little in height, spread, darkness and life; dust stays low, falls out and settles; and distant smoke fades into the same haze as the ground. The look (M25): a flash and fireball with a real charge's timing, lighting nearby smoke as a sphere; soil jets and soot-dark young smoke that turns to a ground-tied grey; columns that shade themselves and one another, lit on top and dark beneath; thin smoke that scatters sunlight; billowed puffs. Nothing pops: smoke leaves only by fading, a full pool fades its oldest smoke out over at least 2 s, and with every effect slot busy an older explosion graduates early so the new one starts a moment later instead of being dropped. Deterministic on both APIs. Every explosion's blast wave shows: a ring of refraction races over the ground and through the air, a dust skirt is kicked up where it passes, heavy charges in humid air (`--humidity`, 80% by default) flash a brief condensation dome, lingering smoke jolts outwards as the front crosses it and back as the air returns, and in interactive runs the camera shakes when it arrives. |
+| Helicopter (M26) | A 10 t helicopter (H in the showcase, or three scripts) whose rotor's air, from momentum theory, ground effect and a skewed wake reaching the ground as a wall jet, moves every lingering particle within reach; in a low hover it raises brownout dust by a saltation law. A flat-shaded proxy with blurred rotor discs and a soft ground shadow. |
 | Scalability options | Coverage counters, an automatic smoke resolution with a coverage budget, half-resolution light, projected-size smoke thinning, a faint-smoke floor, effect-order keys and a slot policy. All off by default. |
-| Benchmark mode | 10 named workloads (`--benchmark`; 3 of them for the realism model at 1920x1080), each after 120 warm-up frames, with a JSON record, a per-frame CSV, an interleaved session driver and a report with charts. |
+| Benchmark mode | 12 named workloads (`--benchmark`; 5 of them for the realism model at 1920x1080, 2 with the helicopter), each after 120 warm-up frames, with a JSON record, a per-frame CSV, an interleaved session driver and a report with charts. |
 | Tooling | A Dear ImGui overlay that shows only values the application measures or owns; `--gpu-regions`; in-app capture (`--capture`, `--capture-sequence`); `ImageDiff`; `tools/captures.py`, `tools/ab.py`, `tools/bench`, `tools/counter_log.py`, `tools/lifecycle.ps1`. |
 
 ## Architecture
@@ -371,6 +385,45 @@ effects: when particles run out, a new explosion makes older smoke vanish at onc
 - **Deterministic.** Particle counts stay integer functions of the tick, identical across runs and across D3D12 and
   Vulkan. Every realism feature has a `--disable` name and an overlay checkbox.
 
+### The helicopter (M26)
+
+A helicopter is a source of moving air, not of smoke. Its rotor's downwash moves every lingering smoke and dust particle
+near it, and in a low hover it blows dust up from the ground (brownout). Press **H** in the showcase, or run the
+`heli-hover`, `heli-pass` and `heli-landing` scripts.
+
+- **The air.**
+  - A 10 t helicopter with an 8 m, four-bladed rotor. Momentum theory gives its hover inflow, 14.1 m/s.
+  - Forward flight weakens and skews the wake (Glauert), and near the ground the rotor gains thrust (ground effect).
+  - The wake reaches the ground as a wall jet that carries the rotor's thrust as momentum, and in a low hover it rolls
+    into a recirculating ring.
+  - The flow comes from a stream function, so it creates and loses no air while the wake hangs straight down. It is
+    evaluated on the GPU for every lingering particle at every step, and by a double-precision twin on the CPU.
+  - Smoke inside the wake follows it closely (its drag rises towards 15 /s there); the wind and the helicopter's own
+    motion carry the wake along its skew.
+- **Brownout.**
+  - Dust rises where the outwash beats a saltation threshold (6 m/s), at a rate from a saltation-flux law summed over
+    the ground: full at a hover two rotor radii up, weaker higher up.
+  - At 70 m it is still about 0.4 of that, because the wake keeps its momentum all the way down. Real brownout is
+    usually reported below one to three rotor diameters, so this is on the high side.
+  - 2,558 dust particles cycle through 6-18 s lives, each cycle born or not by an integer rule. The CPU therefore counts
+    exactly what the GPU draws, and every scripted frame without explosions checks it.
+- **The proxy.**
+  - A flat-shaded fuselage built in code from 17 boxes, lit like the props.
+  - Rotor discs drawn as blurred blades, sorted with the smoke.
+  - A soft ground shadow.
+  - It all dissolves in and out.
+- **Flights.** Scripted at whole ticks, within speed, acceleration and descent-rate limits, nose first.
+  - `heli-hover`: a hover 70 m over the pall, a descent through it to a low hover in its own dust, a climb away.
+  - `heli-pass`: a slow pass through the pall at 40 m.
+  - `heli-landing`: a landing in brownout.
+- **What reads.**
+  - Low hovers and the landing: the helicopter sits in its own churning dust.
+  - A long hover above the pall presses it down and spreads it (the gallery's pair).
+  - A single pass changes a thick pall only subtly: the wake is about 12 m wide and the puffs 6-11 m, so the puffs on
+    either side of it still cover the gap.
+- **Unchanged without it.** A run without a helicopter draws through M25's shaders, and every earlier image is
+  byte-identical.
+
 ## D3D12 and Vulkan
 
 | Topic | D3D12 | Vulkan |
@@ -569,6 +622,30 @@ display's 1920x1080; every option off (`default`) and the recommended set. Milli
 - The earlier model is unchanged: an interleaved A/B of M21's build against M25's on the seven M20 benchmarks is
   neutral on 190 of 196 metrics, and the other 6 were neutral in a 7-run re-check.
 
+**The helicopter (M26).** Session `20261009-185704-m26-s3-session` (M26, executable SHA-256
+`2a5eeaaa996fe1d19fb954d5904451b9ff6533fa6bd83368340a79c7f950bb3b`), the same method. `heli-hover` runs the lingering
+barrage's impacts, wind and pose with the helicopter added (from the overview); `heli-ground` the same from the ground
+pose, inside its brownout. Milliseconds, GPU frame p95 / average:
+
+| Benchmark | Variant | D3D12 | Vulkan |
+|---|---|---:|---:|
+| heli-hover | default | 9.421 / 6.117 | 9.947 / 6.441 |
+| heli-hover | recommended | 5.065 / 3.323 | 5.321 / 3.504 |
+| heli-ground | default | 14.964 / 9.701 | 15.710 / 10.175 |
+| heli-ground | recommended | 7.906 / 5.122 | 8.346 / 5.399 |
+| linger-barrage | default (the same session) | 7.849 / 5.208 | 8.201 / 5.469 |
+
+- Against linger-barrage the helicopter adds 1.57 / 1.75 ms at p95. Without its air and dust (`--disable=rotor`, a
+  second session) heli-hover is 8.155 / 8.556 ms, so the air and dust are 1.27 / 1.39 ms, nearly all of it drawing the
+  dust: the rotor's air for every lingering particle adds about 0.005 ms to the compute dispatches.
+- From the ground inside the brownout it uses 90% / 94% of the budget with every option off (reported, not a target);
+  the recommended set takes 45-47% off both.
+- Without a helicopter nothing changed: an interleaved A/B of M25's build against M26's on the three linger
+  benchmarks is neutral on 48 of 48 metrics, and M21's against M26's on the seven M20 benchmarks on 183 of 196; a
+  7-run re-check found 12 of the other 13 neutral, and Vulkan accumulation's compute average 3.9% higher both times
+  (1.3 µs, on shaders byte-identical to M21's; its frame neutral); it also read Vulkan sustained-barrage's compute 1.7%
+  lower.
+
 ## Optimization record
 
 Every change is judged the same way: a baseline, region timestamps, a hypothesis, a toggle, an interleaved A/B,
@@ -620,13 +697,21 @@ Earlier decisions, measured the same way:
   benchmark has a recorded checksum. Captures through `--benchmark` equal captures through `--scenario` exactly.
 - **Native validation.** Debug runs require the D3D12 debug layer or the Vulkan validation layer and end with
   "validation summary: 0 warnings, 0 errors". D3D12 GPU-based validation and Vulkan GPU-assisted validation run once
-  per milestone (Vulkan reports 4 known setup notices and 0 errors).
+  per milestone (Vulkan reports its known setup notices, 4 before M26 and 13 with the helicopter's pipelines, and 0
+  errors).
 - **The realism model.** Its own exact baselines (116 Debug captures: the lingering barrage from the overview and the
   far view, one heavy charge, the saturation script; run to run exact, cross-API within tolerance), the legacy gate
   run with `--realism=off`, and no-pop checks: consecutive frames through a graduation, under forced fades and early
   graduations, from a still camera over a barrage, each compared with its neighbours (no step stands out), against
   the evict-oldest pop the model replaces. Counter logs, including the residual pool's columns, are identical across
   runs and APIs.
+- **The helicopter.** Its own baseline (88 Debug captures of the three scripts from four named poses, both APIs, full and half
+  resolution); frozen frames equal scenario frames at its listing, unlisting, slot end and touchdown; no-pop checks
+  through the touchdown, the brownout's onset and end, the climb-out, the descent and the slot's end. Counter logs are
+  identical across runs and APIs, and on every scripted frame without explosions the GPU's dust count must equal the
+  CPU's prediction (0 mismatches). Its images differ between the APIs by up to 8 levels where the rotor has moved the
+  most smoke, and Debug Vulkan's by up to 3 levels between runs in a few brownout frames (Release is exact; unexplained).
+  WARP needed one change: its shader compiler crashed on the dissolve's dither table.
 - **Lifecycle.** `tools/lifecycle.ps1` drives the interactive path under validation: the controls, the showcase keys,
   30 resizes, minimize and restore, and a minimized start.
 - **Release repeatability.** Optimized D3D12 output is not always bit-identical between runs on this driver, so the
@@ -649,6 +734,14 @@ Earlier decisions, measured the same way:
 - Draw units are sorted per effect by view depth: with a still camera they never swap, but a moving camera can swap
   two overlapping columns in one frame (no sorting within an effect, no OIT).
 - Sustained high impact rates shorten the linger (about 28 s at 12 artillery impacts a second), smoothly.
+- The helicopter's effect on a thick pall reads only subtly in a single pass: its wake is about 12 m wide and the puffs
+  6-11 m. A long hover over it or a low hover reads clearly.
+- The brownout rises from higher hovers than reports suggest (about 0.4 of its full rate at 70 m), because the model's
+  wake keeps its momentum all the way down.
+- The helicopter's wake is the induced flow of a skewed tube: without skew it creates and loses no air, with skew it is
+  slightly off across the tube's slanted faces. No trailing vortices, no wake memory of past positions.
+- With the helicopter, D3D12 and Vulkan images differ by up to 8 levels (counts are identical), and Debug Vulkan's by
+  up to 3 levels between runs in a few brownout frames, for a reason not found.
 - The charge masses, stabilization heights, gains and the push are design values chosen by look, not measurements.
 - Prop collision has documented edge cases: seams between boxes, smoke larger than the hut's interior, a door
   closed to large smoke.
@@ -677,6 +770,8 @@ Each item was analysed or measured and not built; each has the condition that wo
 | Benchmark harness additions: camera motion, a drain phase, a GPU idle-gap classifier, PresentMon telemetry | A measurement needs them (M20 left them out) |
 | The blast waves' sound | The audio milestone the realism phase deferred |
 | Ground shadows from smoke | A look check asks for them (record 13 measured the headroom) |
+| A jet's exhaust and wake | The owner's go-ahead after the helicopter (the dust machinery and the wall jet carry over) |
+| A helicopter's trailing vortices and wake memory | A faster pass than 10 m/s through smoke, or the jet |
 | A larger residual pool (a two-level scan) | Linger shortened by sustained fire matters, or four survivors in eight are wanted (record 12) |
 
 ## Build
@@ -744,6 +839,7 @@ timestamps. Minimizing pauses the simulation; resizing keeps its state.
 | **C** | Count: 1, 10, 50, 100 |
 | **B** / **V** | An 80-impact barrage of the selected preset walking across the view through the crosshair / a continuous bombardment of the selected preset around the crosshair (on or off) |
 | **T**, **P**, **N** | 0.25x slow motion; pause or resume; one 1/60 s step while paused |
+| **H** | The helicopter (realism model): to a hover 12 m over the last click (or the crosshair); again to move it there, or near where it hovers to send it away |
 | **Space** / **R** | Restart the startup group (with the realism model: add it to the scene) / clear every effect and its lingering smoke (both stop the barrage and bombardment) |
 | **W A S D**, **Q E**, **Shift** | Move; down and up while flying; four times faster |
 | Right mouse button, wheel | Look around; change the speed of the current mode |
@@ -772,6 +868,8 @@ $exe = ".\out\build\windows-x64\Release\Pyroclast.exe"
 & $exe --scenario=linger-barrage --preset=artillery-he --view=far --linger=90
 & $exe --preset=heavy --humidity=95                                # condensation domes around heavy charges
 & $exe --benchmark=linger-barrage                                  # the realism model at 1920x1080, borderless
+& $exe --scenario=heli-landing                                     # a helicopter lands in its own brownout
+& $exe --scenario=heli-hover --preset=artillery-he --disable=brownout     # the rotor's air on the pall, no dust
 & $exe --realism=off --scenario=bombardment --slot-policy=evict-oldest   # the earlier model and its pop
 ```
 
@@ -790,7 +888,7 @@ validated even when `--help` is present. Checks that need the scenario's length 
 | `--adapter=NAME\|warp` | The GPU whose name contains NAME (case-insensitive); `warp` is the D3D12 software rasterizer (use Release). |
 | `--explosions=1\|10\|50\|100` | The startup group (default 1). |
 | `--preset=NAME` | small-impact, small-he (default), artillery-he, heavy, fuel-fire, dust-blast or stress-test: the startup group, profiles, scenarios and the first click. |
-| `--disable=LIST` | Hide layers (dust, smoke, plume, flash, fireball, sparks, debris), the lights, smoke features (curl, vortex, gusts, shading, shadow, emission) or the props (props, collision, deflection); with the realism model also linger, rise, shear, variation, haze, waves, skirt, condensation, push and shake. |
+| `--disable=LIST` | Hide layers (dust, smoke, plume, flash, fireball, sparks, debris), the lights, smoke features (curl, vortex, gusts, shading, shadow, emission) or the props (props, collision, deflection); with the realism model also linger, rise, shear, variation, haze, waves, skirt, condensation, push, shake, rotor (the helicopter's air and dust) and brownout (its dust). |
 | `--realism=on\|off` | The realism model (default on since M25): lingering, rising smoke that leaves only by fading, haze, visible blast waves; `off` runs the earlier model. Not with `--benchmark`, whose workload fixes the model. |
 | `--humidity=P` | Realism model: the air's relative humidity in percent, 0-100 (default 80); above 70% heavy and stress-test charges show a condensation (Wilson) dome, fully from 90%. |
 | `--linger=S` | Realism model: lingering smoke lives about S seconds after its explosion (0.87-1.2 times S with variation, less when the residual pool is busy), 10-300 (default 75). |
@@ -801,8 +899,8 @@ validated even when `--help` is present. Checks that need the scenario's length 
 | `--camera=EX,EY,EZ,TX,TY,TZ` | Start at this eye, looking at this target (metres), instead of `--view`. |
 | `--effect-lines` | Start with each effect's origin, normal and reach, and the props' collision boxes, drawn as lines. |
 | `--debug-views=LIST` | Start with bounds, boxes, regions, wind or all on. Not with `--effect-lines` or `--scenario`. |
-| `--scenario=NAME` | A scripted run, one tick per frame, then a JSON summary: single, grid-10, grid-50, grid-100, barrage, presets, range, bombardment or accumulation; for the realism model linger-barrage (240 impacts, four a second, run for 90 s) or linger-saturation (1,200 impacts, 30 a second). |
-| `--benchmark=NAME` | A named scenario, preset and pose after 120 warm-up frames: single, simultaneous-10, simultaneous-50, simultaneous-100, sustained-barrage, smoke-field or accumulation; the realism model's linger-barrage (from the overview), linger-far (from the far view) and linger-ground (from the ground), at 1920x1080. The first seven keep the earlier model. Prints a JSON record. |
+| `--scenario=NAME` | A scripted run, one tick per frame, then a JSON summary: single, grid-10, grid-50, grid-100, barrage, presets, range, bombardment or accumulation; for the realism model linger-barrage (240 impacts, four a second, run for 90 s), linger-saturation (1,200 impacts, 30 a second), or the helicopter over the barrage: heli-hover (a hover above the pall, a descent through it to a low hover), heli-pass (a slow pass through it) or heli-landing (a landing in its own brownout). |
+| `--benchmark=NAME` | A named scenario, preset and pose after 120 warm-up frames: single, simultaneous-10, simultaneous-50, simultaneous-100, sustained-barrage, smoke-field or accumulation; the realism model's linger-barrage (from the overview), linger-far (from the far view), linger-ground (from the ground), heli-hover (heli-hover from the overview) and heli-ground (heli-hover from the ground), at 1920x1080. The first seven keep the earlier model. Prints a JSON record. |
 | `--profile-tick=N` | Freeze at tick 0-480 (with `--scenario`: 1 up to its duration), with timestamps on and VSync off, and sample the frozen state. |
 | `--counter-log=FILE` | With `--scenario` (or `--benchmark`) or `--profile-tick`: one CSV row per frame, written at exit. |
 | `--gpu-timing` | GPU timestamp measurements. |
@@ -902,3 +1000,4 @@ powershell -File tools/lifecycle.ps1 -Configuration Debug -Renderer vulkan -Smok
 | M23 | The realism model's smoke physics and look: rise to a stabilization height and spreading, sheared and veering wind, per-explosion variation, a lingering palette, haze on particles. |
 | M24 | The realism model's visible blast waves: the front from Kinney-Graham, refraction in the present pass, the dust skirt, the Wilson dome, the push on lingering smoke, the camera shake; `--humidity`. |
 | M25 | A look pass (soot and soil colours, a real fireball's timing, lights as spheres, self-shadowed columns and palls, scattering thin smoke, billows, an ejecta crown, a crisper wave and dome); the push made to return; the 1080p budget met with every option off, and the realism model made the default; `linger-ground`; this README's realism sections and images. |
+| M26 | The helicopter: its rotor's air on the smoke, brownout dust, a proxy model, three scripts, the H key and the overlay's button, two benchmarks; the images above. |
