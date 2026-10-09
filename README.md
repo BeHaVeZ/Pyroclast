@@ -94,9 +94,10 @@ give the state, the renderer and build, and any non-default flag.
 | Test range | A 512 m procedural heightfield (257x257 heights, 2 m apart) with a flat central range, sun and hemisphere light, fog and a sky. A 36x36 m concrete pad. 18 props (walls, a hut, crates, a truck, barriers, rocks, a tank, a burnt car) built in code from 36 boxes, no asset files, drawn as one 1,764-vertex mesh. |
 | Explosions | Events placed by clicks or scripts at any time and place. 7 presets (small impact, small HE, artillery HE, heavy, fuel/fire, dust blast, stress test), each a table of up to 7 layers: ground dust, blast smoke, plume, flash, fireball, sparks, debris. Dirt and concrete respond differently. Up to 16 temporary lights per frame, the brightest first. |
 | Environment | Sparks and debris collide with the terrain and the props (swept, so nothing tunnels through a thin wall); debris comes to rest on tops; dust is held back and stays on tops; the wind and each explosion's vortex ring turn aside and up over walls. |
-| Showcase | Aim and fire with the crosshair; counts 1, 10, 50 and 100 (the aimed explosion plus a Vogel disc of radius 16.3, 36.6 or 51.6 m around it); an 80-impact barrage across the view; a continuous bombardment; walk or fly; six camera bookmarks; 0.25x slow motion; debug views (effect bounds, collision boxes, spawn regions, wind arrow). |
+| Showcase | Aim and fire with the crosshair; counts 1, 10, 50 and 100 (the aimed explosion plus a Vogel disc of radius 16.3, 36.6 or 51.6 m around it); an 80-impact barrage across the view; a continuous bombardment; walk or fly; seven camera bookmarks; 0.25x slow motion; debug views (effect bounds, collision boxes, spawn regions, wind arrow). |
+| Realism model (in progress) | Opt-in with `--realism=on`. Smoke lingers: when an explosion's energetic phase ends, every eighth dust, smoke and plume particle survives into a residual pool of 65,536 particles and takes over its neighbours' share of the smoke, then lives on for up to `--linger` seconds (75 by default) after the explosion, drifting with the wind. Nothing pops: smoke leaves only by fading, a full pool fades its oldest smoke out over at least 2 s, and with every effect slot busy an older explosion graduates early so the new one starts a moment later instead of being dropped. Deterministic on both APIs. Rising columns, sheared wind, haze and visible blast waves follow. |
 | Scalability options | Coverage counters, an automatic smoke resolution with a coverage budget, half-resolution light, projected-size smoke thinning, a faint-smoke floor, effect-order keys and a slot policy. All off by default. |
-| Benchmark mode | 7 named workloads (`--benchmark`), each after 120 warm-up frames, with a JSON record, a per-frame CSV, an interleaved session driver and a report with charts. |
+| Benchmark mode | 9 named workloads (`--benchmark`; 2 of them for the realism model at 1920x1080), each after 120 warm-up frames, with a JSON record, a per-frame CSV, an interleaved session driver and a report with charts. |
 | Tooling | A Dear ImGui overlay that shows only values the application measures or owns; `--gpu-regions`; in-app capture (`--capture`, `--capture-sequence`); `ImageDiff`; `tools/captures.py`, `tools/ab.py`, `tools/bench`, `tools/counter_log.py`, `tools/lifecycle.ps1`. |
 
 ## Architecture
@@ -611,15 +612,16 @@ timestamps. Minimizing pauses the simulation; resizing keeps its state.
 | **C** | Count: 1, 10, 50, 100 |
 | **B** / **V** | An 80-impact barrage of the selected preset walking across the view through the crosshair / a continuous bombardment of the selected preset around the crosshair (on or off) |
 | **T**, **P**, **N** | 0.25x slow motion; pause or resume; one 1/60 s step while paused |
-| **Space** / **R** | Restart the startup group / clear every effect (both stop the barrage and bombardment) |
+| **Space** / **R** | Restart the startup group (with the realism model: add it to the scene) / clear every effect and its lingering smoke (both stop the barrage and bombardment) |
 | **W A S D**, **Q E**, **Shift** | Move; down and up while flying; four times faster |
 | Right mouse button, wheel | Look around; change the speed of the current mode |
 | **G** | Walk (eye 1.7 m above the terrain or a prop's top, blocked by props) or fly |
-| **F2-F7**, **Ctrl+F2-F7** | Recall or store the camera bookmarks (overview, ground, hill, aerial, range, yard) |
+| **F2-F7**, **F11**, **Ctrl** with them | Recall or store the camera bookmarks (overview, ground, hill, aerial, range, yard; F11 the far view) |
 | **L**, **F8**, **F9** | Effect bounds and collision boxes; spawn regions; wind arrow |
 | **F1** | Hide or show the overlay. While the overlay takes keyboard or mouse input, the keys do not reach the application. |
 
-When every effect slot is busy, new events are dropped, counted in the overlay and logged.
+When every effect slot is busy, new events are dropped, counted in the overlay and logged; with the realism model an
+older explosion graduates early and the new event waits for its slot instead, while one can.
 
 ### Examples
 
@@ -634,6 +636,9 @@ $exe = ".\out\build\windows-x64\Release\Pyroclast.exe"
 & $exe --benchmark=smoke-field --counter-log=smoke-field.csv       # a benchmark record and its per-frame CSV
 & $exe --explosions=100 --profile-tick=180 --gpu-regions           # a frozen state, timed per dispatch and pass
 & $exe --scenario=range --view=range --capture-to=120 --capture-sequence=out\video\range-120
+& $exe --realism=on --preset=artillery-he                         # lingering smoke; B for a barrage, Space adds the group
+& $exe --realism=on --scenario=linger-barrage --preset=artillery-he --view=far --linger=90
+& $exe --benchmark=linger-barrage                                  # the realism model at 1920x1080, borderless
 ```
 
 ### Command-line flags
@@ -651,14 +656,18 @@ validated even when `--help` is present. Checks that need the scenario's length 
 | `--adapter=NAME\|warp` | The GPU whose name contains NAME (case-insensitive); `warp` is the D3D12 software rasterizer (use Release). |
 | `--explosions=1\|10\|50\|100` | The startup group (default 1). |
 | `--preset=NAME` | small-impact, small-he (default), artillery-he, heavy, fuel-fire, dust-blast or stress-test: the startup group, profiles, scenarios and the first click. |
-| `--disable=LIST` | Hide layers (dust, smoke, plume, flash, fireball, sparks, debris), the lights, smoke features (curl, vortex, gusts, shading, shadow, emission) or the props (props, collision, deflection). |
+| `--disable=LIST` | Hide layers (dust, smoke, plume, flash, fireball, sparks, debris), the lights, smoke features (curl, vortex, gusts, shading, shadow, emission) or the props (props, collision, deflection); with `--realism=on` also linger. |
+| `--realism=on\|off` | The realism model (default off): lingering smoke that leaves only by fading. Not with `--benchmark`. |
+| `--linger=S` | With `--realism=on`: lingering smoke lives up to S seconds after its explosion, 10-300 (default 75). |
 | `--wind=S,D,G` | Speed 0-40 m/s, heading in degrees from +x towards +z, gustiness 0-1 (default 3,0,0.3). |
-| `--view=NAME` | Start at a named pose: overview (default), ground, hill, aerial, range (the north yard's props) or yard (close to its walls). |
+| `--view=NAME` | Start at a named pose: overview (default), ground, hill, aerial, range (the north yard's props), yard (close to its walls) or far (from near the range's south edge, with a 40 degree field of view). |
+| `--window=WxH` | The window's client size in pixels, 640x360 to 7680x4320 (default 1280x720; a benchmark's own size unless given). |
+| `--borderless` | A window without a frame at the primary display's top-left corner, so a display-sized client area fits. |
 | `--camera=EX,EY,EZ,TX,TY,TZ` | Start at this eye, looking at this target (metres), instead of `--view`. |
 | `--effect-lines` | Start with each effect's origin, normal and reach, and the props' collision boxes, drawn as lines. |
 | `--debug-views=LIST` | Start with bounds, boxes, regions, wind or all on. Not with `--effect-lines` or `--scenario`. |
-| `--scenario=NAME` | A scripted run, one tick per frame, then a JSON summary: single, grid-10, grid-50, grid-100, barrage, presets, range, bombardment or accumulation. |
-| `--benchmark=NAME` | A named scenario, preset and pose after 120 warm-up frames: single, simultaneous-10, simultaneous-50, simultaneous-100, sustained-barrage, smoke-field or accumulation. Prints a JSON record. |
+| `--scenario=NAME` | A scripted run, one tick per frame, then a JSON summary: single, grid-10, grid-50, grid-100, barrage, presets, range, bombardment or accumulation; for the realism model linger-barrage (240 impacts, four a second, run for 90 s) or linger-saturation (1,200 impacts, 30 a second). |
+| `--benchmark=NAME` | A named scenario, preset and pose after 120 warm-up frames: single, simultaneous-10, simultaneous-50, simultaneous-100, sustained-barrage, smoke-field or accumulation; the realism model's linger-barrage (from the overview) and linger-far (from the far view), at 1920x1080. Prints a JSON record. |
 | `--profile-tick=N` | Freeze at tick 0-480 (with `--scenario`: 1 up to its duration), with timestamps on and VSync off, and sample the frozen state. |
 | `--counter-log=FILE` | With `--scenario` (or `--benchmark`) or `--profile-tick`: one CSV row per frame, written at exit. |
 | `--gpu-timing` | GPU timestamp measurements. |
@@ -674,20 +683,21 @@ validated even when `--help` is present. Checks that need the scenario's length 
 | `--smoke-lod=P` | Thin smoke particles larger than P pixels in radius (0 < P ≤ 4096). |
 | `--faint-floor=F` | Do not draw smoke whose opacity is below F (0 < F < 1). |
 | `--effect-order=origin\|cloud\|none` | Sort effects back to front by origin (default), by the rising cloud's centre, or not at all. |
-| `--slot-policy=drop-new\|evict-oldest` | With every slot busy, drop the new event (default) or replace the effect that started earliest. |
+| `--slot-policy=drop-new\|evict-oldest\|graduate-oldest` | With every slot busy, drop the new event (default), replace the effect that started earliest, or (the realism model's default; evicting is refused there) graduate an older lingering effect early and let the event wait for its slot. |
 | `--coverage` | Count screen coverage and off-screen particles into the counter record. |
 | `--scene-format=rgba16f\|r11g11b10f\|rgba8` | Scene target (default rgba16f; rgba8 is a cost reference and bands). |
 | `--ui=on\|off` | The overlay (default on; off with `--profile-tick`, `--scenario` or `--benchmark`). F1 hides it. |
 | `--gpu-validation` | Debug only: D3D12 GPU-based or Vulkan GPU-assisted validation (slow). |
 
 Combinations: `--benchmark` refuses `--scenario`, `--explosions`, `--preset`, `--view`, `--camera`, `--profile-tick`,
-`--exit-after`, `--ui=on`, `--debug-views` and `--effect-lines`. `--capture-sequence` refuses `--capture`,
+`--exit-after`, `--ui=on`, `--debug-views`, `--effect-lines` and `--realism`. `--capture-sequence` refuses `--capture`,
 `--capture-tick`, `--profile-tick`, `--counter-log`, `--ui=on` and `--exit-after`, and needs `--capture-from` ≤
 `--capture-to` (each 1-100000).
 
 ### Measuring
 
-- Run Release, leave the 1280x720 window focused and untouched. Any input, focus loss, minimizing, resizing or a
+- Run Release, leave the window focused and untouched at its size (1280x720 unless `--window` or the benchmark says
+  otherwise; the realism benchmarks open 1920x1080 borderless). Any input, focus loss, minimizing, resizing or a
   skipped frame invalidates a sample.
 - `--profile-tick=T` freezes the startup group (or a scenario) at tick T with VSync off and timestamps on, then
   warms up 120 frames and samples 600. A frozen state runs zero integration steps, so it isolates rendering cost;
@@ -751,3 +761,4 @@ powershell -File tools/lifecycle.ps1 -Configuration Debug -Renderer vulkan -Smok
 | M19 | The scalability program: records 00-08 and the options they kept. |
 | M20 | Benchmark mode: seven workloads, records and CSVs, the session driver, the report and charts; D3D12 tearing (record 09). |
 | M21 | This README, the images, `--capture-sequence` and the recording guide. |
+| M22 | The realism model's lingering smoke: the residual pool, graduation, forced fades instead of pops, early graduation instead of eviction; `--window`, `--borderless`, the far view, the realism scenarios and benchmarks. |
