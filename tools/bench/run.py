@@ -64,7 +64,7 @@ import ab
 ROOT = BENCH.parent.parent
 TOOL_VERSION = 1
 BENCHMARKS = ("single", "simultaneous-10", "simultaneous-50", "simultaneous-100", "sustained-barrage", "smoke-field",
-              "accumulation")
+              "accumulation", "linger-barrage", "linger-far")
 RENDERERS = ("d3d12", "vulkan")
 DEFAULT_VARIANT = ("default", "--smoke-resolution=full")
 QUICK_BENCHMARKS = ("single", "smoke-field")

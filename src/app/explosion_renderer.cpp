@@ -1,4 +1,6 @@
 #include "explosion_renderer.hpp"
+#include "realism_constants.hpp"
+#include "../graphics/realism_layout.hpp"
 #include "../simulation/effect_lights.hpp"
 
 #include <algorithm>
@@ -30,8 +32,13 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     const TestRange& range, const Camera& camera, int width, int height, double elapsed_seconds, const FrameOptions& options)
 {
     assert(width > 0 && height > 0);
-    effects.start(particles.tick(), options.scalability.slot_policy);
+    const bool realism = realism_enabled(options.layer_mask);
+    const bool gusts = ((options.layer_mask >> particle_layout::gusts_mask_bit) & 1) != 0;
+    const auto tick = particles.tick();
+    const RealismStart realism_start{options.layer_mask, options.linger, drift_.at(tick, options.wind, gusts)};
+    effects.start(tick, options.scalability.slot_policy, realism ? &realism_start : nullptr);
     const auto active = effects.active();
+    const auto units = realism ? count_units(effects, tick) : FrameUnits{};
     const auto& scalability = options.scalability;
     const bool automatic = scalability.smoke_resolution == SmokeResolution::automatic;
     const double screen_pixels = static_cast<double>(width) * static_cast<double>(height);
@@ -40,7 +47,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     const bool half_light = half && scalability.half_light;
     const auto work = particles.plan(elapsed_seconds, static_cast<std::uint32_t>(active.size()),
         half ? smoke_target_->description().divisor : 0,
-        {scalability.coverage || automatic, half_light, scalability.smoke_lod, scalability.faint_floor});
+        {scalability.coverage || automatic, half_light, scalability.smoke_lod, scalability.faint_floor}, realism ? &units : nullptr);
 
     FrameConstants constants{};
     const float w = static_cast<float>(width);
@@ -95,7 +102,6 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     lights_ = light_count;
     const auto drawn_tick = particles.tick() + work.steps;
     constants.clock = {drawn_tick, 0, 0, 0};
-    const bool gusts = ((options.layer_mask >> particle_layout::gusts_mask_bit) & 1) != 0;
     const auto wind = wind_velocity(options.wind, drawn_tick, gusts);
     constants.wind = {wind.x, wind.y, wind.z, 0};
     const auto towards_camera = cross(right, up);
@@ -107,7 +113,16 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     const bool props = ((options.layer_mask >> particle_layout::props_mask_bit) & 1) != 0;
     const Draw present{*present_, {}, {}, 3, 1, "Tonemap"};
     const Draw lines{*lines_, {}, {work.effects}, 32, std::max(work.effects, 1u), "Effect lines"};
-    const bool simulate = work.effects != 0;
+    listed_clusters_ = 0;
+    if (realism)
+    {
+        const auto filled = fill_realism_constants(constants, effects, tick, key_tick, camera, effect_order, drift_.at(key_tick, options.wind, gusts),
+            options.linger);
+        assert(filled.units.units == units.units && filled.units.groups == units.groups);
+        listed_clusters_ = filled.clusters;
+    }
+    const bool simulate = realism ? work.units != 0 : work.effects != 0;
+    particles_drawn_ = simulate;
     const bool show_lines = options.views.effect_bounds && simulate;
     std::vector<Draw> scene_draws;
     if (props) scene_draws.push_back(opaque.props);
@@ -138,13 +153,16 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
         passes.push_back({scene_.get(), {smoke_target_.get(), depth_.get()}, over_scene, "Composite and light", true, depth_.get(), false});
     }
     passes.push_back({nullptr, {scene_.get(), nullptr}, {&present, 1}, "Present"});
-    Frame frame{simulate ? std::span<const Dispatch>(work.dispatches) : std::span<const Dispatch>(), passes, {},
-        std::as_bytes(std::span(&constants, 1)), options.capture, options.overlay};
+    auto constant_bytes = std::as_bytes(std::span(&constants, 1));
+    if (!realism_enabled(options.layer_mask)) constant_bytes = constant_bytes.first(legacy_frame_constant_bytes);
+    Frame frame{simulate ? std::span<const Dispatch>(work.dispatches) : std::span<const Dispatch>(), passes, {}, constant_bytes,
+        options.capture, options.overlay};
     if (simulate) frame.readback = work.counters;
     const auto result = device.render(frame);
     if (result == RenderResult::submitted)
     {
         particles.commit(work);
+        drift_.advance(particles.tick(), options.wind, gusts);
         if (automatic) smoke_policy_.commit(half);
         else smoke_policy_.follow(half);
         half_smoke_ = half;

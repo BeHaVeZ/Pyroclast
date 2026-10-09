@@ -22,8 +22,10 @@ enum class FramePhase : std::uint8_t { warmup, measured };
 class CounterLog final
 {
 public:
-    explicit CounterLog(bool coverage = false, bool smoke_resolution = false, bool lod = false, bool evicted = false, bool benchmark = false) :
-        coverage_(coverage), smoke_resolution_(smoke_resolution), lod_(coverage && lod), evicted_(evicted), benchmark_(benchmark)
+    explicit CounterLog(bool coverage = false, bool smoke_resolution = false, bool lod = false, bool evicted = false, bool benchmark = false,
+        bool realism = false) :
+        coverage_(coverage), smoke_resolution_(smoke_resolution), lod_(coverage && lod), evicted_(evicted), benchmark_(benchmark),
+        realism_(realism)
     {
     }
     struct Frame
@@ -41,6 +43,10 @@ public:
         double submit_ms = 0;
         SubmitTimings device;
         FrameWork work;
+        std::uint32_t clusters = 0;
+        std::uint64_t forced = 0;
+        std::uint32_t linger_scale = 0;
+        std::uint64_t deferred = 0;
     };
 
     void add_frame(const Frame& frame);
@@ -99,5 +105,6 @@ private:
     bool lod_ = false;
     bool evicted_ = false;
     bool benchmark_ = false;
+    bool realism_ = false;
 };
 }

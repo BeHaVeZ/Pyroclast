@@ -369,7 +369,8 @@ int main()
     {
         for (const auto& event : group_events(environment.terrain(), count)) measure(event);
     }
-    for (const auto name : {"single", "grid-10", "grid-50", "grid-100", "barrage", "presets", "bombardment", "accumulation"})
+    for (const auto name : {"single", "grid-10", "grid-50", "grid-100", "barrage", "presets", "bombardment", "accumulation", "linger-barrage",
+             "linger-saturation"})
     {
         for (const auto& scripted : make_scenario(name, environment)->events) measure(scripted.event);
     }

@@ -29,6 +29,12 @@ void Sandbox::start_group()
 
 void Sandbox::trigger_group()
 {
+    if (realism_enabled(layer_mask))
+    {
+        for (const auto& event : group) effects.submit(event);
+        SDL_Log("Explosion group added to the scene: %zu effects.", group.size());
+        return;
+    }
     start_group();
     SDL_Log("Explosion group triggered: %zu effects, %zu particles; replaces the previous group.", group.size(),
         group.size() * ParticleSystem::slab_records);
@@ -91,11 +97,26 @@ void Sandbox::fill_snapshot(DiagnosticsSnapshot& snapshot) const
     load.dropped_since_clear = pressure.dropped_since_clear();
     load.dropped_recent = pressure.dropped_recent(tick);
     load.peak_since_clear = pressure.peak_since_clear();
+    load.realism = realism_enabled(layer_mask);
+    load.deferred = effects.deferred();
+    load.waiting = effects.waiting();
+    load.clusters = renderer.listed_clusters();
+    load.forced_fades = effects.residual().forced_fades();
+    load.linger_scale = effects.residual().last_scale();
+    load.linger_seconds = linger.linger_ticks / 60;
     load.queued = effects.pending();
     for (const auto slot : effects.active()) ++load.active_by_preset[static_cast<std::uint32_t>(effects.slots()[slot].preset)];
     load.simulated_records = load.active_effects * ParticleSystem::slab_records;
     load.pool_capacity = ParticleSystem::capacity;
-    if (!effects.active().empty()) load.particles = counters;
+    if (load.realism)
+    {
+        for (const auto& cluster : effects.residual().clusters())
+        {
+            if (cluster.listed(tick)) load.simulated_records += cluster.groups * particle_layout::simulation_group_size;
+        }
+        load.pool_capacity = ParticleSystem::pool_records;
+    }
+    if (renderer.particles_drawn()) load.particles = counters;
     load.lights = renderer.lights();
     load.coverage = scalability.coverage || scalability.smoke_resolution == SmokeResolution::automatic;
     load.coverage_flag = scalability.coverage;
@@ -148,6 +169,7 @@ void Sandbox::fill_snapshot(DiagnosticsSnapshot& snapshot) const
     rig.pitch = view.pitch * 57.2957795f;
     rig.speed = camera.speed();
     rig.walking = camera.mode() == CameraMode::walk;
+    static_assert(CameraRig::bookmark_count == std::tuple_size_v<decltype(rig.bookmarks)>);
     for (std::size_t index = 0; index < CameraRig::bookmark_count; ++index)
     {
         rig.bookmarks[index] = camera.bookmarks()[index].name;
@@ -216,7 +238,20 @@ void apply(UiCommand command, Sandbox& sandbox)
             SDL_Log("Selected preset: %.*s", static_cast<int>(name.size()), name.data());
         }
         break;
-    case Kind::toggle_layer: sandbox.layer_mask ^= 1u << (command.value & 31); break;
+    case Kind::toggle_layer:
+        if ((command.value & 31) == realism_layout::realism_mask_bit)
+        {
+            const bool on = !realism_enabled(sandbox.layer_mask);
+            constexpr auto realism_bits = realism_layout::realism_full_mask & ~particle_layout::full_mask;
+            sandbox.layer_mask = on ? sandbox.layer_mask | realism_bits : sandbox.layer_mask & ~realism_bits;
+            sandbox.scalability.slot_policy = on ? SlotPolicy::graduate_oldest : SlotPolicy::drop_new;
+            sandbox.showcase.stop();
+            sandbox.clear();
+            SDL_Log("Model changed (realism %s); effects cleared.", on ? "on" : "off");
+            break;
+        }
+        sandbox.layer_mask ^= 1u << (command.value & 31);
+        break;
     case Kind::set_wind:
         if (const auto wind = validated(command.wind)) sandbox.wind = *wind;
         break;
@@ -308,7 +343,8 @@ void apply(UiCommand command, Sandbox& sandbox)
         }
         break;
     case Kind::set_slot_policy:
-        if (command.value <= 1)
+        if (command.value <= 2 && (command.value != 1 || !realism_enabled(sandbox.layer_mask)) &&
+            (command.value != 2 || realism_enabled(sandbox.layer_mask)))
         {
             sandbox.scalability.slot_policy = static_cast<SlotPolicy>(command.value);
             SDL_Log("Slot policy: %s.", slot_policy_name(sandbox.scalability.slot_policy));

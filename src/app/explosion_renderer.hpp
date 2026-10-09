@@ -27,6 +27,7 @@ public:
         std::span<const ShowcaseMark> marks;
         ScalabilitySettings scalability;
         std::optional<ParticleCounters> counters;
+        LingerSettings linger;
     };
     RenderResult render(GraphicsDevice& device, ParticleSystem& particles, ExplosionSystem& effects, const TestRange& range,
         const Camera& camera, int width, int height, double elapsed_seconds, const FrameOptions& options);
@@ -34,6 +35,8 @@ public:
     bool half_smoke() const { return half_smoke_; }
     const FrameWork& submitted_work() const { return submitted_work_; }
     const SmokeResolutionPolicy& smoke_policy() const { return smoke_policy_; }
+    std::uint32_t listed_clusters() const { return listed_clusters_; }
+    bool particles_drawn() const { return particles_drawn_; }
 
 private:
     std::unique_ptr<RenderTarget> scene_;
@@ -44,7 +47,10 @@ private:
     std::unique_ptr<RenderTarget> smoke_target_;
     std::unique_ptr<GraphicsPipeline> composite_;
     std::uint32_t lights_ = 0;
+    std::uint32_t listed_clusters_ = 0;
+    bool particles_drawn_ = false;
     bool half_smoke_ = false;
+    WindDrift drift_;
     FrameWork submitted_work_;
     SmokeResolutionPolicy smoke_policy_;
 };

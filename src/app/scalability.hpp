@@ -40,6 +40,6 @@ struct ScalabilitySettings
 
 constexpr const char* slot_policy_name(SlotPolicy policy)
 {
-    return policy == SlotPolicy::evict_oldest ? "evict-oldest" : "drop-new";
+    return policy == SlotPolicy::evict_oldest ? "evict-oldest" : policy == SlotPolicy::graduate_oldest ? "graduate-oldest" : "drop-new";
 }
 }

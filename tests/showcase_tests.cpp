@@ -113,8 +113,8 @@ int main()
     }
     check(reachable, "every command but the sliders' has a key");
     bool bookmark_keys = true;
-    const SDL_Keycode function_keys[] = {SDLK_F2, SDLK_F3, SDLK_F4, SDLK_F5, SDLK_F6, SDLK_F7};
-    for (std::uint32_t index = 0; index < 6; ++index)
+    const SDL_Keycode function_keys[] = {SDLK_F2, SDLK_F3, SDLK_F4, SDLK_F5, SDLK_F6, SDLK_F7, SDLK_F11};
+    for (std::uint32_t index = 0; index < 7; ++index)
     {
         const auto recall = command(function_keys[index]);
         const auto store = command(function_keys[index], SDL_KMOD_LCTRL);
@@ -123,18 +123,19 @@ int main()
         const auto shifted = command(function_keys[index], SDL_KMOD_LSHIFT);
         bookmark_keys &= shifted && shifted->kind == Kind::recall_bookmark;
     }
-    check(bookmark_keys, "F2-F7 recall bookmarks 1-6, Ctrl+F2-F7 store them, Shift does not store");
+    check(bookmark_keys, "F2-F7 and F11 recall bookmarks 1-7, Ctrl stores them, Shift does not store");
+    check(!command(SDLK_F10) && !command(SDLK_F12), "F10 and F12 are free");
     check(command(SDLK_R, SDL_KMOD_LCTRL) && command(SDLK_R, SDL_KMOD_LCTRL)->kind == Kind::clear,
         "Ctrl does not change a key without a Ctrl binding");
 
     TestRange test_range;
     const auto& world = test_range.environment();
     std::array<Camera, CameraRig::bookmark_count> views;
-    std::array<std::string_view, CameraRig::bookmark_count> names{"overview", "ground", "hill", "aerial", "range", "yard"};
+    std::array<std::string_view, CameraRig::bookmark_count> names{"overview", "ground", "hill", "aerial", "range", "yard", "far"};
     for (std::size_t index = 0; index < views.size(); ++index) views[index] = test_range.view(static_cast<RangeView>(index));
     const auto same_pose = [](const Camera& a, const Camera& b) {
         return a.position.x == b.position.x && a.position.y == b.position.y && a.position.z == b.position.z && a.yaw == b.yaw &&
-            a.pitch == b.pitch;
+            a.pitch == b.pitch && a.vertical_fov == b.vertical_fov;
     };
     CameraRig rig(test_range.view(RangeView::overview), views, names);
     bool defaults = true;
@@ -142,8 +143,33 @@ int main()
     {
         defaults &= rig.recall(index) && same_pose(rig.camera(), views[index]) && rig.mode() == CameraMode::fly;
     }
-    check(defaults, "the six bookmarks recall the named views exactly, flying");
-    check(!rig.recall(6) && !rig.store(6), "bookmarks beyond the sixth are rejected");
+    check(defaults, "the seven bookmarks recall the named views exactly, flying");
+    check(!rig.recall(7) && !rig.store(7), "bookmarks beyond the seventh are rejected");
+    check(rig.recall(6) && rig.camera().vertical_fov == TestRange::far_vertical_fov && rig.recall(0) &&
+        rig.camera().vertical_fov == Camera{}.vertical_fov, "the far bookmark narrows the field of view; the others restore 60 degrees");
+
+    {
+        const auto& ground = test_range.terrain();
+        const auto eye = test_range.view(RangeView::far).position;
+        float lowest = 1e9f;
+        for (int x = -30; x <= 30; x += 3)
+        {
+            for (int z = -30; z <= 30; z += 3)
+            {
+                if (x * x + z * z > 900) continue;
+                const float3 target{static_cast<float>(x), ground.height(static_cast<float>(x), static_cast<float>(z)) + 0.5f, static_cast<float>(z)};
+                const auto offset = target - eye;
+                const float distance = length(offset);
+                for (float along = 0; along < distance - 1; along += 0.5f)
+                {
+                    const auto point = eye + offset * (along / distance);
+                    lowest = std::min(lowest, point.y - ground.height(point.x, point.z));
+                }
+            }
+        }
+        std::printf("far view: lowest sight-line clearance over the 30 m disc %.3f m\n", static_cast<double>(lowest));
+        check(lowest >= 0.1f, "the far view sees every point of the 30 m disc");
+    }
     rig.recall(0);
     const auto still = rig.camera();
     check(!rig.update(CameraInput{}, 1.0f / 60, world, true) && same_pose(rig.camera(), still), "flying without input never moves");

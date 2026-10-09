@@ -1,6 +1,9 @@
 #pragma once
 
 #include "particle_layout.hlsli"
+#ifdef PYROCLAST_REALISM
+#include "realism_layout.hlsli"
+#endif
 
 struct FrameConstants
 {
@@ -29,5 +32,12 @@ struct FrameConstants
     float4 wind;
     float4 sun_billboard;
     float4 up_billboard;
+#ifdef PYROCLAST_REALISM
+    uint4 unit_state;
+    float4 residual;
+    uint4 unit_order[maximum_units / 4];
+    uint4 clusters[maximum_clusters / 2];
+    uint4 effect_residual[maximum_effects];
+#endif
 };
 ConstantBuffer<FrameConstants> frame : register(b1);

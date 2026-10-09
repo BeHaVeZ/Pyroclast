@@ -51,6 +51,7 @@ int main()
         {"aerial view", {"--view=aerial"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, pyroclast::RangeView::aerial},
         {"range view", {"--view=range"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, pyroclast::RangeView::range},
         {"yard view", {"--view=yard"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, pyroclast::RangeView::yard},
+        {"far view", {"--view=far"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, pyroclast::RangeView::far},
         {"invalid view", {"--view=top"}, d3d12, false, "Expected --view"},
         {"packed float scene", {"--scene-format=r11g11b10f"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {},
             pyroclast::SceneFormat::r11g11b10f},
@@ -59,7 +60,7 @@ int main()
         {"invalid scene format", {"--scene-format=rgba32f"}, d3d12, false, "Expected --scene-format"},
         {"barrage scenario", {"--scenario=barrage"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {},
             pyroclast::SceneFormat::rgba16f, "barrage"},
-        {"invalid scenario", {"--scenario=storm"}, d3d12, false, "Expected --scenario=single, grid-10, grid-50, grid-100, barrage, presets, range, bombardment or accumulation"},
+        {"invalid scenario", {"--scenario=storm"}, d3d12, false, "Expected --scenario=single, grid-10, grid-50, grid-100, barrage, presets, range, bombardment, accumulation, linger-barrage or linger-saturation"},
         {"presets scenario", {"--scenario=presets"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {}, {}, "presets"},
         {"preset", {"--preset=fuel-fire"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {}, {}, {}, false,
             pyroclast::ExplosionPreset::fuel_fire},
@@ -396,6 +397,72 @@ int main()
         }
     }
 
+    {
+        const auto parsed = [](std::initializer_list<const char*> arguments) {
+            return pyroclast::parse_command_line(std::span(arguments.begin(), arguments.size()));
+        };
+        const auto sized = parsed({"--window=1920x1080", "--borderless"});
+        const auto smallest = parsed({"--window=640x360"});
+        const auto largest = parsed({"--window=7680x4320"});
+        const auto pinned = parsed({"--benchmark=single"});
+        const auto overridden = parsed({"--benchmark=single", "--window=1920x1080"});
+        const bool accepted = sized.error.empty() && sized.options.window == pyroclast::WindowSize{1920, 1080} && sized.options.borderless &&
+            smallest.error.empty() && smallest.options.window == pyroclast::minimum_window && largest.error.empty() &&
+            largest.options.window == pyroclast::maximum_window && pyroclast::parse_command_line({}).options.window == pyroclast::WindowSize{} &&
+            !pyroclast::parse_command_line({}).options.borderless && pinned.error.empty() && pinned.options.window == pyroclast::WindowSize{} &&
+            overridden.error.empty() && overridden.options.window == pyroclast::WindowSize{1920, 1080};
+        const auto refused = [&parsed](std::initializer_list<const char*> arguments, std::string_view message) {
+            return parsed(arguments).error.find(message) != std::string::npos;
+        };
+        const bool rules = refused({"--window=639x360"}, "Expected --window=WxH") && refused({"--window=640x359"}, "Expected --window=WxH") &&
+            refused({"--window=7681x4320"}, "Expected --window=WxH") && refused({"--window=7680x4321"}, "Expected --window=WxH") &&
+            refused({"--window=1920"}, "Expected --window=WxH") && refused({"--window=1920x"}, "Expected --window=WxH") &&
+            refused({"--window=x1080"}, "Expected --window=WxH") && refused({"--window=1920X1080"}, "Expected --window=WxH") &&
+            refused({"--window=1920x1080x2"}, "Expected --window=WxH") && refused({"--window=-1920x1080"}, "Expected --window=WxH") &&
+            refused({"--window=1920x1080", "--window=1280x720"}, "only once") && refused({"--borderless", "--borderless"}, "only once");
+        if (!accepted || !rules)
+        {
+            std::fprintf(stderr, "FAIL: --window and --borderless (accepted %d, rules %d)\n", accepted, rules);
+            ++failures;
+        }
+    }
+
+    {
+        namespace realism = pyroclast::realism_layout;
+        const auto parsed = [](std::initializer_list<const char*> arguments) {
+            return pyroclast::parse_command_line(std::span(arguments.begin(), arguments.size()));
+        };
+        const auto on = parsed({"--realism=on"});
+        const auto off = parsed({"--realism=off"});
+        const auto without_linger = parsed({"--disable=linger,smoke", "--realism=on"});
+        const auto legacy_parts = parsed({"--realism=on", "--disable=props"});
+        const std::uint32_t linger = 1u << realism::linger_mask_bit;
+        const bool accepted = on.error.empty() && on.options.layer_mask == realism::realism_full_mask &&
+            pyroclast::realism_enabled(on.options.layer_mask) && off.error.empty() &&
+            off.options.layer_mask == pyroclast::particle_layout::full_mask && !pyroclast::realism_enabled(off.options.layer_mask) &&
+            without_linger.error.empty() && without_linger.options.layer_mask == (realism::realism_full_mask & ~linger & ~2u) &&
+            legacy_parts.error.empty() && legacy_parts.options.layer_mask == (realism::realism_full_mask & ~(1u << pyroclast::particle_layout::props_mask_bit)) &&
+            !pyroclast::realism_enabled(pyroclast::parse_command_line({}).options.layer_mask) && pyroclast::disable_bit("linger") == realism::linger_mask_bit &&
+            (realism::realism_full_mask & pyroclast::particle_layout::full_mask) == pyroclast::particle_layout::full_mask;
+        const auto refused = [&parsed](std::initializer_list<const char*> arguments, std::string_view message) {
+            return parsed(arguments).error.find(message) != std::string::npos;
+        };
+        const bool rules = refused({"--disable=linger"}, "requires --realism=on") && refused({"--realism=off", "--disable=linger"}, "requires --realism=on") &&
+            refused({"--realism=on", "--slot-policy=evict-oldest"}, "evict-oldest") && refused({"--realism=maybe"}, "Expected --realism=on or off") &&
+            refused({"--realism=on", "--realism=on"}, "only once") && parsed({"--slot-policy=evict-oldest"}).error.empty() &&
+            refused({"--slot-policy=graduate-oldest"}, "requires --realism=on") && refused({"--linger=60"}, "requires --realism=on") &&
+            refused({"--realism=on", "--linger=9"}, "Expected --linger") && refused({"--realism=on", "--linger=301"}, "Expected --linger") &&
+            on.options.scalability.slot_policy == pyroclast::SlotPolicy::graduate_oldest && on.options.linger_seconds == 75 &&
+            parsed({"--realism=on", "--slot-policy=drop-new"}).options.scalability.slot_policy == pyroclast::SlotPolicy::drop_new &&
+            parsed({"--realism=on", "--linger=300"}).options.linger_seconds == 300 &&
+            pyroclast::parse_command_line({}).options.scalability.slot_policy == pyroclast::SlotPolicy::drop_new;
+        if (!accepted || !rules)
+        {
+            std::fprintf(stderr, "FAIL: --realism (accepted %d, rules %d)\n", accepted, rules);
+            ++failures;
+        }
+    }
+
     bool tables = true;
     for (const auto& workload : pyroclast::benchmark_workloads)
     {
@@ -403,7 +470,10 @@ int main()
         const char* arguments[] = {flag.c_str()};
         const auto parsed = pyroclast::parse_command_line(arguments);
         tables &= parsed.error.empty() && parsed.options.benchmark == workload.name && parsed.options.scenario == workload.scenario &&
-            parsed.options.preset == workload.preset && parsed.options.view == workload.view && pyroclast::is_scenario_name(workload.scenario) &&
+            parsed.options.preset == workload.preset && parsed.options.view == workload.view && parsed.options.window == workload.window &&
+            parsed.options.layer_mask == workload.mask && parsed.options.wind.speed == workload.wind.speed &&
+            parsed.options.wind.direction_degrees == workload.wind.direction_degrees && parsed.options.wind.gustiness == workload.wind.gustiness &&
+            pyroclast::is_scenario_name(workload.scenario) &&
             pyroclast::benchmark_workload(workload.name) == &workload && pyroclast::benchmark_names.find(workload.name) != std::string_view::npos;
     }
     if (!tables || pyroclast::benchmark_workload("storm") || pyroclast::benchmark_workload(""))
@@ -415,7 +485,7 @@ int main()
         return pyroclast::parse_command_line(std::span(arguments.begin(), arguments.size())).error;
     };
     for (const char* refused : {"--scenario=single", "--explosions=10", "--preset=heavy", "--view=ground", "--camera=0,1,2,3,4,5",
-        "--profile-tick=10", "--exit-after=10", "--ui=on", "--debug-views=all", "--effect-lines"})
+        "--profile-tick=10", "--exit-after=10", "--ui=on", "--debug-views=all", "--effect-lines", "--realism=on"})
     {
         std::string flag(refused);
         if (flag != "--ui=on" && flag.find('=') != std::string::npos) flag.resize(flag.find('='));
@@ -428,7 +498,7 @@ int main()
     }
     for (const char* accepted : {"--renderer=vulkan", "--adapter=uhd", "--smoke-resolution=half", "--scene-format=rgba8",
         "--disable=debris", "--wind=1,2,0", "--coverage", "--gpu-regions", "--gpu-timing", "--counter-log=a.csv", "--gpu-validation",
-        "--ui=off", "--effect-order=cloud", "--slot-policy=evict-oldest", "--smoke-lod=16"})
+        "--ui=off", "--effect-order=cloud", "--slot-policy=evict-oldest", "--smoke-lod=16", "--window=1920x1080", "--borderless"})
     {
         if (!benchmark_error({"--benchmark=smoke-field", accepted}).empty())
         {

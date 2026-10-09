@@ -6,7 +6,8 @@
 
 A log has one row per submitted frame: frame,tick,steps,active,started,dropped (the frame's schedule),
 counter_tick,alive,smoke,light,debris (the GPU counter record that frame produced; empty without active
-effects and for the last frames, whose readbacks were still in flight), draw_ms,compute_ms (its GPU
+effects (or, with the realism model, without listed clusters) and for the last frames, whose readbacks were still in
+flight), draw_ms,compute_ms (its GPU
 intervals, empty when they never arrived) and cpu_ms. Later builds append columns; unknown ones are
 carried along and can be named in --columns, --metric, --x and --y. A --benchmark log starts with its warm-up
 rows (phase warmup, tick 0) before the measured rows (phase measured) and appends the benchmark group
@@ -14,8 +15,8 @@ phase,frame_ms,submit_ms,wait_ms,present_ms,gpu_frame_ms,dispatches,passes,draws
 with --gpu-regions).
 
 diff compares the deterministic columns row by row, every log against the first: the columns above up to
-debris, plus the appended columns offscreen, thinned, faint, half, evicted, phase, dispatches, passes and draws
-when every log has them (--columns replaces the whole set). With --measured it drops the warm-up rows (phase
+debris, plus the appended columns offscreen, thinned, faint, half, evicted, the realism group (residual, ghosts,
+clusters, forced, linger_scale, deferred), phase, dispatches, passes and draws when every log has them (--columns replaces the whole set). With --measured it drops the warm-up rows (phase
 warmup) and ignores the frame column (which counts the warm-up rows too), so the logs are compared from their
 first measured row and a benchmark's log can be compared with the plain --scenario log of the same script,
 preset and pose (a log without a phase column has only measured rows). Two runs of one build, API and
@@ -39,7 +40,8 @@ import sys
 from pathlib import Path
 
 BASE_COLUMNS = ("frame", "tick", "steps", "active", "started", "dropped", "counter_tick", "alive", "smoke", "light", "debris")
-DETERMINISTIC = ("offscreen", "thinned", "faint", "half", "evicted", "phase", "dispatches", "passes", "draws")
+DETERMINISTIC = ("offscreen", "thinned", "faint", "half", "evicted", "residual", "ghosts", "clusters", "forced", "linger_scale",
+                 "deferred", "phase", "dispatches", "passes", "draws")
 
 
 def read_log(path):

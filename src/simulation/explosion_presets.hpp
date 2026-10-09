@@ -2,6 +2,7 @@
 
 #include "../core/math.hpp"
 #include "../graphics/particle_layout.hpp"
+#include "../graphics/realism_layout.hpp"
 
 #include <array>
 #include <cstddef>
@@ -85,14 +86,45 @@ struct FlowParameters
 };
 static_assert(sizeof(FlowParameters) == 32);
 
+struct RealismLayer
+{
+    std::uint32_t survivor_stride = 0;
+    float survivor_area = 1;
+    float diffusion_seconds = 1;
+    float size_cap = 0;
+    float optical_depth = 0;
+    float end_share = 0.3f;
+    float settling = 0;
+    float dilution = 2;
+    float residual_drag = 0;
+    float residual_turbulence = 0;
+    float turbulence_scale = 0.04f;
+    std::uint32_t residual_offset = 0;
+    float4 albedo{};
+};
+static_assert(sizeof(RealismLayer) == 64);
+
+struct RealismParameters
+{
+    std::uint32_t graduation_ticks = 0;
+    std::uint32_t residual_records = 0;
+    std::uint32_t residual_groups = 0;
+    std::uint32_t reserved = 0;
+    float4 rise{};
+    std::array<RealismLayer, 3> layers{};
+};
+static_assert(sizeof(RealismParameters) == 224);
+
 struct EffectClass
 {
     std::array<std::uint8_t, particle_layout::class_layers_offset> group_layers{};
     std::array<LayerParameters, particle_layout::layer_count> layers{};
     FlowParameters flow;
-    std::array<std::uint8_t, particle_layout::class_stride - particle_layout::class_flow_offset - sizeof(FlowParameters)> padding{};
+    RealismParameters realism;
+    std::array<std::uint8_t, particle_layout::class_stride - realism_layout::class_realism_offset - sizeof(RealismParameters)> padding{};
 };
 static_assert(sizeof(EffectClass) == particle_layout::class_stride && offsetof(EffectClass, flow) == particle_layout::class_flow_offset &&
+    offsetof(EffectClass, realism) == realism_layout::class_realism_offset &&
     particle_layout::slab_groups <= particle_layout::class_layers_offset);
 
 inline constexpr std::string_view preset_names = "small-impact, small-he, artillery-he, heavy, fuel-fire, dust-blast, stress-test";
@@ -112,6 +144,8 @@ EffectClass make_effect_class(ExplosionPreset preset, SurfaceType surface);
 std::vector<EffectClass> effect_classes();
 
 float cloud_rise(ExplosionPreset preset, float seconds);
+std::uint32_t realism_effect_ticks(ExplosionPreset preset, SurfaceType surface);
+std::uint32_t realism_early_ticks(ExplosionPreset preset, SurfaceType surface);
 std::uint32_t effect_ticks(ExplosionPreset preset, SurfaceType surface);
 
 struct LightCurve

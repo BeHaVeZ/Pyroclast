@@ -73,8 +73,9 @@ CPU_TOLERANCE = 5.1e-5
 MEAN_TOLERANCE = 5e-4 + 1e-9
 FNV_BASIS = 0xcbf29ce484222325
 FNV_PRIME = 0x100000001b3
-RUN_COLUMNS = (*counter_log.BASE_COLUMNS, "half", "evicted", "phase", "dispatches", "passes", "draws")
-API_COLUMNS = (*counter_log.BASE_COLUMNS, "evicted", "phase", "dispatches", "passes", "draws")
+REALISM_COLUMNS = ("residual", "ghosts", "clusters", "forced", "linger_scale", "deferred")
+RUN_COLUMNS = (*counter_log.BASE_COLUMNS, "half", "evicted", *REALISM_COLUMNS, "phase", "dispatches", "passes", "draws")
+API_COLUMNS = (*counter_log.BASE_COLUMNS, "evicted", *REALISM_COLUMNS, "phase", "dispatches", "passes", "draws")
 PER_API_COLUMNS = ("offscreen", "thinned", "faint")
 PUBLISHED_CHECKSUMS = {"single": "ff5c70a92771eebd", "simultaneous-100": "3b96591caa5bd973",
                        "sustained-barrage": "3896b00be006225b", "smoke-field": "6fb233585e3fb1e3"}

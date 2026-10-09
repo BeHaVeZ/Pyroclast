@@ -56,7 +56,8 @@ std::optional<std::uint32_t> disable_bit(std::string_view name)
         {"curl", particle_layout::curl_mask_bit}, {"vortex", particle_layout::vortex_mask_bit}, {"gusts", particle_layout::gusts_mask_bit},
         {"shading", particle_layout::shading_mask_bit}, {"shadow", particle_layout::shadow_mask_bit},
         {"emission", particle_layout::emission_mask_bit}, {"props", particle_layout::props_mask_bit},
-        {"collision", particle_layout::collision_mask_bit}, {"deflection", particle_layout::deflection_mask_bit}};
+        {"collision", particle_layout::collision_mask_bit}, {"deflection", particle_layout::deflection_mask_bit},
+        {"linger", realism_layout::linger_mask_bit}};
     for (const auto& [other, bit] : others)
     {
         if (other == name) return bit;
@@ -93,6 +94,10 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
     bool budget_specified = false;
     bool order_specified = false;
     bool policy_specified = false;
+    bool window_specified = false;
+    std::optional<bool> realism;
+    bool linger_specified = false;
+    std::uint32_t disabled = 0;
     const auto set_once = [&result](bool& flag, const char* name) {
         if (flag)
         {
@@ -125,6 +130,31 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
         else if (option == "--coverage")
         {
             if (!set_once(result.options.scalability.coverage, "--coverage")) return result;
+        }
+        else if (option == "--borderless")
+        {
+            if (!set_once(result.options.borderless, "--borderless")) return result;
+        }
+        else if (option.starts_with("--window="))
+        {
+            if (window_specified)
+            {
+                result.error = "Specify --window only once.";
+                return result;
+            }
+            window_specified = true;
+            const auto value = option.substr(std::string_view("--window=").size());
+            const auto separator = value.find('x');
+            const auto width = separator == std::string_view::npos ? std::nullopt :
+                parse_count(value.substr(0, separator), minimum_window.width, maximum_window.width);
+            const auto height = separator == std::string_view::npos ? std::nullopt :
+                parse_count(value.substr(separator + 1), minimum_window.height, maximum_window.height);
+            if (!width || !height)
+            {
+                result.error = "Expected --window=WxH in pixels, from 640x360 to 7680x4320.";
+                return result;
+            }
+            result.options.window = {*width, *height};
         }
         else if (option == "--effect-lines")
         {
@@ -177,6 +207,37 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
                 return result;
             }
         }
+        else if (option.starts_with("--realism="))
+        {
+            if (realism)
+            {
+                result.error = "Specify --realism only once.";
+                return result;
+            }
+            const auto value = option.substr(std::string_view("--realism=").size());
+            if (value != "on" && value != "off")
+            {
+                result.error = "Expected --realism=on or off.";
+                return result;
+            }
+            realism = value == "on";
+        }
+        else if (option.starts_with("--linger="))
+        {
+            if (linger_specified)
+            {
+                result.error = "Specify --linger only once.";
+                return result;
+            }
+            linger_specified = true;
+            const auto seconds = parse_count(option.substr(std::string_view("--linger=").size()), 10, 300);
+            if (!seconds)
+            {
+                result.error = "Expected --linger=S, seconds from 10 to 300.";
+                return result;
+            }
+            result.options.linger_seconds = *seconds;
+        }
         else if (option.starts_with("--ui="))
         {
             if (result.options.ui)
@@ -207,9 +268,10 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
             else if (value == "aerial") result.options.view = RangeView::aerial;
             else if (value == "range") result.options.view = RangeView::range;
             else if (value == "yard") result.options.view = RangeView::yard;
+            else if (value == "far") result.options.view = RangeView::far;
             else
             {
-                result.error = "Expected --view=overview, ground, hill, aerial, range or yard.";
+                result.error = "Expected --view=overview, ground, hill, aerial, range, yard or far.";
                 return result;
             }
         }
@@ -329,7 +391,7 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
                     result.error = "Expected --disable=<comma-separated " + or_list(disable_names) + ">.";
                     return result;
                 }
-                result.options.layer_mask &= ~(1u << *bit);
+                disabled |= 1u << *bit;
                 if (comma == std::string_view::npos) break;
                 start = comma + 1;
             }
@@ -398,9 +460,10 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
             policy_specified = true;
             const auto value = option.substr(std::string_view("--slot-policy=").size());
             if (value == "evict-oldest") result.options.scalability.slot_policy = SlotPolicy::evict_oldest;
+            else if (value == "graduate-oldest") result.options.scalability.slot_policy = SlotPolicy::graduate_oldest;
             else if (value != "drop-new")
             {
-                result.error = "Expected --slot-policy=drop-new or evict-oldest.";
+                result.error = "Expected --slot-policy=drop-new, evict-oldest or graduate-oldest.";
                 return result;
             }
         }
@@ -579,12 +642,13 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
         }
     }
 
+    std::uint32_t model = realism.value_or(false) ? realism_layout::realism_full_mask : particle_layout::full_mask;
     if (const auto workload = benchmark_workload(result.options.benchmark))
     {
         const char* conflict = scenario_specified ? "--scenario" : explosions_specified ? "--explosions" : preset_specified ? "--preset" :
             view_specified ? "--view" : result.options.camera ? "--camera" : profile_specified ? "--profile-tick" :
             result.options.exit_after ? "--exit-after" : result.options.ui.value_or(false) ? "--ui=on" :
-            debug_views_specified ? "--debug-views" : result.options.effect_lines ? "--effect-lines" : nullptr;
+            debug_views_specified ? "--debug-views" : result.options.effect_lines ? "--effect-lines" : realism ? "--realism" : nullptr;
         if (conflict)
         {
             result.error = "--benchmark=NAME fixes the script, preset and pose and runs to its end; it cannot be combined with " +
@@ -594,8 +658,33 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
         result.options.scenario = std::string(workload->scenario);
         result.options.preset = workload->preset;
         result.options.view = workload->view;
+        if (!window_specified)
+        {
+            result.options.window = workload->window;
+            result.options.borderless = result.options.borderless || workload->borderless;
+        }
+        if (!wind_specified) result.options.wind = workload->wind;
+        model = workload->mask;
         scenario_specified = true;
     }
+    result.options.layer_mask = model & ~disabled;
+    if ((disabled >> realism_layout::realism_mask_bit) != 0 && !realism_enabled(model))
+    {
+        result.error = "--disable=linger names a part of the realism model; it requires --realism=on.";
+    }
+    if (linger_specified && !realism_enabled(model))
+    {
+        result.error = "--linger requires --realism=on.";
+    }
+    if (realism_enabled(model) && result.options.scalability.slot_policy == SlotPolicy::evict_oldest)
+    {
+        result.error = "--slot-policy=evict-oldest respawns the oldest effect's slab at once (a pop); use graduate-oldest or drop-new.";
+    }
+    if (!realism_enabled(model) && result.options.scalability.slot_policy == SlotPolicy::graduate_oldest)
+    {
+        result.error = "--slot-policy=graduate-oldest requires --realism=on.";
+    }
+    if (realism_enabled(model) && !policy_specified) result.options.scalability.slot_policy = SlotPolicy::graduate_oldest;
     if (capture_specified && !result.options.profile_tick && !(scenario_specified && result.options.capture_tick))
     {
         result.error = result.options.benchmark.empty() ?
@@ -704,6 +793,7 @@ const char* view_name(RangeView view)
     case RangeView::aerial: return "aerial";
     case RangeView::range: return "range";
     case RangeView::yard: return "yard";
+    case RangeView::far: return "far";
     }
     return "overview";
 }

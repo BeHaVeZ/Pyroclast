@@ -21,12 +21,14 @@ constexpr std::array bindings{
     KeyBinding{SDLK_F5, false, {Kind::recall_bookmark, 3}},
     KeyBinding{SDLK_F6, false, {Kind::recall_bookmark, 4}},
     KeyBinding{SDLK_F7, false, {Kind::recall_bookmark, 5}},
+    KeyBinding{SDLK_F11, false, {Kind::recall_bookmark, 6}},
     KeyBinding{SDLK_F2, true, {Kind::store_bookmark, 0}},
     KeyBinding{SDLK_F3, true, {Kind::store_bookmark, 1}},
     KeyBinding{SDLK_F4, true, {Kind::store_bookmark, 2}},
     KeyBinding{SDLK_F5, true, {Kind::store_bookmark, 3}},
     KeyBinding{SDLK_F6, true, {Kind::store_bookmark, 4}},
     KeyBinding{SDLK_F7, true, {Kind::store_bookmark, 5}},
+    KeyBinding{SDLK_F11, true, {Kind::store_bookmark, 6}},
     KeyBinding{SDLK_1, false, {Kind::select_preset, 0}},
     KeyBinding{SDLK_2, false, {Kind::select_preset, 1}},
     KeyBinding{SDLK_3, false, {Kind::select_preset, 2}},
@@ -58,7 +60,7 @@ std::span<const KeyBinding> key_bindings()
 std::string_view controls_summary()
 {
     return "WASD/QE + right mouse: move | click/F: fire | 1-7: preset | C: count | B: barrage | V: bombardment | T: 0.25x | "
-           "G: walk | F2-F7: views (Ctrl stores) | F8/F9/L: debug views | Space: group | R: clear | P: pause | N: step";
+           "G: walk | F2-F7, F11: views (Ctrl stores) | F8/F9/L: debug views | Space: group | R: clear | P: pause | N: step";
 }
 
 std::optional<UiCommand> key_command(SDL_Keycode key, SDL_Keymod modifiers)

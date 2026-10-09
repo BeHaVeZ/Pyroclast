@@ -31,6 +31,7 @@ public:
     static constexpr float exposure = 1.25f;
     static void light(FrameConstants& constants);
     Camera view(RangeView name) const;
+    static constexpr float far_vertical_fov = 0.6981317f;
 
 private:
     Environment environment_;

@@ -18,4 +18,18 @@ float3 wind_velocity(const WindSettings& settings, std::uint32_t tick, bool gust
 
 inline constexpr float maximum_wind_speed = 40;
 std::optional<WindSettings> validated(WindSettings settings);
+
+class WindDrift final
+{
+public:
+    float3 at(std::uint32_t tick, const WindSettings& settings, bool gusts) const;
+    void advance(std::uint32_t tick, const WindSettings& settings, bool gusts);
+    std::uint32_t tick() const { return tick_; }
+
+private:
+    double x_ = 0;
+    double y_ = 0;
+    double z_ = 0;
+    std::uint32_t tick_ = 0;
+};
 }

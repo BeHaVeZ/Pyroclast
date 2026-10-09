@@ -78,6 +78,13 @@ struct DiagnosticsSnapshot
         std::string_view effect_order = "origin";
         std::string_view slot_policy = "drop-new";
         std::uint64_t evicted = 0;
+        std::uint64_t deferred = 0;
+        std::size_t waiting = 0;
+        bool realism = false;
+        std::uint32_t clusters = 0;
+        std::uint64_t forced_fades = 0;
+        std::uint32_t linger_scale = 0;
+        std::uint32_t linger_seconds = 0;
     };
     struct Aim
     {
@@ -105,8 +112,8 @@ struct DiagnosticsSnapshot
         float pitch = 0;
         float speed = 0;
         bool walking = false;
-        std::array<std::string_view, 6> bookmarks{};
-        std::array<bool, 6> stored{};
+        std::array<std::string_view, 7> bookmarks{};
+        std::array<bool, 7> stored{};
     };
     struct Wind
     {

@@ -32,6 +32,7 @@ struct Sandbox
     std::uint32_t layer_mask = particle_layout::full_mask;
     WindSettings wind;
     ScalabilitySettings scalability;
+    LingerSettings linger;
     std::optional<ParticleCounters> counters;
     std::uint64_t counter_sample = 0;
 

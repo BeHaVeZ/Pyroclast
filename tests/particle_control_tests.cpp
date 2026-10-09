@@ -92,10 +92,18 @@ public:
     {
         const char* error = pyroclast::validate_frame(frame);
         if (error) std::fprintf(stderr, "frame rejected: %s\n", error);
-        valid_frame = error == nullptr && frame.constants.size() == sizeof(pyroclast::FrameConstants);
-        if (valid_frame) std::memcpy(&constants, frame.constants.data(), sizeof(constants));
+        pyroclast::FrameConstants received{};
+        std::memcpy(&received, frame.constants.data(), std::min(frame.constants.size(), sizeof(received)));
+        const bool realism_frame = pyroclast::realism_enabled(received.light_state[1]);
+        valid_frame = error == nullptr &&
+            frame.constants.size() == (realism_frame ? sizeof(pyroclast::FrameConstants) : pyroclast::legacy_frame_constant_bytes);
+        if (valid_frame) constants = received;
         dispatch_groups = frame.dispatches.empty() ? 0 : frame.dispatches[0].groups[0];
         dispatches = frame.dispatches.size();
+        dispatch_shaders.clear();
+        for (const auto& dispatch : frame.dispatches) dispatch_shaders.push_back(shader_of(dispatch.pipeline));
+        simulation_writes_arguments = !frame.dispatches.empty() && frame.dispatches[0].bindings.write[2] != nullptr;
+        constant_bytes = frame.constants.size();
         readback = frame.readback;
         const auto draws = [](const pyroclast::Pass& pass, std::initializer_list<const pyroclast::GraphicsPipeline*> pipelines) {
             if (pass.draws.size() != pipelines.size()) return false;
@@ -107,8 +115,7 @@ public:
             return pass.inputs[0] == first && !pass.inputs[1];
         };
         const auto& passes = frame.passes;
-        pyroclast::FrameConstants sent{};
-        if (frame.constants.size() == sizeof(sent)) std::memcpy(&sent, frame.constants.data(), sizeof(sent));
+        const pyroclast::FrameConstants& sent = received;
         const bool props_shown = ((sent.light_state[1] >> pyroclast::particle_layout::props_mask_bit) & 1) != 0;
         const auto range_pass = [&](const pyroclast::Pass& pass) {
             std::vector<const pyroclast::GraphicsPipeline*> expected;
@@ -193,6 +200,9 @@ public:
     bool half_light_passes = false;
     std::size_t dispatches = 0;
     std::uint32_t dispatch_groups = 0;
+    std::vector<std::optional<pyroclast::Shader>> dispatch_shaders;
+    bool simulation_writes_arguments = false;
+    std::size_t constant_bytes = 0;
     pyroclast::Frame::Readback readback;
     pyroclast::RenderTarget* scene = nullptr;
     pyroclast::RenderTarget* depth = nullptr;
@@ -242,11 +252,11 @@ int main()
 
     ParticleSystem system;
     namespace layout = particle_layout;
-    constexpr std::uint32_t all_groups = ParticleSystem::effect_slots * groups;
+    constexpr std::uint32_t all_groups = realism_layout::maximum_unit_groups;
     const auto classes = effect_classes();
     check(system.initialize(device, range.environment_buffer(), targets, classes) && device.zeroed_sizes == std::vector<std::uint32_t>{
-        ParticleSystem::capacity * layout::particle_stride, all_groups * 8, all_groups * 4, 3 * ParticleSystem::capacity * 4, layout::arguments_bytes},
-        "a zero-filled pool with one slab per effect slot, alive masks and offsets per group, alive lists and arguments");
+        ParticleSystem::pool_records * layout::particle_stride, all_groups * 8, all_groups * 4, 3 * ParticleSystem::capacity * 4, layout::arguments_bytes},
+        "a zero-filled pool of one slab per effect slot and the residual pool, alive masks and offsets per group, alive lists and arguments");
     bool uploaded = device.uploaded_classes.size() == layout::maximum_effect_classes;
     for (std::size_t index = 0; uploaded && index < device.uploaded_classes.size(); ++index)
     {
@@ -572,7 +582,7 @@ int main()
     {
         Sandbox sandbox;
         std::array<Camera, CameraRig::bookmark_count> views;
-        const std::array<std::string_view, CameraRig::bookmark_count> names{"overview", "ground", "hill", "aerial", "range", "yard"};
+        const std::array<std::string_view, CameraRig::bookmark_count> names{"overview", "ground", "hill", "aerial", "range", "yard", "far"};
         for (std::size_t index = 0; index < views.size(); ++index) views[index] = sandbox.range.view(static_cast<RangeView>(index));
         sandbox.camera = CameraRig(views[0], views, names);
         using Kind = UiCommand::Kind;
@@ -659,9 +669,9 @@ int main()
         const bool other = same_pose(sandbox.camera.camera(), views[1]);
         apply(command(Kind::recall_bookmark, 4), sandbox);
         const bool stored = same_pose(sandbox.camera.camera(), moved) && sandbox.camera.bookmarks()[4].stored;
-        apply(command(Kind::recall_bookmark, 6), sandbox);
+        apply(command(Kind::recall_bookmark, 7), sandbox);
         check(recalled && !same_pose(moved, views[0]) && other && stored && same_pose(sandbox.camera.camera(), moved),
-            "store_bookmark keeps the pose, recall_bookmark returns to it, and a bookmark past the sixth is ignored");
+            "store_bookmark keeps the pose, recall_bookmark returns to it, and a bookmark past the seventh is ignored");
 
         sandbox.views = {};
         apply(command(Kind::toggle_debug_lines), sandbox);
@@ -722,6 +732,53 @@ int main()
         const bool hidden_props = !sandbox.props_shown();
         apply(command(Kind::toggle_layer, layout::props_mask_bit), sandbox);
         check(hidden_props && sandbox.props_shown() && sandbox.layer_mask == layout::full_mask, "toggle_layer flips one mask bit");
+    }
+
+    {
+        TestDevice realism_device;
+        TestRange realism_range;
+        realism_range.initialize(realism_device, hdr);
+        realism_device.prop_vertices = realism_range.prop_vertex_count();
+        realism_device.boxes = realism_range.environment().box_count();
+        realism_device.environment = &realism_range.environment_buffer();
+        ParticleSystem lingering;
+        lingering.initialize(realism_device, realism_range.environment_buffer(), targets, classes);
+        lingering.set_fixed_ticks(true);
+        ExplosionSystem lingering_effects(ParticleSystem::effect_slots);
+        ExplosionRenderer realism_renderer;
+        realism_renderer.initialize(realism_device, hdr);
+        ExplosionRenderer::FrameOptions options{};
+        options.layer_mask = realism_layout::realism_full_mask;
+        for (const auto& event : group_events(realism_range.terrain(), 1, ExplosionPreset::artillery_he)) lingering_effects.submit(event);
+        const auto render = [&]() {
+            return realism_renderer.render(realism_device, lingering, lingering_effects, realism_range, camera, 1280, 720, 1.0 / 60, options);
+        };
+        const std::vector<std::optional<Shader>> realism_dispatches{Shader::particle_realism_simulation, Shader::particle_scan_units,
+            Shader::particle_scatter_units};
+        check(render() == RenderResult::submitted && realism_device.valid_frame && realism_device.dispatch_shaders == realism_dispatches &&
+            realism_device.dispatch_groups == groups && realism_device.simulation_writes_arguments &&
+            realism_device.constant_bytes == sizeof(FrameConstants) && realism_device.readback.size == layout::counters_bytes &&
+            realism_device.constants.unit_state == std::array<std::uint32_t, 4>{1, groups, 0, 0} &&
+            realism_device.constants.unit_order[0][0] == 0u && realism_renderer.particles_drawn(),
+            "a realism frame: the realism entries over one slab's groups, every constant, the whole counter record");
+        const auto& slot = lingering_effects.slots()[0];
+        check(slot.residual && (realism_device.constants.effect_residual[0][2] & realism_layout::latched_linger) != 0 &&
+            realism_device.constants.effect_residual[0][1] == slot.residual->graduation_tick, "the slot's link to its cluster is in the constants");
+        const auto graduation = slot.residual->graduation_tick;
+        const auto natural_end = lingering_effects.residual().find(*slot.residual)->natural_end;
+        while (lingering.tick() < graduation) render();
+        check(render() == RenderResult::submitted && lingering_effects.active().empty() && realism_device.valid_frame &&
+            realism_device.dispatches == 3 && realism_device.dispatch_groups == 3 &&
+            realism_device.constants.unit_state == std::array<std::uint32_t, 4>{1, 3, 1, 0} &&
+            realism_device.constants.unit_order[0][0] == realism_layout::unit_cluster_first + lingering_effects.residual().clusters()[0].slot &&
+            realism_renderer.particles_drawn() && realism_renderer.listed_clusters() == 1,
+            "after its slab retires, the effect's cluster alone is simulated and drawn");
+        while (lingering.tick() < natural_end) render();
+        check(render() == RenderResult::submitted && realism_device.dispatches == 0 && realism_device.range_only &&
+            !realism_renderer.particles_drawn() && lingering_effects.residual().clusters().empty(),
+            "once its last record has died, nothing is simulated");
+        check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::submitted &&
+            device.constant_bytes == legacy_frame_constant_bytes, "a legacy frame uploads exactly M21's frame constants");
     }
 
     return failures == 0 ? 0 : 1;

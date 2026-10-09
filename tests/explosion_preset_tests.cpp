@@ -161,6 +161,86 @@ int main()
     }
     check(smoke_parameters, "every class's blast smoke is hot, cools, is turbulent and has a shadow density (it shades only with a flow field)");
 
+    {
+        namespace realism = realism_layout;
+        const std::uint32_t expected_records[] = {32, 96, 176, 208, 136, 184, 192};
+        const std::uint32_t expected_groups[] = {1, 2, 3, 4, 3, 3, 3};
+        bool reservations = true;
+        bool births = true;
+        bool notice = true;
+        bool counts = true;
+        bool ticks = true;
+        std::uint32_t largest_smoke = 0;
+        std::uint32_t largest_groups = 0;
+        std::uint32_t longest_graduation = 0;
+        std::uint32_t shortest_life = 0xffffffffu;
+        for (std::uint32_t preset = 0; preset < preset_count; ++preset)
+        {
+            for (std::uint32_t surface = 0; surface < surface_type_count; ++surface)
+            {
+                const auto effect = make_effect_class(static_cast<ExplosionPreset>(preset), static_cast<SurfaceType>(surface));
+                const auto& lingering = effect.realism;
+                if (surface == 0)
+                {
+                    reservations = reservations && lingering.residual_records == expected_records[preset] &&
+                        lingering.residual_groups == expected_groups[preset];
+                }
+                std::uint32_t records = 0;
+                std::uint32_t smoke = 0;
+                std::uint32_t totals[3]{};
+                for (std::uint32_t index = 0; index < 3; ++index)
+                {
+                    const auto& source = effect.layers[index];
+                    const auto& linger = lingering.layers[index];
+                    smoke += source.count;
+                    if (source.count == 0)
+                    {
+                        reservations = reservations && linger.survivor_stride == 0;
+                        continue;
+                    }
+                    reservations = reservations && linger.survivor_stride == 8 && linger.residual_offset == records &&
+                        linger.size_cap > 0 && std::abs(linger.optical_depth + std::log(1 - source.strength)) < 1e-6f;
+                    records += (source.count + 7) / 8;
+                    const float latest_birth = source.delay_range + 1 / source.fade_in_rate;
+                    births = births && lingering.graduation_ticks > static_cast<std::uint32_t>(std::ceil(latest_birth * 60));
+                    for (std::uint32_t stride = 0; stride < 3; ++stride) totals[stride] += (source.count + (4u << stride) - 1) / (4u << stride);
+                }
+                counts = counts && totals[0] <= 511 && totals[1] <= 511 && totals[2] <= 511;
+                reservations = reservations && lingering.residual_records == records &&
+                    lingering.residual_groups == (records + layout::simulation_group_size - 1) / layout::simulation_group_size;
+                notice = notice && lingering.graduation_ticks >= realism::fade_unit_ticks + 4;
+                const auto slab_ticks = realism_effect_ticks(static_cast<ExplosionPreset>(preset), static_cast<SurfaceType>(surface));
+                ticks = ticks && slab_ticks >= lingering.graduation_ticks + realism::crossfade_ticks &&
+                    slab_ticks <= effect_ticks(static_cast<ExplosionPreset>(preset), static_cast<SurfaceType>(surface)) + 600;
+                largest_smoke = std::max(largest_smoke, smoke);
+                largest_groups = std::max(largest_groups, lingering.residual_groups);
+                longest_graduation = std::max(longest_graduation, lingering.graduation_ticks);
+                const auto early = realism_early_ticks(static_cast<ExplosionPreset>(preset), static_cast<SurfaceType>(surface));
+                ticks = ticks && early <= slab_ticks;
+                shortest_life = std::min(shortest_life, early);
+            }
+        }
+        check(reservations, "lingering layers keep every eighth record; residual ranges of 32/96/176/208/136/184/192 records on dirt");
+        check(births, "every survivor is born and faded in before its effect graduates");
+        check(notice, "graduation gives at least 124 ticks of notice, room for a 120-tick forced fade");
+        check(counts, "a cluster's record count fits 9 bits for strides 4, 8 and 16");
+        check(ticks, "a lingering slab frees after graduation and the crossfade");
+        check(largest_groups * layout::maximum_effects <= realism::residual_groups / 2 && largest_groups <= 4,
+            "128 of the largest reservations fit half the ring");
+        const std::uint32_t window = longest_graduation + realism::crossfade_ticks;
+        const std::uint32_t starts_per_slot = (window - 1) / shortest_life + 1;
+        const std::uint32_t worst = (layout::maximum_effects - 1) * starts_per_slot * largest_groups + (largest_groups - 1);
+        std::printf("residual ring: at most %u groups handed out while an effect waits %u ticks to graduate (of %u; slots restart after %u)\n",
+            worst, window, realism::residual_groups, shortest_life);
+        check(worst + largest_groups <= realism::residual_groups, "no reservation is handed out again before it graduates");
+        check(largest_smoke * layout::maximum_effects + realism::residual_records <= layout::light_list_first &&
+                realism::pool_records <= layout::debris_list_first, "the smoke list holds every slab's smoke and the residual pool");
+        check(realism::residual_first == layout::maximum_effects * layout::explosion_particles &&
+                realism::pool_records == realism::residual_first + realism::residual_groups * layout::simulation_group_size &&
+                realism::maximum_unit_groups * 4 + layout::scan_threads * 12 <= 32768,
+            "the residual pool follows the slabs, and the scan's shared memory holds every unit group");
+    }
+
     const WindSettings settings{4, 90, 0.5f};
     const auto steady = wind_velocity(settings, 1234, false);
     check(std::abs(steady.x) < 1e-5f && std::abs(steady.z - 4) < 1e-5f && steady.y == 0, "a steady wind blows at its speed towards its heading");

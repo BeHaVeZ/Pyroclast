@@ -36,12 +36,17 @@ struct Scenario
     std::uint32_t duration_ticks = 0;
 };
 
-inline constexpr std::string_view scenario_names = "single, grid-10, grid-50, grid-100, barrage, presets, range, bombardment, accumulation";
+inline constexpr std::string_view scenario_names =
+    "single, grid-10, grid-50, grid-100, barrage, presets, range, bombardment, accumulation, linger-barrage, linger-saturation";
 constexpr bool is_scenario_name(std::string_view name)
 {
     return name == "single" || name == "grid-10" || name == "grid-50" || name == "grid-100" || name == "barrage" ||
-        name == "presets" || name == "range" || name == "bombardment" || name == "accumulation";
+        name == "presets" || name == "range" || name == "bombardment" || name == "accumulation" || name == "linger-barrage" ||
+        name == "linger-saturation";
 }
+
+inline constexpr std::uint32_t linger_barrage_key = 14000;
+inline constexpr std::uint32_t linger_saturation_key = 15000;
 
 inline constexpr std::uint32_t accumulation_hold_ticks = 1800;
 inline constexpr std::uint32_t accumulation_key = 12000;

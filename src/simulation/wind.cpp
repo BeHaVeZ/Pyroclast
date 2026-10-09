@@ -21,6 +21,32 @@ float3 wind_velocity(const WindSettings& settings, std::uint32_t tick, bool gust
     return {speed * std::cos(heading), 0, speed * std::sin(heading)};
 }
 
+float3 WindDrift::at(std::uint32_t tick, const WindSettings& settings, bool gusts) const
+{
+    double x = x_;
+    double y = y_;
+    double z = z_;
+    for (std::uint32_t step = tick_; step < tick; ++step)
+    {
+        const auto wind = wind_velocity(settings, step, gusts);
+        x += wind.x / 60.0;
+        y += wind.y / 60.0;
+        z += wind.z / 60.0;
+    }
+    return {static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)};
+}
+
+void WindDrift::advance(std::uint32_t tick, const WindSettings& settings, bool gusts)
+{
+    for (; tick_ < tick; ++tick_)
+    {
+        const auto wind = wind_velocity(settings, tick_, gusts);
+        x_ += wind.x / 60.0;
+        y_ += wind.y / 60.0;
+        z_ += wind.z / 60.0;
+    }
+}
+
 std::optional<WindSettings> validated(WindSettings settings)
 {
     if (!std::isfinite(settings.speed) || !std::isfinite(settings.direction_degrees) || !std::isfinite(settings.gustiness) ||

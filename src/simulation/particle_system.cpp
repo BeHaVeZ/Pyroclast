@@ -14,9 +14,9 @@ bool ParticleSystem::initialize(GraphicsDevice& device, const Buffer& environmen
 {
     assert(!classes.empty() && classes.size() <= particle_layout::maximum_effect_classes);
     environment_ = &environment;
-    const auto bytes = capacity * static_cast<std::uint32_t>(sizeof(Particle));
+    const auto bytes = pool_records * static_cast<std::uint32_t>(sizeof(Particle));
     particles_ = device.create_buffer(bytes, {});
-    constexpr std::uint32_t groups = effect_slots * groups_per_slab;
+    constexpr std::uint32_t groups = realism_layout::maximum_unit_groups;
     alive_masks_ = device.create_buffer(groups * 8, {});
     offsets_ = device.create_buffer(groups * 4, {});
     alive_ = device.create_buffer(3 * capacity * 4, {});
@@ -38,12 +38,27 @@ bool ParticleSystem::initialize(GraphicsDevice& device, const Buffer& environmen
     scan_ = device.create_compute_pipeline(Shader::particle_scan);
     scatter_ = device.create_compute_pipeline(Shader::particle_scatter);
     scatter_measure_ = device.create_compute_pipeline(Shader::particle_scatter_measure);
+    realism_compute_ = device.create_compute_pipeline(Shader::particle_realism_simulation);
+    units_scan_ = device.create_compute_pipeline(Shader::particle_scan_units);
+    units_scatter_ = device.create_compute_pipeline(Shader::particle_scatter_units);
+    units_scatter_measure_ = device.create_compute_pipeline(Shader::particle_scatter_units_measure);
+    realism_graphics_ = device.create_graphics_pipeline(
+        {Shader::particle_realism_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha, DepthMode::test, targets.scene});
+    realism_offscreen_graphics_ = device.create_graphics_pipeline(
+        {Shader::particle_realism_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha, DepthMode::none, targets.offscreen});
+    realism_lod_graphics_ = device.create_graphics_pipeline(
+        {Shader::particle_realism_lod_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha, DepthMode::test, targets.scene});
+    realism_lod_offscreen_graphics_ = device.create_graphics_pipeline(
+        {Shader::particle_realism_lod_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha, DepthMode::none, targets.offscreen});
     if (!particles_ || !alive_masks_ || !offsets_ || !alive_ || !arguments_ || !classes_ || !graphics_ || !offscreen_graphics_ ||
-        !debris_graphics_ || !lod_graphics_ || !lod_offscreen_graphics_ || !compute_ || !scan_ || !scatter_ || !scatter_measure_)
+        !debris_graphics_ || !lod_graphics_ || !lod_offscreen_graphics_ || !compute_ || !scan_ || !scatter_ || !scatter_measure_ ||
+        !realism_compute_ || !units_scan_ || !units_scatter_ || !units_scatter_measure_ || !realism_graphics_ || !realism_offscreen_graphics_ ||
+        !realism_lod_graphics_ || !realism_lod_offscreen_graphics_)
     {
         return false;
     }
-    SDL_Log("Particle pool ready: %u effect slots of %u particles, %u bytes, fixed step=1/60 s.", effect_slots, slab_records, bytes);
+    SDL_Log("Particle pool ready: %u effect slots of %u particles and a residual pool of %u, %u bytes, fixed step=1/60 s.", effect_slots,
+        slab_records, realism_layout::residual_records, bytes);
     return true;
 }
 
@@ -53,7 +68,7 @@ constexpr double fixed_step = 1.0 / 60.0;
 }
 
 ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_effects, std::uint32_t offscreen_divisor,
-    ParticleListing listing)
+    ParticleListing listing, const FrameUnits* units)
 {
     assert(particles_ && environment_ && graphics_ && offscreen_graphics_ && debris_graphics_ && compute_ && scan_ && scatter_);
     assert(std::isfinite(elapsed_seconds) && elapsed_seconds >= 0);
@@ -87,41 +102,48 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_e
         scatter.read[3] = particles_.get();
         scatter.write[1] = arguments_.get();
     }
+    if (units) simulation.write[2] = arguments_.get();
     Bindings drawing{};
     drawing.read[0] = particles_.get();
     drawing.read[1] = alive_.get();
     drawing.read[2] = classes_.get();
-    const auto groups = std::max(active_effects * groups_per_slab, 1u);
+    const std::uint32_t dispatched = units ? units->groups : active_effects * groups_per_slab;
+    const auto groups = std::max(dispatched, 1u);
     const bool layered = offscreen_divisor != 0 && !listing.offscreen_light;
     constexpr auto light_first = particle_layout::light_list_first;
-    const DrawConstants parameters{steps, active_effects, capacity, tick_};
+    const std::uint32_t records = units ? pool_records : capacity;
+    const std::uint32_t counted = units ? units->units : active_effects;
+    const DrawConstants parameters{steps, counted, records, tick_};
     const std::uint32_t flags = listing.measure ? particle_layout::listing_measure : 0u;
-    const DrawConstants scan_parameters{active_effects * groups_per_slab, tick_ + steps, layered ? 1u : 0u, flags};
+    const DrawConstants scan_parameters{dispatched, tick_ + steps, layered ? 1u : 0u, flags};
     const auto lod_pixels = std::bit_cast<std::uint32_t>(listing.lod_pixels);
     const auto faint_floor = std::bit_cast<std::uint32_t>(listing.faint_floor);
-    const DrawConstants scatter_parameters = listing.measure ? DrawConstants{active_effects, layered ? 1u : 0u, capacity, lod_pixels, faint_floor} :
-        DrawConstants{active_effects, layered ? 1u : 0u};
+    const DrawConstants scatter_parameters = listing.measure ? DrawConstants{counted, layered ? 1u : 0u, records, lod_pixels, faint_floor} :
+        DrawConstants{counted, layered ? 1u : 0u};
     const bool lod = listing.lod_pixels > 0 || listing.faint_floor > 0;
-    const DrawConstants both_layers = lod ? DrawConstants{capacity, 0, capacity, 1, lod_pixels, faint_floor} : DrawConstants{capacity, 0, capacity, 1};
-    const DrawConstants smoke_layer = lod ? DrawConstants{capacity, 0, light_first, std::max(offscreen_divisor, 1u), lod_pixels, faint_floor} :
-        DrawConstants{capacity, 0, light_first, std::max(offscreen_divisor, 1u)};
-    const DrawConstants light_layer{capacity, light_first, capacity, 1};
-    const DrawConstants every_layer = lod ? DrawConstants{capacity, 0, capacity, std::max(offscreen_divisor, 1u), lod_pixels, faint_floor} :
-        DrawConstants{capacity, 0, capacity, std::max(offscreen_divisor, 1u)};
+    const DrawConstants both_layers = lod ? DrawConstants{records, 0, records, 1, lod_pixels, faint_floor} : DrawConstants{records, 0, records, 1};
+    const DrawConstants smoke_layer = lod ? DrawConstants{records, 0, light_first, std::max(offscreen_divisor, 1u), lod_pixels, faint_floor} :
+        DrawConstants{records, 0, light_first, std::max(offscreen_divisor, 1u)};
+    const DrawConstants light_layer{records, light_first, capacity, 1};
+    const DrawConstants every_layer = lod ? DrawConstants{records, 0, records, std::max(offscreen_divisor, 1u), lod_pixels, faint_floor} :
+        DrawConstants{records, 0, records, std::max(offscreen_divisor, 1u)};
     const DrawConstants debris_list{capacity, particle_layout::debris_list_first, capacity};
+    const auto& particle_pipeline = units ? (lod ? *realism_lod_graphics_ : *realism_graphics_) : (lod ? *lod_graphics_ : *graphics_);
+    const auto& offscreen_pipeline = units ? (lod ? *realism_lod_offscreen_graphics_ : *realism_offscreen_graphics_) :
+        (lod ? *lod_offscreen_graphics_ : *offscreen_graphics_);
+    const auto& scatter_pipeline = units ? (listing.measure ? *units_scatter_measure_ : *units_scatter_) : (listing.measure ? *scatter_measure_ : *scatter_);
+    const bool whole_record = listing.measure || units;
     return {
-        {{{*compute_, simulation, parameters, {groups, 1, 1}, "Particle simulation"},
-            {*scan_, scan, scan_parameters, {1, 1, 1}, "Particle scan"},
-            {listing.measure ? *scatter_measure_ : *scatter_, scatter, scatter_parameters, {groups, 1, 1}, "Particle scatter"}}},
-        {lod ? *lod_graphics_ : *graphics_, drawing, both_layers, 0, 0, "Particles", arguments_.get(), particle_layout::particle_arguments_offset},
-        {lod ? *lod_offscreen_graphics_ : *offscreen_graphics_, drawing, smoke_layer, 0, 0, "Smoke", arguments_.get(),
-            particle_layout::smoke_arguments_offset},
+        {{{units ? *realism_compute_ : *compute_, simulation, parameters, {groups, 1, 1}, "Particle simulation"},
+            {units ? *units_scan_ : *scan_, scan, scan_parameters, {1, 1, 1}, "Particle scan"},
+            {scatter_pipeline, scatter, scatter_parameters, {groups, 1, 1}, "Particle scatter"}}},
+        {particle_pipeline, drawing, both_layers, 0, 0, "Particles", arguments_.get(), particle_layout::particle_arguments_offset},
+        {offscreen_pipeline, drawing, smoke_layer, 0, 0, "Smoke", arguments_.get(), particle_layout::smoke_arguments_offset},
         {*graphics_, drawing, light_layer, 0, 0, "Light", arguments_.get(), particle_layout::light_arguments_offset},
-        {lod ? *lod_offscreen_graphics_ : *offscreen_graphics_, drawing, every_layer, 0, 0, "Smoke and light", arguments_.get(),
-            particle_layout::particle_arguments_offset},
+        {offscreen_pipeline, drawing, every_layer, 0, 0, "Smoke and light", arguments_.get(), particle_layout::particle_arguments_offset},
         {*debris_graphics_, drawing, debris_list, 0, 0, "Debris", arguments_.get(), particle_layout::debris_arguments_offset},
-        {arguments_.get(), particle_layout::counters_offset, listing.measure ? particle_layout::counters_bytes : particle_layout::counters_basic_bytes},
-        steps, active_effects};
+        {arguments_.get(), particle_layout::counters_offset, whole_record ? particle_layout::counters_bytes : particle_layout::counters_basic_bytes},
+        steps, active_effects, units ? units->units : 0};
 }
 
 std::optional<ParticleCounters> ParticleSystem::counters(const ReadbackData& data)
@@ -130,11 +152,15 @@ std::optional<ParticleCounters> ParticleSystem::counters(const ReadbackData& dat
         particle_layout::counters_bytes == particle_layout::arguments_bytes - particle_layout::counters_offset &&
         offsetof(ParticleCounters, offscreen) == particle_layout::counter_offscreen_word * 4 &&
         offsetof(ParticleCounters, smoke_coverage) == particle_layout::counter_smoke_coverage_word * 4 &&
-        offsetof(ParticleCounters, light_coverage) == particle_layout::counter_light_coverage_word * 4);
+        offsetof(ParticleCounters, light_coverage) == particle_layout::counter_light_coverage_word * 4 &&
+        offsetof(ParticleCounters, residual) == realism_layout::counter_residual_word * 4 &&
+        offsetof(ParticleCounters, flags) == realism_layout::counter_flags_word * 4 &&
+        offsetof(ParticleCounters, ghosts) == realism_layout::counter_ghosts_word * 4);
     if (data.size != particle_layout::counters_basic_bytes && data.size != particle_layout::counters_bytes) return std::nullopt;
     ParticleCounters counters;
     std::memcpy(&counters, data.bytes.data(), data.size);
-    counters.measured = data.size == particle_layout::counters_bytes;
+    counters.measured = data.size == particle_layout::counters_bytes &&
+        (counters.flags == 0 || (counters.flags & realism_layout::counter_flag_measured) != 0);
     return counters;
 }
 

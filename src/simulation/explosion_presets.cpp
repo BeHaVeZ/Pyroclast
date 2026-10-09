@@ -328,6 +328,54 @@ void fit_slab(Layers& layers)
 }
 }
 
+namespace
+{
+std::uint32_t graduation_seconds(ExplosionPreset preset)
+{
+    switch (preset)
+    {
+    case ExplosionPreset::small_impact: return 4;
+    case ExplosionPreset::small_he: return 6;
+    case ExplosionPreset::artillery_he: return 8;
+    case ExplosionPreset::heavy: return 10;
+    case ExplosionPreset::fuel_fire: return 10;
+    case ExplosionPreset::dust_blast: return 6;
+    case ExplosionPreset::stress_test: return 8;
+    }
+    return 6;
+}
+
+constexpr std::uint32_t survivor_stride = 8;
+constexpr float survivor_area = 2.8284271f;
+constexpr float diffusion_seconds = 4;
+constexpr float size_cap_factor = 2.89f;
+
+RealismParameters realism_parameters(ExplosionPreset preset, const Layers& layers)
+{
+    RealismParameters realism;
+    realism.graduation_ticks = graduation_seconds(preset) * 60;
+    std::uint32_t records = 0;
+    for (std::uint32_t index = 0; index < realism.layers.size(); ++index)
+    {
+        const auto& layer = layers[index];
+        auto& lingering = realism.layers[index];
+        if (layer.count == 0) continue;
+        lingering.survivor_stride = survivor_stride;
+        lingering.survivor_area = survivor_area;
+        lingering.diffusion_seconds = diffusion_seconds;
+        lingering.size_cap = size_cap_factor * (layer.size_min + 0.5f * layer.size_range);
+        lingering.optical_depth = -std::log(1 - layer.strength);
+        lingering.residual_drag = layer.drag;
+        lingering.residual_turbulence = 0.5f * layer.turbulence;
+        lingering.residual_offset = records;
+        records += (layer.count + survivor_stride - 1) / survivor_stride;
+    }
+    realism.residual_records = records;
+    realism.residual_groups = groups_for(records);
+    return realism;
+}
+}
+
 std::string_view preset_name(ExplosionPreset preset)
 {
     switch (preset)
@@ -380,6 +428,7 @@ EffectClass make_effect_class(ExplosionPreset preset, SurfaceType surface)
     effect.flow = preset_flow(preset);
     apply_surface(effect.layers, surface);
     fit_slab(effect.layers);
+    effect.realism = realism_parameters(preset, effect.layers);
     effect.group_layers.fill(static_cast<std::uint8_t>(particle_layout::no_layer));
     std::uint32_t next_group = 0;
     for (std::uint32_t index = 0; index < particle_layout::layer_count; ++index)
@@ -419,6 +468,36 @@ std::uint32_t effect_ticks(ExplosionPreset preset, SurfaceType surface)
         if (layer.count != 0) seconds = std::max(seconds, layer.delay_range + layer.lifetime_min + layer.lifetime_range);
     }
     return static_cast<std::uint32_t>(std::ceil(seconds * 60.0f));
+}
+
+std::uint32_t realism_effect_ticks(ExplosionPreset preset, SurfaceType surface)
+{
+    const auto effect = make_effect_class(preset, surface);
+    std::uint32_t ticks = effect.realism.graduation_ticks + realism_layout::crossfade_ticks;
+    for (std::uint32_t index = 0; index < effect.layers.size(); ++index)
+    {
+        const auto& layer = effect.layers[index];
+        const bool lingers = index < effect.realism.layers.size() && effect.realism.layers[index].survivor_stride != 0;
+        if (layer.count == 0 || lingers) continue;
+        ticks = std::max(ticks, static_cast<std::uint32_t>(std::ceil((layer.delay_range + layer.lifetime_min + layer.lifetime_range) * 60.0f)));
+    }
+    return ticks;
+}
+
+std::uint32_t realism_early_ticks(ExplosionPreset preset, SurfaceType surface)
+{
+    const auto effect = make_effect_class(preset, surface);
+    std::uint32_t early = 0;
+    for (std::uint32_t index = 0; index < effect.layers.size(); ++index)
+    {
+        const auto& layer = effect.layers[index];
+        if (layer.count == 0) continue;
+        const bool lingers = index < effect.realism.layers.size() && effect.realism.layers[index].survivor_stride != 0;
+        const float seconds = lingers ? layer.delay_range + 1 / std::max(layer.fade_in_rate, 1e-3f) :
+            layer.delay_range + layer.lifetime_min + layer.lifetime_range;
+        early = std::max(early, static_cast<std::uint32_t>(std::ceil(seconds * 60.0f)) + (lingers ? realism_layout::crossfade_ticks : 0u));
+    }
+    return early;
 }
 
 LightCurve light_curve(ExplosionPreset preset)

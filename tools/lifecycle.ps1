@@ -1,8 +1,8 @@
 # Drives one Pyroclast window through the interactive lifecycle and checks native validation:
 # pause/clear/trigger/single steps, a click on the terrain or a prop, effect lines, the showcase's keys (preset,
-# count, fire at the crosshair, slot saturation, barrage, bombardment, slow motion, walk, a bookmark), 30 odd-size resizes, three
-# minimize/restore cycles, a running trigger, a normal close, and separately a start in a minimized
-# window that is later restored.
+# count, fire at the crosshair, slot saturation, barrage, bombardment, slow motion, walk, two bookmarks), 30 odd-size resizes,
+# three minimize/restore cycles, a running trigger, a normal close, and separately a start in a minimized
+# window that is later restored. -Realism runs the realism model (M22), where Space adds the group to the scene.
 # Passes when every launch exits 0, logs no ERROR/WARN lines (Vulkan loader notices excepted), in
 # Debug reports "validation summary: 0 warnings, 0 errors", and the interactive run's log shows that
 # the injected keys and resizes reached the application. Logs go to -OutDir; nothing else is written.
@@ -12,7 +12,8 @@ param(
     [ValidateSet('full', 'half', 'auto')][string]$SmokeResolution = 'full',
     [int]$Explosions = 100,
     [string]$OutDir = (Join-Path $PSScriptRoot '..\out\lifecycle'),
-    [string]$ExtraArguments = ''
+    [string]$ExtraArguments = '',
+    [switch]$Realism
 )
 $ErrorActionPreference = 'Stop'
 Add-Type @'
@@ -49,8 +50,9 @@ $exe = Join-Path $root "out\build\windows-x64\$Configuration\Pyroclast.exe"
 $layers = Join-Path $root 'out\tools\vulkan\sdk\Bin'
 if (Test-Path $layers) { $env:VK_ADD_LAYER_PATH = $layers }
 New-Item -ItemType Directory -Force $OutDir | Out-Null
-$name = "$Renderer-$SmokeResolution-$Explosions-$Configuration"
-$arguments = "--renderer=$Renderer --explosions=$Explosions --smoke-resolution=$SmokeResolution $ExtraArguments"
+$name = "$Renderer-$SmokeResolution-$Explosions-$Configuration" + $(if ($Realism) { '-realism' } else { '' })
+$arguments = "--renderer=$Renderer --explosions=$Explosions --smoke-resolution=$SmokeResolution $ExtraArguments" +
+    $(if ($Realism) { ' --realism=on' } else { '' })
 
 function Send-Key([IntPtr]$window, [int]$key, [int]$scan) {
     [void][LifecycleWindow]::PostMessage($window, 0x100, [IntPtr]$key, [IntPtr](($scan -shl 16) -bor 1))
@@ -151,6 +153,7 @@ function Run-Interactive {
         Send-Key $window 0x47 0x22    # G: walk
         Send-Key $window 0x47 0x22    # G: fly
         Send-Key $window 0x72 0x3D    # F3: bookmark 2, the ground view
+        Send-Key $window 0x7A 0x57    # F11: bookmark 7, the far view
         Send-Key $window 0x56 0x2F    # V: stop the bombardment
         Send-Key $window 82 0x13      # R: clear, stopping the barrage
         Start-Sleep -Milliseconds 300
@@ -175,11 +178,13 @@ function Run-Interactive {
         # Keys posted to a window that never received them would otherwise pass silently.
         $text = (Get-Content -LiteralPath $log) -join "`n"
         $backend = if ($Renderer -eq 'd3d12') { 'D3D12' } else { 'Vulkan' }
-        foreach ($expected in 'Particle simulation: paused', 'Particle pool cleared.', 'Explosion group triggered',
+        $group = if ($Realism) { 'Explosion group added to the scene' } else { 'Explosion group triggered' }
+        foreach ($expected in 'Particle simulation: paused', 'Particle pool cleared.', $group,
             'Particle simulation: running', "$backend swapchain resized", 'Selected preset: artillery-he', 'Spawn count: 10',
             'Spawned 10 artillery-he around (', 'Spawn count: 100', 'Spawned 100 artillery-he around (',
             'effect slots are busy', 'Barrage started at (', 'Bombardment started at (', 'Simulation speed: 0.25x',
-            'Simulation speed: 1x', 'Camera: walk', 'Camera: fly', 'Camera bookmark 2 (ground) recalled', 'Bombardment stopped after',
+            'Simulation speed: 1x', 'Camera: walk', 'Camera: fly', 'Camera bookmark 2 (ground) recalled', 'Camera bookmark 7 (far) recalled',
+            'Bombardment stopped after',
             'Barrage stopped after', 'spawn regions on', 'wind arrow on') {
             if (-not $text.Contains($expected)) { throw "The application never logged '$expected'; input or resizes did not arrive." }
         }

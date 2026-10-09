@@ -81,7 +81,8 @@ CameraRig::CameraRig(const Camera& start, const std::array<Camera, bookmark_coun
 {
     for (std::size_t index = 0; index < bookmark_count; ++index)
     {
-        bookmarks_[index] = {views[index].position, views[index].yaw, views[index].pitch, CameraMode::fly, names[index], false};
+        bookmarks_[index] = {views[index].position, views[index].yaw, views[index].pitch, views[index].vertical_fov, CameraMode::fly,
+            names[index], false};
     }
 }
 
@@ -148,6 +149,7 @@ bool CameraRig::recall(std::size_t index)
     camera_.position = bookmark.position;
     camera_.yaw = bookmark.yaw;
     camera_.pitch = bookmark.pitch;
+    camera_.vertical_fov = bookmark.vertical_fov;
     mode_ = bookmark.mode;
     return true;
 }
@@ -159,6 +161,7 @@ bool CameraRig::store(std::size_t index)
     bookmark.position = camera_.position;
     bookmark.yaw = camera_.yaw;
     bookmark.pitch = camera_.pitch;
+    bookmark.vertical_fov = camera_.vertical_fov;
     bookmark.mode = mode_;
     bookmark.stored = true;
     return true;

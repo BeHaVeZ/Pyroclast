@@ -32,6 +32,9 @@ struct SampleDescription
     std::string preset = "small-he";
     std::uint32_t layer_mask = particle_layout::full_mask;
     WindSettings wind;
+    std::uint32_t width = 1280;
+    std::uint32_t height = 720;
+    std::string view_keys;
 };
 
 std::string camera_json(const std::array<float, 6>& pose);

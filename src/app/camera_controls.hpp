@@ -34,6 +34,7 @@ struct CameraBookmark
     float3 position;
     float yaw = 0;
     float pitch = 0;
+    float vertical_fov = Camera{}.vertical_fov;
     CameraMode mode = CameraMode::fly;
     std::string_view name;
     bool stored = false;
@@ -42,7 +43,7 @@ struct CameraBookmark
 class CameraRig final
 {
 public:
-    static constexpr std::size_t bookmark_count = 6;
+    static constexpr std::size_t bookmark_count = 7;
     static constexpr float fly_speed_min = 1;
     static constexpr float fly_speed_max = 400;
     static constexpr float walk_speed_min = 1;

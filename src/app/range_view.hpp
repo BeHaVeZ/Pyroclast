@@ -10,5 +10,6 @@ enum class RangeView
     aerial,
     range,
     yard,
+    far,
 };
 }

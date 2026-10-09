@@ -98,6 +98,23 @@ std::optional<Scenario> make_scenario(std::string_view name, const Environment& 
             scenario.events.push_back({index * interval, ground_event(terrain, offset.x, offset.y, accumulation_first_seed + index, preset)});
         }
     }
+    else if (name == "linger-barrage")
+    {
+        for (std::uint32_t index = 0; index < 240; ++index)
+        {
+            const auto offset = bombardment_offset(linger_barrage_key, index, 30);
+            scenario.events.push_back({index * 15, ground_event(terrain, offset.x, offset.y, 6000 + index, preset)});
+        }
+    }
+    else if (name == "linger-saturation")
+    {
+        for (std::uint32_t index = 0; index < 1200; ++index)
+        {
+            const auto offset = bombardment_offset(linger_saturation_key, index, 30);
+            const auto impact = index % 4 == 0 ? ExplosionPreset::heavy : ExplosionPreset::small_impact;
+            scenario.events.push_back({index * 2, ground_event(terrain, offset.x, offset.y, 7000 + index, impact)});
+        }
+    }
     else if (name == "barrage")
     {
         for (std::uint32_t index = 0; index < barrage_impacts; ++index)
@@ -111,10 +128,15 @@ std::optional<Scenario> make_scenario(std::string_view name, const Environment& 
         const std::uint32_t count = name == "single" ? 1 : name == "grid-10" ? 10 : name == "grid-50" ? 50 : 100;
         for (const auto& event : group_events(terrain, count, preset)) scenario.events.push_back({0, event});
     }
-    for (const auto& scripted : scenario.events)
+    if (name == "linger-barrage") scenario.duration_ticks = 5400;
+    else if (name == "linger-saturation") scenario.duration_ticks = 3000;
+    else
     {
-        scenario.duration_ticks = std::max(scenario.duration_ticks,
-            scripted.tick + effect_ticks(scripted.event.preset, scripted.event.surface));
+        for (const auto& scripted : scenario.events)
+        {
+            scenario.duration_ticks = std::max(scenario.duration_ticks,
+                scripted.tick + effect_ticks(scripted.event.preset, scripted.event.surface));
+        }
     }
     return scenario;
 }

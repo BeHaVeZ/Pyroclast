@@ -143,7 +143,8 @@ void engine_window(const DiagnosticsSnapshot& snapshot)
             row("Startup group", "%u (Space)", load.explosions);
             row("Peak since clear", "%u, %zu queued", load.peak_since_clear, load.queued);
             row("Started, dropped", "%llu, %llu", static_cast<unsigned long long>(load.started), static_cast<unsigned long long>(load.dropped));
-            if (load.slot_policy != "drop-new") row("Evicted", "%llu (%.*s)", static_cast<unsigned long long>(load.evicted), length(load.slot_policy), load.slot_policy.data());
+            if (load.slot_policy == "evict-oldest") row("Evicted", "%llu (%.*s)", static_cast<unsigned long long>(load.evicted), length(load.slot_policy), load.slot_policy.data());
+            if (load.slot_policy == "graduate-oldest") row("Deferred", "%llu, %zu waiting (graduate-oldest)", static_cast<unsigned long long>(load.deferred), load.waiting);
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::TextUnformatted("Dropped");
@@ -178,6 +179,14 @@ void engine_window(const DiagnosticsSnapshot& snapshot)
                 row("Light coverage", "%.2f screens", counts.light_coverage * screens);
                 row("Off screen", "%u of %u listed", counts.offscreen, counts.smoke + counts.light);
                 if (load.smoke_lod > 0 || load.faint_floor > 0) row("Thinned, faint", "%u, %u", counts.thinned, counts.faint);
+            }
+            if (load.realism)
+            {
+                row("Residual records", "%u of %u", load.particles ? load.particles->residual : 0u, realism_layout::residual_records);
+                row("Clusters", "%u of %u", load.clusters, realism_layout::maximum_clusters);
+                row("Linger", "%u s, scale %.2f, %llu forced fades", load.linger_seconds, load.linger_scale / 1024.0,
+                    static_cast<unsigned long long>(load.forced_fades));
+                if (load.particles && load.particles->ghosts != 0) row("Ghosts", "%u (must be 0)", load.particles->ghosts);
             }
             row("Temporary lights", "%u of %u", load.lights, particle_layout::maximum_lights);
             if (load.smoke_resolution == "auto")
@@ -362,7 +371,7 @@ void showcase_window(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>
         for (std::uint32_t index = 0; index < camera.bookmarks.size(); ++index)
         {
             ImGui::PushID(static_cast<int>(index));
-            const auto go = "Go F" + std::to_string(index + 2);
+            const auto go = "Go F" + std::to_string(index < 6 ? index + 2 : 11);
             if (ImGui::Button(go.c_str())) commands.push_back({UiCommand::Kind::recall_bookmark, index});
             ImGui::SameLine();
             if (ImGui::Button("Store (Ctrl)")) commands.push_back({UiCommand::Kind::store_bookmark, index});
@@ -393,8 +402,16 @@ void showcase_window(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>
         if (automatic) ImGui::EndDisabled();
         ImGui::SameLine();
         ImGui::TextDisabled(automatic ? "(auto measures)" : "(Load rows; scatter cost)");
-        bool evict = snapshot.load.slot_policy == "evict-oldest";
-        if (ImGui::Checkbox("Evict oldest when full", &evict)) commands.push_back({UiCommand::Kind::set_slot_policy, evict ? 1u : 0u});
+        if (snapshot.load.realism)
+        {
+            bool graduate = snapshot.load.slot_policy == "graduate-oldest";
+            if (ImGui::Checkbox("Graduate oldest when full", &graduate)) commands.push_back({UiCommand::Kind::set_slot_policy, graduate ? 2u : 0u});
+        }
+        else
+        {
+            bool evict = snapshot.load.slot_policy == "evict-oldest";
+            if (ImGui::Checkbox("Evict oldest when full", &evict)) commands.push_back({UiCommand::Kind::set_slot_policy, evict ? 1u : 0u});
+        }
         constexpr const char* modes[] = {"Full", "Half", "Auto"};
         ImGui::TextUnformatted("Smoke");
         for (std::uint32_t mode = 0; mode < 3; ++mode)
@@ -439,6 +456,18 @@ void showcase_window(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>
         if (ImGui::SliderFloat("Faint floor", &floor, 0, 0.01f, floor > 0 ? "%.5f" : "off", ImGuiSliderFlags_Logarithmic))
         {
             commands.push_back({UiCommand::Kind::set_faint_floor, 0, {}, floor});
+        }
+    }
+
+    if (ImGui::CollapsingHeader("Realism"))
+    {
+        bool realism = realism_enabled(snapshot.layer_mask);
+        if (ImGui::Checkbox("Realism model (clears)", &realism)) commands.push_back({UiCommand::Kind::toggle_layer, realism_layout::realism_mask_bit});
+        if (realism_enabled(snapshot.layer_mask))
+        {
+            bool linger = ((snapshot.layer_mask >> realism_layout::linger_mask_bit) & 1) != 0;
+            ImGui::SameLine();
+            if (ImGui::Checkbox("linger (new effects)", &linger)) commands.push_back({UiCommand::Kind::toggle_layer, realism_layout::linger_mask_bit});
         }
     }
 

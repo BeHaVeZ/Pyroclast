@@ -91,6 +91,11 @@ Camera TestRange::view(RangeView name) const
         camera.position = {-8, 2.5f, -33};
         camera.look_at({-4, 2, -53});
         break;
+    case RangeView::far:
+        camera.position = {-40, terrain().height(-40, 240) + 2.5f, 240};
+        camera.look_at({0, 30, -20});
+        camera.vertical_fov = far_vertical_fov;
+        break;
     }
     return camera;
 }

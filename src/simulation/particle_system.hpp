@@ -2,6 +2,7 @@
 
 #include "explosion_presets.hpp"
 #include "../graphics/graphics_device.hpp"
+#include "../graphics/realism_layout.hpp"
 
 #include <array>
 #include <cstddef>
@@ -42,6 +43,13 @@ struct ParticleWork
     Frame::Readback counters;
     std::uint32_t steps;
     std::uint32_t effects;
+    std::uint32_t units = 0;
+};
+
+struct FrameUnits
+{
+    std::uint32_t units = 0;
+    std::uint32_t groups = 0;
 };
 
 struct ParticleCounters
@@ -56,7 +64,9 @@ struct ParticleCounters
     std::uint32_t faint = 0;
     std::array<std::uint32_t, 4> smoke_coverage{};
     std::uint32_t light_coverage = 0;
-    std::uint32_t reserved[3]{};
+    std::uint32_t residual = 0;
+    std::uint32_t flags = 0;
+    std::uint32_t ghosts = 0;
     bool measured = false;
 };
 
@@ -80,6 +90,8 @@ public:
     static constexpr std::uint32_t effect_slots = particle_layout::maximum_effects;
     static constexpr std::uint32_t slab_records = particle_layout::explosion_particles;
     static constexpr std::uint32_t capacity = effect_slots * slab_records;
+    static constexpr std::uint32_t pool_records = realism_layout::pool_records;
+    static_assert(pool_records == capacity + realism_layout::residual_records);
     static constexpr std::uint32_t groups_per_slab = particle_layout::slab_groups;
     static_assert(slab_records % particle_layout::simulation_group_size == 0);
 
@@ -87,7 +99,7 @@ public:
     const Buffer& particles() const { return *particles_; }
     std::uint32_t tick() const { return tick_; }
     ParticleWork plan(double elapsed_seconds, std::uint32_t active_effects, std::uint32_t offscreen_divisor = 0,
-        ParticleListing listing = {});
+        ParticleListing listing = {}, const FrameUnits* units = nullptr);
     static std::optional<ParticleCounters> counters(const ReadbackData& data);
     void commit(const ParticleWork& work);
     void set_fixed_ticks(bool fixed) { fixed_ticks_ = fixed; }
@@ -118,6 +130,14 @@ private:
     std::unique_ptr<ComputePipeline> scan_;
     std::unique_ptr<ComputePipeline> scatter_;
     std::unique_ptr<ComputePipeline> scatter_measure_;
+    std::unique_ptr<ComputePipeline> realism_compute_;
+    std::unique_ptr<ComputePipeline> units_scan_;
+    std::unique_ptr<ComputePipeline> units_scatter_;
+    std::unique_ptr<ComputePipeline> units_scatter_measure_;
+    std::unique_ptr<GraphicsPipeline> realism_graphics_;
+    std::unique_ptr<GraphicsPipeline> realism_offscreen_graphics_;
+    std::unique_ptr<GraphicsPipeline> realism_lod_graphics_;
+    std::unique_ptr<GraphicsPipeline> realism_lod_offscreen_graphics_;
     std::uint32_t tick_ = 0;
     std::uint32_t pending_steps_ = 0;
     double accumulator_ = 0;

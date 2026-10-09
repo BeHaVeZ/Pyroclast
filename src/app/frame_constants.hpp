@@ -2,6 +2,7 @@
 
 #include "../core/math.hpp"
 #include "../graphics/particle_layout.hpp"
+#include "../graphics/realism_layout.hpp"
 
 #include <array>
 #include <cstddef>
@@ -36,7 +37,13 @@ struct FrameConstants
     float4 wind;
     float4 sun_billboard;
     float4 up_billboard;
+    std::array<std::uint32_t, 4> unit_state;
+    float4 residual;
+    std::array<std::array<std::uint32_t, 4>, realism_layout::maximum_units / 4> unit_order;
+    std::array<std::array<std::uint32_t, 4>, realism_layout::maximum_clusters / 2> clusters;
+    std::array<std::array<std::uint32_t, 4>, particle_layout::maximum_effects> effect_residual;
 };
+inline constexpr std::size_t legacy_frame_constant_bytes = 400 + 52 * particle_layout::maximum_effects + 32 * particle_layout::maximum_lights;
 static_assert(particle_layout::maximum_effects % 4 == 0);
 static_assert(sizeof(float4x4) == 64 && sizeof(float4) == 16);
 static_assert(offsetof(FrameConstants, inverse_view_projection) == 64 && offsetof(FrameConstants, camera_position) == 128 &&
@@ -54,5 +61,8 @@ static_assert(offsetof(FrameConstants, inverse_view_projection) == 64 && offseto
     offsetof(FrameConstants, light_state) == 320 + 52 * particle_layout::maximum_effects + 32 * particle_layout::maximum_lights &&
     offsetof(FrameConstants, clock) == 336 + 52 * particle_layout::maximum_effects + 32 * particle_layout::maximum_lights &&
     offsetof(FrameConstants, up_billboard) == 384 + 52 * particle_layout::maximum_effects + 32 * particle_layout::maximum_lights &&
-    sizeof(FrameConstants) == 400 + 52 * particle_layout::maximum_effects + 32 * particle_layout::maximum_lights);
+    offsetof(FrameConstants, unit_state) == legacy_frame_constant_bytes && legacy_frame_constant_bytes == 7568);
+static_assert(offsetof(FrameConstants, residual) == 7584 && offsetof(FrameConstants, unit_order) == 7600 &&
+    offsetof(FrameConstants, clusters) == 9648 && offsetof(FrameConstants, effect_residual) == 12720 && sizeof(FrameConstants) == 14768 &&
+    realism_layout::maximum_units % 4 == 0 && realism_layout::maximum_clusters % 2 == 0 && sizeof(FrameConstants) <= 16384);
 }

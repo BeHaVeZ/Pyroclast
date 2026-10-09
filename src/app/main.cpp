@@ -136,6 +136,19 @@ const char* pose_name(const pyroclast::ApplicationOptions& options)
     return options.camera ? "custom" : pyroclast::view_name(options.view);
 }
 
+std::string view_keys(float vertical_fov, bool borderless)
+{
+    std::string keys;
+    if (vertical_fov != pyroclast::Camera{}.vertical_fov)
+    {
+        char text[48];
+        std::snprintf(text, sizeof(text), ",\"fov\":%.3f", static_cast<double>(vertical_fov) * 57.29577951308232);
+        keys += text;
+    }
+    if (borderless) keys += ",\"borderless\":true";
+    return keys;
+}
+
 class ScenarioRun final
 {
 public:
@@ -171,6 +184,7 @@ public:
         invalidate("the swapchain was rebuilt while measuring");
     }
     const pyroclast::Scenario& script() const { return scenario_; }
+    void set_vertical_fov(float radians) { vertical_fov_ = radians; }
     void submit_due(Sandbox& sandbox)
     {
         while (next_ < scenario_.events.size() && scenario_.events[next_].tick <= sandbox.particles.tick())
@@ -258,6 +272,7 @@ public:
         }
         const std::string benchmark_key = benchmark_.empty() ? std::string() : "\"benchmark\":\"" + benchmark_ + "\",";
         std::string camera = options.camera ? ",\"camera\":" + pyroclast::camera_json(*options.camera) : std::string();
+        camera += view_keys(vertical_fov_, options.borderless);
         if (!extra.empty()) camera += "," + extra;
         std::printf("{%s\"scenario\":\"%.*s\",\"valid\":%s,\"build\":\"%s\",\"renderer\":\"%s\",\"gpu\":%s,\"width\":%d,\"height\":%d,"
             "\"smoke_resolution\":\"%s\",\"scene_format\":\"%s\",\"view\":\"%s\"%s,\"overlay\":%s,\"effect_lines\":%s,\"gpu_regions\":%s,"
@@ -303,6 +318,7 @@ private:
     std::string benchmark_;
     std::uint32_t warmup_left_ = 0;
     std::size_t skipped_frames_ = 0;
+    float vertical_fov_ = pyroclast::Camera{}.vertical_fov;
 };
 
 std::string benchmark_tail(const ScenarioRun& run, const pyroclast::CounterLog::Summary& summary, const pyroclast::GraphicsDevice& device,
@@ -405,6 +421,10 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
         }
         sandbox.camera = pyroclast::CameraRig(options.camera ? camera_pose(*options.camera) : sandbox.range.view(options.view), views, names);
     }
+    const float start_fov = sandbox.camera.camera().vertical_fov;
+    if (scenario) scenario->set_vertical_fov(start_fov);
+    const auto window_size = options.window;
+    const std::string size_reason = "the window is not " + std::to_string(window_size.width) + "x" + std::to_string(window_size.height);
     FlightControls flight;
     const auto profile_tick = options.profile_tick;
     const bool frozen = scenario && profile_tick;
@@ -413,7 +433,8 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
         static_cast<std::uint32_t>(sandbox.group.size()), pyroclast::ParticleSystem::capacity, profile_tick,
         pyroclast::smoke_resolution_name(options.scalability.smoke_resolution),
         pose_name(options), options.camera, frozen ? options.scenario : std::string(), pyroclast::scene_format_name(options.scene_format),
-        std::string(pyroclast::preset_name(options.preset)), options.layer_mask, options.wind});
+        std::string(pyroclast::preset_name(options.preset)), options.layer_mask, options.wind, window_size.width, window_size.height,
+        view_keys(start_fov, options.borderless)});
     if (scenario && !frozen) baseline.disable();
     if (ui)
     {
@@ -428,7 +449,11 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
     double showcase_ms = 0;
     pyroclast::CoverageStatistics coverage;
     const bool automatic = options.scalability.smoke_resolution == pyroclast::SmokeResolution::automatic;
-    const auto scalability_json = [&coverage, &sandbox, automatic]() {
+    const bool realism = pyroclast::realism_enabled(options.layer_mask);
+    std::uint32_t peak_clusters = 0;
+    std::uint32_t peak_residual = 0;
+    std::uint32_t ghosts = 0;
+    const auto scalability_json = [&coverage, &sandbox, automatic, realism, &peak_clusters, &peak_residual, &ghosts]() {
         std::string text = coverage.json();
         if (automatic)
         {
@@ -466,6 +491,15 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
             add(std::string("\"slot_policy\":\"") + pyroclast::slot_policy_name(settings.slot_policy) + "\"");
         }
         if (!options.empty()) text += (text.empty() ? "" : ",") + std::string("\"scalability\":{") + options + "}";
+        if (realism)
+        {
+            char lingering[256];
+            std::snprintf(lingering, sizeof(lingering),
+                "\"realism\":{\"linger_seconds\":%u,\"forced_fades\":%llu,\"deferred\":%llu,\"peak_clusters\":%u,\"peak_residual\":%u,\"ghosts\":%u}",
+                sandbox.linger.linger_ticks / 60, static_cast<unsigned long long>(sandbox.effects.residual().forced_fades()),
+                static_cast<unsigned long long>(sandbox.effects.deferred()), peak_clusters, peak_residual, ghosts);
+            text += (text.empty() ? "" : ",") + std::string(lingering);
+        }
         return text;
     };
     const auto record_json = [&scalability_json, &renderer]() {
@@ -517,7 +551,8 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
             if (ui && ui->process_event(event)) continue;
             if (ui && event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_F1 && !event.key.repeat) ui->toggle_visible();
             if (event.type == SDL_EVENT_WINDOW_MINIMIZED || event.type == SDL_EVENT_WINDOW_FOCUS_LOST ||
-                (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED && (event.window.data1 != 1280 || event.window.data2 != 720)))
+                (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED && (event.window.data1 != static_cast<int>(window_size.width) ||
+                    event.window.data2 != static_cast<int>(window_size.height))))
             {
                 baseline.disable();
                 if (scenario) scenario->invalidate("the window was minimized, unfocused or resized");
@@ -581,10 +616,10 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
             }
             if (width > 0 && height > 0)
             {
-                if (width != 1280 || height != 720)
+                if (width != static_cast<int>(window_size.width) || height != static_cast<int>(window_size.height))
                 {
                     baseline.disable();
-                    if (scenario) scenario->invalidate("the window is not 1280x720");
+                    if (scenario) scenario->invalidate(size_reason.c_str());
                 }
                 const auto start = SDL_GetPerformanceCounter();
                 const auto rebuilds = renderer.swapchain_rebuilds();
@@ -639,7 +674,8 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     (options.capture_tick ? demo.tick() + 1 == *options.capture_tick : !demo.has_pending_steps()));
                 const auto submit_begin = SDL_GetPerformanceCounter();
                 const auto result = sandbox.renderer.render(renderer, demo, sandbox.effects, sandbox.range, camera, width, height, elapsed,
-                    {capture, overlay, sandbox.views, sandbox.layer_mask, sandbox.wind, sandbox.marks, sandbox.scalability, sandbox.counters});
+                    {capture, overlay, sandbox.views, sandbox.layer_mask, sandbox.wind, sandbox.marks, sandbox.scalability, sandbox.counters,
+                        sandbox.linger});
                 const auto submit_end = SDL_GetPerformanceCounter();
                 if (result == pyroclast::RenderResult::failed) return 1;
                 if (!unattended)
@@ -655,11 +691,12 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                 if (counter_log && result == pyroclast::RenderResult::submitted)
                 {
                     counter_log->add_frame({demo.tick(), last_steps, static_cast<std::uint32_t>(sandbox.effects.active().size()),
-                        sandbox.effects.started() - started_before, sandbox.effects.dropped() - dropped_before, !sandbox.effects.active().empty(),
+                        sandbox.effects.started() - started_before, sandbox.effects.dropped() - dropped_before, sandbox.renderer.particles_drawn(),
                         sandbox.renderer.half_smoke(), sandbox.effects.evicted() - evicted_before,
                         warming ? pyroclast::FramePhase::warmup : pyroclast::FramePhase::measured,
                         static_cast<double>(start - run_start) * counter_milliseconds, static_cast<double>(submit_end - submit_begin) * counter_milliseconds,
-                        renderer.last_submit_timings(), sandbox.renderer.submitted_work()});
+                        renderer.last_submit_timings(), sandbox.renderer.submitted_work(), sandbox.renderer.listed_clusters(),
+                        sandbox.effects.residual().forced_fades(), sandbox.effects.residual().last_scale(), sandbox.effects.deferred()});
                 }
                 const double wall = static_cast<double>(SDL_GetPerformanceCounter()) / static_cast<double>(SDL_GetPerformanceFrequency());
                 tick_rate.add(wall, demo.tick());
@@ -670,6 +707,12 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     if (counter_log) counter_log->add_timing(*gpu);
                 }
                 const auto counters = sandbox.poll_counters(renderer);
+                peak_clusters = std::max(peak_clusters, sandbox.renderer.listed_clusters());
+                if (counters)
+                {
+                    peak_residual = std::max(peak_residual, counters->residual);
+                    ghosts = std::max(ghosts, counters->ghosts);
+                }
                 if (scenario && !frozen && counters && scenario->benchmark().empty()) scenario->count(*counters);
                 if (counter_log && counters) counter_log->add_counters(*counters);
                 if (counters && counters->measured && (!profile_tick || counters->tick == *profile_tick))
@@ -711,7 +754,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                         SDL_Log("Startup sample stopped: the group retired before the sample completed; use --profile-tick or --scenario.");
                     }
                     if (!profile_tick || !demo.has_pending_steps())
-                        baseline.record(milliseconds, renderer.completed_gpu_timings(), sandbox.effects.active().empty() ?
+                        baseline.record(milliseconds, renderer.completed_gpu_timings(), !sandbox.renderer.particles_drawn() ?
                             std::optional<std::uint32_t>(0) : sandbox.counters ? std::optional(sandbox.counters->alive) : std::nullopt);
                     if (sequence_frame)
                     {
@@ -794,14 +837,22 @@ int run_application(const pyroclast::ApplicationOptions& options)
     if (!options.capture_sequence.empty() && !check_sequence_folder(options.capture_sequence)) return 1;
 
     const std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> window(
-        SDL_CreateWindow("Pyroclast", 1280, 720, SDL_WINDOW_RESIZABLE |
-            (options.renderer == pyroclast::Renderer::vulkan ? SDL_WINDOW_VULKAN : 0)),
+        SDL_CreateWindow("Pyroclast", static_cast<int>(options.window.width), static_cast<int>(options.window.height), SDL_WINDOW_RESIZABLE |
+            (options.renderer == pyroclast::Renderer::vulkan ? SDL_WINDOW_VULKAN : 0) | (options.borderless ? SDL_WINDOW_BORDERLESS : 0)),
         &SDL_DestroyWindow);
     if (!window)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
             "Window creation failed: %s", SDL_GetError());
         return 1;
+    }
+    if (options.borderless && !SDL_SetWindowPosition(window.get(), 0, 0))
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Move the borderless window failed: %s", SDL_GetError());
+    }
+    if (options.window != pyroclast::WindowSize{} || options.borderless)
+    {
+        SDL_Log("Window: %ux%u%s.", options.window.width, options.window.height, options.borderless ? ", borderless" : "");
     }
 
 #ifdef NDEBUG
@@ -853,6 +904,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
     sandbox->layer_mask = options.layer_mask;
     sandbox->wind = options.wind;
     sandbox->scalability = options.scalability;
+    sandbox->linger.linger_ticks = options.linger_seconds * 60;
     const auto preset = pyroclast::preset_name(options.preset);
     SDL_Log("Preset: %.*s; mask 0x%04x; wind %.1f m/s towards %.0f deg, gustiness %.2f.", static_cast<int>(preset.size()), preset.data(),
         options.layer_mask, options.wind.speed, options.wind.direction_degrees, options.wind.gustiness);
@@ -914,7 +966,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
     {
         const auto& settings = options.scalability;
         counter_log.emplace(settings.coverage || automatic_smoke, automatic_smoke, settings.smoke_lod > 0 || settings.faint_floor > 0,
-            settings.slot_policy == pyroclast::SlotPolicy::evict_oldest, !options.benchmark.empty());
+            settings.slot_policy == pyroclast::SlotPolicy::evict_oldest, !options.benchmark.empty(), pyroclast::realism_enabled(options.layer_mask));
         counter_log->reserve(std::max({scripted_frames, static_cast<std::size_t>(options.exit_after.value_or(0)),
             options.profile_tick ? static_cast<std::size_t>(*options.profile_tick) + 720 : std::size_t{0}}));
     }
@@ -960,7 +1012,7 @@ int main(int argc, char** argv)
         std::puts(
             "Usage: Pyroclast.exe [--renderer=d3d12|vulkan] [--explosions=1|10|50|100] [--gpu-timing] [--gpu-regions] [--profile-tick=N]\n"
             "                     [--smoke-resolution=full|half|auto] [--ui=on|off] [--gpu-validation]\n"
-            "                     [--capture=FILE.png] [--exit-after=N] [--view=overview|ground|hill|aerial|range|yard]\n"
+            "                     [--capture=FILE.png] [--exit-after=N] [--view=overview|ground|hill|aerial|range|yard|far]\n"
             "                     [--scene-format=rgba16f|r11g11b10f|rgba8] [--scenario=NAME] [--capture-tick=N] [--effect-lines] [--help]\n"
             "  --renderer=d3d12   Request Direct3D 12 (default).\n"
             "  --renderer=vulkan  Request Vulkan.\n"
@@ -973,8 +1025,9 @@ int main(int argc, char** argv)
             "                     or from N alive smoke particles.\n"
             "  --half-light       With half or auto: half-resolution frames draw light at half resolution too.\n"
             "  --effect-order=K   Sort effects back to front by origin (default), cloud (the rising cloud's centre) or none.\n"
-            "  --slot-policy=P    With every effect slot busy: drop-new (default) drops the event, evict-oldest replaces the\n"
-            "                     effect that started earliest.\n"
+            "  --slot-policy=P    With every effect slot busy: drop-new (the default without --realism) drops the event,\n"
+            "                     evict-oldest replaces the effect that started earliest, graduate-oldest (with --realism=on, and\n"
+            "                     its default) graduates an older lingering effect early and makes the event wait for its slot.\n"
             "  --gpu-timing       Enable GPU timestamp measurements.\n"
             "  --gpu-regions      Also time every dispatch, pass and the overlay (serializes Vulkan GPU work).\n"
             "  --capture=FILE.png Write the first frame drawn at the profile tick, then exit (requires --profile-tick,\n"
@@ -984,24 +1037,33 @@ int main(int argc, char** argv)
             "                     empty), then exit without a record; --capture-from=T and --capture-to=T bound the ticks.\n"
             "  --exit-after=N     Exit after N submitted frames.\n"
             "  --view=NAME        Start the camera at a named pose: overview (default), ground, hill, aerial, range\n"
-            "                     (the north yard's props) or yard (close to its walls).\n"
+            "                     (the north yard's props), yard (close to its walls) or far (260 m off, 40 degree view).\n"
+            "  --window=WxH       The window's client size in pixels, 640x360 to 7680x4320 (default 1280x720; a benchmark's\n"
+            "                     own unless given). Measurements need the window at exactly this size.\n"
+            "  --borderless       A window without a frame at the primary display's top-left corner (display-sized windows).\n"
             "  --camera=EX,EY,EZ,TX,TY,TZ  Start the camera at this eye, looking at this target (metres), instead of --view.\n"
             "  --scene-format=F   Scene target: rgba16f (default), r11g11b10f, or rgba8 (a cost reference; bands).\n"
             "  --scenario=NAME    Scripted run, one tick per frame, then a JSON summary: single, grid-10, grid-50,\n"
             "                     grid-100, barrage (80 impacts walking across the range), presets (all seven in a row)\n"
             "                     range (seven explosions of six presets among the north yard's props), bombardment (400\n"
             "                     impacts within 30 m, 20 a second: more than the 128 effect slots hold) or accumulation\n"
-            "                     (impacts within 30 m as often as the 128 slots allow, for 30 s of steady state).\n"
+            "                     (impacts within 30 m as often as the 128 slots allow, for 30 s of steady state); with\n"
+            "                     --realism=on: linger-barrage (240 impacts within 30 m, four a second, run for 90 s) or\n"
+            "                     linger-saturation (1,200 heavy and small-impact impacts, 30 a second, for 50 s).\n"
             "  --benchmark=NAME   A named scenario, preset and pose, after 120 warm-up frames at tick 0: single,\n"
             "                     simultaneous-10, -50 or -100 (small-he groups), sustained-barrage (artillery-he),\n"
-            "                     smoke-field (100 heavy, from the ground) or accumulation (artillery-he). Prints a JSON\n"
+            "                     smoke-field (100 heavy, from the ground), accumulation (artillery-he), or the realism model\n"
+            "                     at 1920x1080: linger-barrage (from the overview) or linger-far (from the far view). Prints a JSON\n"
             "                     record with frame, submit, GPU and work statistics; --counter-log adds the per-frame CSV.\n"
             "  --preset=NAME      small-impact, small-he (default), artillery-he, heavy, fuel-fire, dust-blast or stress-test,\n"
             "                     for the startup group, profiles, scenarios and the first click.\n"
             "  --disable=LIST     Hide layers, the lights, smoke features or the props: comma-separated dust, smoke, plume,\n"
             "                     flash, fireball, sparks, debris, lights, curl, vortex, gusts, shading, shadow, emission,\n"
             "                     props (no props drawn, hit or collided with), collision (props drawn, particles pass),\n"
-            "                     deflection (props do not turn the air aside).\n"
+            "                     deflection (props do not turn the air aside); with --realism=on also linger (no smoke lingers).\n"
+            "  --realism=on|off   The realism model (default off): smoke graduates from its effect into a residual pool and lingers,\n"
+            "                     fading out instead of popping. Not with --benchmark, which fixes its model.\n"
+            "  --linger=S         With --realism=on: lingering smoke lives up to S seconds after its explosion, 10-300 (default 75).\n"
             "  --wind=S,D,G       Wind speed 0-40 m/s, heading in degrees from +x towards +z, gustiness 0-1 (default 3,0,0.3).\n"
             "  --effect-lines     Start with each effect's origin, normal and reach, and the props' collision boxes,\n"
             "                     drawn as lines (L toggles).\n"
