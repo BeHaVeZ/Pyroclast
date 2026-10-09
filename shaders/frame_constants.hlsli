@@ -38,6 +38,10 @@ struct FrameConstants
     uint4 unit_order[maximum_units / 4];
     uint4 clusters[maximum_clusters / 2];
     uint4 effect_residual[maximum_effects];
+    uint4 blast_state;
+    uint4 blast_slots;
+    float4 blast_rings[maximum_blasts];
+    float4 blast_fronts[maximum_blasts];
 #endif
 };
 ConstantBuffer<FrameConstants> frame : register(b1);

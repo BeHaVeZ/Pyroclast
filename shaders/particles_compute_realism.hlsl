@@ -1,6 +1,7 @@
 #define PYROCLAST_REALISM
 #include "particles_compute.hlsl"
 #include "realism.hlsli"
+#include "blast.hlsli"
 
 RWByteAddressBuffer arguments : register(u2);
 
@@ -136,6 +137,22 @@ bool simulate_lingering(uint slot, uint local, uint record, uint layer_index, La
         size = layer.size_min + particle_random(id, 5) * layer.size_range;
         position.w = 0;
         if (layer.delay_range > 0) position.w = -particle_random(id, 7) * layer.delay_range;
+        if (link.skirt && layer_index == layer_ground_dust && ((index >> 3) & 1) != 0)
+        {
+            float4 skirt = load_blast_skirt(classes, state.w);
+            uint inner_cm = uint(skirt.x * 100);
+            uint outer_cm = max(uint(skirt.y * 100), inner_cm + 1);
+            uint radius_cm = inner_cm + realism_hash(id ^ 0x51ed270b) % (outer_cm - inner_cm);
+            float radius = float(radius_cm) / 100;
+            float angle = particle_random(id, 8) * 6.2831853;
+            float2 outward = float2(cos(angle), sin(angle));
+            position.xz = origin.xz + outward * radius;
+            position.y = terrain_height(environment, position.xz) + size;
+            if (props) position.xyz = prop_clip_spawn(environment, origin, position.xyz);
+            float speed = min(skirt.z * blast_particle_velocity(blast_overpressure(classes, state.w, radius)), 30.0);
+            velocity.xyz = float3(outward.x * speed, skirt.w * (0.5 + particle_random(id, 9)), outward.y * speed);
+            position.w = (0.5 - float(blast_arrival_tick(classes, state.w, radius_cm))) * (1.0 / 60.0);
+        }
     }
     Flow flow = load_flow(classes, state.w);
     float3 effect_origin = frame.effect_origins[slot].xyz;
@@ -160,6 +177,7 @@ bool simulate_lingering(uint slot, uint local, uint record, uint layer_index, La
         uint tick = tick_before + step + 1;
         position.w += dt;
         if (position.w < 0) continue;
+        if (step == 0) velocity.xyz += blast_push(position.xyz, mask, slot);
         float seconds = float(tick - state.z) / 60.0;
         float vortex_weight = tick < graduation ? saturate(float(graduation - tick) / crossfade_ticks) : 0;
         if (!graduated)
@@ -243,6 +261,7 @@ bool simulate_residual(uint cluster_index, uint group_in_cluster, uint thread)
     {
         position.w += 1.0 / 60.0;
         lift.since = max(position.w - velocity.w, 0);
+        if (step == 0) velocity.xyz += blast_push(position.xyz, mask, maximum_effects);
         lingering_step(position, velocity, size, layer, lingering, ring, 0, none, float3(0, 0, 0), 0, 1, mask, lift);
     }
     if (steps != 0)

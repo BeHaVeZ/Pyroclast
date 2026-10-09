@@ -1,4 +1,5 @@
 #include "explosion_presets.hpp"
+#include "blast_front.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -388,6 +389,23 @@ RealismParameters realism_parameters(ExplosionPreset preset, const Layers& layer
     realism.residual_groups = groups_for(records);
     return realism;
 }
+
+BlastParameters blast_parameters(ExplosionPreset preset)
+{
+    BlastParameters blast;
+    const float kilograms = charge_kilograms(preset);
+    const float scale = std::cbrt(kilograms);
+    blast.knots = make_blast_knots(kilograms);
+    blast.wave = {4.0f, 0.3f, 0.03f, 0};
+    blast.skirt = {4 * scale, 10 * scale, 0.3f, 2.0f};
+    if (preset == ExplosionPreset::heavy) blast.wilson = {0.6f, 1, 15, 5 * scale};
+    else if (preset == ExplosionPreset::stress_test) blast.wilson = {0.5f, 1, 12, 5 * scale};
+    blast.wave_ticks = (blast.knots.back().arrival_q16 + 0xffffu) >> 16;
+    blast.charge_kilograms = kilograms;
+    blast.push_share = 0.1f;
+    blast.push_cap = 30;
+    return blast;
+}
 }
 
 std::string_view preset_name(ExplosionPreset preset)
@@ -435,7 +453,9 @@ std::string_view layer_name(EffectLayer layer)
     return "unknown";
 }
 
-EffectClass make_effect_class(ExplosionPreset preset, SurfaceType surface)
+namespace
+{
+EffectClass layered_effect_class(ExplosionPreset preset, SurfaceType surface)
 {
     EffectClass effect;
     effect.layers = preset_layers(preset);
@@ -459,6 +479,14 @@ EffectClass make_effect_class(ExplosionPreset preset, SurfaceType surface)
     }
     return effect;
 }
+}
+
+EffectClass make_effect_class(ExplosionPreset preset, SurfaceType surface)
+{
+    auto effect = layered_effect_class(preset, surface);
+    effect.blast = blast_parameters(preset);
+    return effect;
+}
 
 std::vector<EffectClass> effect_classes()
 {
@@ -477,7 +505,7 @@ std::vector<EffectClass> effect_classes()
 std::uint32_t effect_ticks(ExplosionPreset preset, SurfaceType surface)
 {
     float seconds = 0;
-    for (const auto& layer : make_effect_class(preset, surface).layers)
+    for (const auto& layer : layered_effect_class(preset, surface).layers)
     {
         if (layer.count != 0) seconds = std::max(seconds, layer.delay_range + layer.lifetime_min + layer.lifetime_range);
     }
@@ -486,7 +514,7 @@ std::uint32_t effect_ticks(ExplosionPreset preset, SurfaceType surface)
 
 std::uint32_t realism_effect_ticks(ExplosionPreset preset, SurfaceType surface)
 {
-    const auto effect = make_effect_class(preset, surface);
+    const auto effect = layered_effect_class(preset, surface);
     std::uint32_t ticks = effect.realism.graduation_ticks + realism_layout::crossfade_ticks;
     for (std::uint32_t index = 0; index < effect.layers.size(); ++index)
     {
@@ -536,7 +564,7 @@ float stabilization_height(ExplosionPreset preset)
 
 std::uint32_t realism_early_ticks(ExplosionPreset preset, SurfaceType surface)
 {
-    const auto effect = make_effect_class(preset, surface);
+    const auto effect = layered_effect_class(preset, surface);
     std::uint32_t early = 0;
     for (std::uint32_t index = 0; index < effect.layers.size(); ++index)
     {

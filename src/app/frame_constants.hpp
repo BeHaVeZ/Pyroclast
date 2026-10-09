@@ -42,6 +42,10 @@ struct FrameConstants
     std::array<std::array<std::uint32_t, 4>, realism_layout::maximum_units / 4> unit_order;
     std::array<std::array<std::uint32_t, 4>, realism_layout::maximum_clusters / 2> clusters;
     std::array<std::array<std::uint32_t, 4>, particle_layout::maximum_effects> effect_residual;
+    std::array<std::uint32_t, 4> blast_state;
+    std::array<std::uint32_t, 4> blast_slots;
+    std::array<float4, realism_layout::maximum_blasts> blast_rings;
+    std::array<float4, realism_layout::maximum_blasts> blast_fronts;
 };
 inline constexpr std::size_t legacy_frame_constant_bytes = 400 + 52 * particle_layout::maximum_effects + 32 * particle_layout::maximum_lights;
 static_assert(particle_layout::maximum_effects % 4 == 0);
@@ -63,6 +67,8 @@ static_assert(offsetof(FrameConstants, inverse_view_projection) == 64 && offseto
     offsetof(FrameConstants, up_billboard) == 384 + 52 * particle_layout::maximum_effects + 32 * particle_layout::maximum_lights &&
     offsetof(FrameConstants, unit_state) == legacy_frame_constant_bytes && legacy_frame_constant_bytes == 7568);
 static_assert(offsetof(FrameConstants, residual) == 7584 && offsetof(FrameConstants, unit_order) == 7600 &&
-    offsetof(FrameConstants, clusters) == 9648 && offsetof(FrameConstants, effect_residual) == 12720 && sizeof(FrameConstants) == 14768 &&
+    offsetof(FrameConstants, clusters) == 9648 && offsetof(FrameConstants, effect_residual) == 12720 &&
+    offsetof(FrameConstants, blast_state) == 14768 && offsetof(FrameConstants, blast_slots) == 14784 &&
+    offsetof(FrameConstants, blast_rings) == 14800 && offsetof(FrameConstants, blast_fronts) == 15056 && sizeof(FrameConstants) == 15312 &&
     realism_layout::maximum_units % 4 == 0 && realism_layout::maximum_clusters % 2 == 0 && sizeof(FrameConstants) <= 16384);
 }

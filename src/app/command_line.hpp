@@ -57,6 +57,7 @@ struct ApplicationOptions
     WindowSize window;
     bool borderless = false;
     std::uint32_t linger_seconds = 75;
+    std::uint32_t humidity_percent = 80;
 };
 
 struct BenchmarkWorkload
@@ -112,6 +113,6 @@ const char* view_name(RangeView view);
 const char* scene_format_name(SceneFormat format);
 inline constexpr std::string_view disable_names = "dust, smoke, plume, flash, fireball, sparks, debris, lights, curl, vortex, gusts, "
                                                   "shading, shadow, emission, props, collision, deflection, linger, rise, shear, "
-                                                  "variation, haze";
+                                                  "variation, haze, waves, skirt, condensation, push, shake";
 std::optional<std::uint32_t> disable_bit(std::string_view name);
 }

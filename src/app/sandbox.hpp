@@ -33,6 +33,7 @@ struct Sandbox
     WindSettings wind;
     ScalabilitySettings scalability;
     LingerSettings linger;
+    float humidity = 0.8f;
     std::optional<ParticleCounters> counters;
     std::uint64_t counter_sample = 0;
 

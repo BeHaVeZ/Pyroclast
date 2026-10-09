@@ -4,6 +4,7 @@
 #include "../simulation/effect_lights.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cassert>
 #include <vector>
 
@@ -14,11 +15,14 @@ bool ExplosionRenderer::initialize(GraphicsDevice& device, TargetFormat scene_fo
     scene_ = device.create_render_target({1, {}, scene_format});
     depth_ = device.create_render_target({1, {}, TargetFormat::depth, 0.0f});
     present_ = device.create_graphics_pipeline({Shader::tonemap_vertex, Shader::tonemap_pixel, BlendMode::opaque});
+    present_waves_ = device.create_graphics_pipeline({Shader::tonemap_vertex, Shader::present_waves_pixel, BlendMode::opaque});
+    wilson_ = device.create_graphics_pipeline({Shader::wilson_vertex, Shader::wilson_pixel, BlendMode::premultiplied_alpha, DepthMode::ignore, scene_format});
+    for (const auto& effect : effect_classes()) blast_classes_.push_back(effect.blast);
     lines_ = device.create_graphics_pipeline(
         {Shader::debug_lines_vertex, Shader::debug_lines_pixel, BlendMode::opaque, DepthMode::test, scene_format, Topology::lines});
     showcase_lines_ = device.create_graphics_pipeline(
         {Shader::showcase_lines_vertex, Shader::debug_lines_pixel, BlendMode::opaque, DepthMode::test, scene_format, Topology::lines});
-    if (!scene_ || !depth_ || !present_ || !lines_ || !showcase_lines_)
+    if (!scene_ || !depth_ || !present_ || !present_waves_ || !wilson_ || !lines_ || !showcase_lines_)
     {
         return false;
     }
@@ -111,7 +115,23 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
 
     const auto opaque = range.draws();
     const bool props = ((options.layer_mask >> particle_layout::props_mask_bit) & 1) != 0;
-    const Draw present{*present_, {}, {}, 3, 1, "Tonemap"};
+    BlastList blasts;
+    if (realism)
+    {
+        blasts = select_blasts(effects, blast_classes_, tick, key_tick, options.humidity);
+        constants.blast_state = {blasts.count, std::bit_cast<std::uint32_t>(options.humidity), 0, 0};
+        for (std::uint32_t entry = 0; entry < blasts.count; ++entry)
+        {
+            constants.blast_slots[entry / 4] |= blasts.slots[entry] << ((entry % 4) * 8);
+            constants.blast_rings[entry] = blasts.rings[entry];
+            constants.blast_fronts[entry] = blasts.fronts[entry];
+        }
+    }
+    const bool waves = blasts.count > 0 && ((options.layer_mask >> realism_layout::waves_mask_bit) & 1) != 0;
+    const bool condensation = ((options.layer_mask >> realism_layout::condensation_mask_bit) & 1) != 0 &&
+        std::any_of(blasts.rings.begin(), blasts.rings.begin() + blasts.count, [](const float4& ring) { return ring.w > 0; });
+    const Draw wilson{*wilson_, {}, {}, 3, realism_layout::maximum_blasts, "Wilson shells"};
+    const Draw present{waves ? *present_waves_ : *present_, {}, {}, 3, 1, waves ? "Tonemap and blast waves" : "Tonemap"};
     const Draw lines{*lines_, {}, {work.effects}, 32, std::max(work.effects, 1u), "Effect lines"};
     listed_clusters_ = 0;
     if (realism)
@@ -139,6 +159,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     std::vector<Pass> passes{{scene_.get(), {}, scene_draws, "Scene", false, depth_.get(), true}};
     std::vector<Draw> over_scene;
     if (show_lines) over_scene.push_back(lines);
+    if (condensation) over_scene.push_back(wilson);
     if (simulate && !half)
     {
         over_scene.push_back(work.particles);
@@ -152,7 +173,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
             "Half-resolution smoke"});
         passes.push_back({scene_.get(), {smoke_target_.get(), depth_.get()}, over_scene, "Composite and light", true, depth_.get(), false});
     }
-    passes.push_back({nullptr, {scene_.get(), nullptr}, {&present, 1}, "Present"});
+    passes.push_back({nullptr, {scene_.get(), waves ? depth_.get() : nullptr}, {&present, 1}, "Present"});
     auto constant_bytes = std::as_bytes(std::span(&constants, 1));
     if (!realism_enabled(options.layer_mask)) constant_bytes = constant_bytes.first(legacy_frame_constant_bytes);
     Frame frame{simulate ? std::span<const Dispatch>(work.dispatches) : std::span<const Dispatch>(), passes, {}, constant_bytes,

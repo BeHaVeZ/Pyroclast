@@ -467,7 +467,10 @@ void showcase_window(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>
         {
             constexpr std::pair<const char*, std::uint32_t> features[] = {{"linger (new effects)", realism_layout::linger_mask_bit},
                 {"rise", realism_layout::rise_mask_bit}, {"shear", realism_layout::shear_mask_bit},
-                {"variation (new effects)", realism_layout::variation_mask_bit}, {"haze", realism_layout::haze_mask_bit}};
+                {"variation (new effects)", realism_layout::variation_mask_bit}, {"haze", realism_layout::haze_mask_bit},
+                {"waves", realism_layout::waves_mask_bit}, {"skirt (new effects)", realism_layout::skirt_mask_bit},
+                {"condensation", realism_layout::condensation_mask_bit}, {"push", realism_layout::push_mask_bit},
+                {"shake", realism_layout::shake_mask_bit}};
             for (std::size_t index = 0; index < std::size(features); ++index)
             {
                 const auto [name, mask_bit] = features[index];

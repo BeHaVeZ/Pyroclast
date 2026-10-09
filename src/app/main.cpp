@@ -495,8 +495,10 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
         {
             char lingering[256];
             std::snprintf(lingering, sizeof(lingering),
-                "\"realism\":{\"linger_seconds\":%u,\"forced_fades\":%llu,\"deferred\":%llu,\"peak_clusters\":%u,\"peak_residual\":%u,\"ghosts\":%u}",
-                sandbox.linger.linger_ticks / 60, static_cast<unsigned long long>(sandbox.effects.residual().forced_fades()),
+                "\"realism\":{\"linger_seconds\":%u,\"humidity_percent\":%u,\"forced_fades\":%llu,\"deferred\":%llu,\"peak_clusters\":%u,"
+                "\"peak_residual\":%u,\"ghosts\":%u}",
+                sandbox.linger.linger_ticks / 60, static_cast<unsigned>(std::lround(sandbox.humidity * 100)),
+                static_cast<unsigned long long>(sandbox.effects.residual().forced_fades()),
                 static_cast<unsigned long long>(sandbox.effects.deferred()), peak_clusters, peak_residual, ghosts);
             text += (text.empty() ? "" : ",") + std::string(lingering);
         }
@@ -636,7 +638,6 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                 {
                     baseline.disable();
                 }
-                const auto& camera = sandbox.camera.camera();
                 const auto showcase_start = SDL_GetPerformanceCounter();
                 sandbox.update_aim((ui && ui->visible()) || sandbox.views.spawn_regions || sandbox.views.wind_arrow);
                 auto showcase_ticks = SDL_GetPerformanceCounter() - showcase_start;
@@ -672,10 +673,18 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     demo.tick() + 1 <= sequence_last;
                 const bool capture = sequence_frame || (!options.capture_path.empty() && !warming &&
                     (options.capture_tick ? demo.tick() + 1 == *options.capture_tick : !demo.has_pending_steps()));
+                auto drawn = sandbox.camera.camera();
+                if (!unattended && !profile_tick && pyroclast::realism_enabled(sandbox.layer_mask) &&
+                    ((sandbox.layer_mask >> pyroclast::realism_layout::shake_mask_bit) & 1) != 0)
+                {
+                    const float angle = pyroclast::shake_angle(sandbox.effects, sandbox.renderer.blast_classes(), drawn.position, demo.tick());
+                    drawn.pitch = std::clamp(drawn.pitch + angle, -1.55f, 1.55f);
+                    drawn.yaw += 0.6f * angle;
+                }
                 const auto submit_begin = SDL_GetPerformanceCounter();
-                const auto result = sandbox.renderer.render(renderer, demo, sandbox.effects, sandbox.range, camera, width, height, elapsed,
+                const auto result = sandbox.renderer.render(renderer, demo, sandbox.effects, sandbox.range, drawn, width, height, elapsed,
                     {capture, overlay, sandbox.views, sandbox.layer_mask, sandbox.wind, sandbox.marks, sandbox.scalability, sandbox.counters,
-                        sandbox.linger});
+                        sandbox.linger, sandbox.humidity});
                 const auto submit_end = SDL_GetPerformanceCounter();
                 if (result == pyroclast::RenderResult::failed) return 1;
                 if (!unattended)
@@ -905,6 +914,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
     sandbox->wind = options.wind;
     sandbox->scalability = options.scalability;
     sandbox->linger.linger_ticks = options.linger_seconds * 60;
+    sandbox->humidity = static_cast<float>(options.humidity_percent) / 100.0f;
     const auto preset = pyroclast::preset_name(options.preset);
     SDL_Log("Preset: %.*s; mask 0x%04x; wind %.1f m/s towards %.0f deg, gustiness %.2f.", static_cast<int>(preset.size()), preset.data(),
         options.layer_mask, options.wind.speed, options.wind.direction_degrees, options.wind.gustiness);
@@ -1064,11 +1074,15 @@ int main(int argc, char** argv)
             "                     flash, fireball, sparks, debris, lights, curl, vortex, gusts, shading, shadow, emission,\n"
             "                     props (no props drawn, hit or collided with), collision (props drawn, particles pass),\n"
             "                     deflection (props do not turn the air aside); with --realism=on also linger (no smoke lingers),\n"
-            "                     rise (no rising columns), shear (no wind shear), variation (identical effects) or haze.\n"
+            "                     rise (no rising columns), shear (no wind shear), variation (identical effects), haze, waves (no\n"
+            "                     blast-wave refraction), skirt (no dust skirt), condensation (no Wilson shell), push (fronts do\n"
+            "                     not move smoke) or shake (no camera shake).\n"
             "  --realism=on|off   The realism model (default off): smoke graduates from its effect into a residual pool and lingers,\n"
             "                     fading out instead of popping. Not with --benchmark, which fixes its model.\n"
             "  --linger=S         With --realism=on: lingering smoke lives about S seconds after its explosion (0.87-1.2 times S with\n"
             "                     variation, less when the residual pool is busy), 10-300 (default 75).\n"
+            "  --humidity=P       With --realism=on: the air's relative humidity in percent, 0-100 (default 80); above 70 heavy and\n"
+            "                     stress-test charges show a condensation (Wilson) shell, fully from 90.\n"
             "  --wind=S,D,G       Wind speed 0-40 m/s, heading in degrees from +x towards +z, gustiness 0-1 (default 3,0,0.3).\n"
             "  --effect-lines     Start with each effect's origin, normal and reach, and the props' collision boxes,\n"
             "                     drawn as lines (L toggles).\n"

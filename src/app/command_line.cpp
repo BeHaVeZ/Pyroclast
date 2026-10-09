@@ -58,7 +58,9 @@ std::optional<std::uint32_t> disable_bit(std::string_view name)
         {"emission", particle_layout::emission_mask_bit}, {"props", particle_layout::props_mask_bit},
         {"collision", particle_layout::collision_mask_bit}, {"deflection", particle_layout::deflection_mask_bit},
         {"linger", realism_layout::linger_mask_bit}, {"rise", realism_layout::rise_mask_bit}, {"shear", realism_layout::shear_mask_bit},
-        {"variation", realism_layout::variation_mask_bit}, {"haze", realism_layout::haze_mask_bit}};
+        {"variation", realism_layout::variation_mask_bit}, {"haze", realism_layout::haze_mask_bit}, {"waves", realism_layout::waves_mask_bit},
+        {"skirt", realism_layout::skirt_mask_bit}, {"condensation", realism_layout::condensation_mask_bit}, {"push", realism_layout::push_mask_bit},
+        {"shake", realism_layout::shake_mask_bit}};
     for (const auto& [other, bit] : others)
     {
         if (other == name) return bit;
@@ -98,6 +100,7 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
     bool window_specified = false;
     std::optional<bool> realism;
     bool linger_specified = false;
+    bool humidity_specified = false;
     std::uint32_t disabled = 0;
     const auto set_once = [&result](bool& flag, const char* name) {
         if (flag)
@@ -238,6 +241,22 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
                 return result;
             }
             result.options.linger_seconds = *seconds;
+        }
+        else if (option.starts_with("--humidity="))
+        {
+            if (humidity_specified)
+            {
+                result.error = "Specify --humidity only once.";
+                return result;
+            }
+            humidity_specified = true;
+            const auto percent = parse_count(option.substr(std::string_view("--humidity=").size()), 0, 100);
+            if (!percent)
+            {
+                result.error = "Expected --humidity=P, relative humidity in percent from 0 to 100.";
+                return result;
+            }
+            result.options.humidity_percent = *percent;
         }
         else if (option.starts_with("--ui="))
         {
@@ -671,11 +690,16 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
     result.options.layer_mask = model & ~disabled;
     if ((disabled >> realism_layout::realism_mask_bit) != 0 && !realism_enabled(model))
     {
-        result.error = "--disable names a part of the realism model (linger, rise, shear, variation or haze); it requires --realism=on.";
+        result.error = "--disable names a part of the realism model (linger, rise, shear, variation, haze, waves, skirt, condensation, push or "
+                       "shake); it requires --realism=on.";
     }
     if (linger_specified && !realism_enabled(model))
     {
         result.error = "--linger requires --realism=on.";
+    }
+    if (humidity_specified && !realism_enabled(model))
+    {
+        result.error = "--humidity requires --realism=on.";
     }
     if (realism_enabled(model) && result.options.scalability.slot_policy == SlotPolicy::evict_oldest)
     {

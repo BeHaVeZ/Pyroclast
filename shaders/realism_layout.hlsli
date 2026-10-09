@@ -8,7 +8,12 @@ static const uint rise_mask_bit = 19;
 static const uint shear_mask_bit = 20;
 static const uint variation_mask_bit = 21;
 static const uint haze_mask_bit = 22;
-static const uint realism_full_mask = 0x7fffff;
+static const uint waves_mask_bit = 23;
+static const uint skirt_mask_bit = 24;
+static const uint condensation_mask_bit = 25;
+static const uint push_mask_bit = 26;
+static const uint shake_mask_bit = 27;
+static const uint realism_full_mask = 0xfffffff;
 
 static const uint residual_groups = 1024;
 static const uint residual_records = residual_groups * simulation_group_size;
@@ -36,6 +41,7 @@ static const uint effect_tag_shift = 20;
 static const uint effect_longest_bits = 15;
 static const uint latched_linger = 1u << 15;
 static const uint latched_variation = 1u << 16;
+static const uint latched_skirt = 1u << 17;
 static const uint scale_one = 1024;
 
 static const uint residual_packed_offset = 36;
@@ -54,3 +60,7 @@ static const uint counter_flag_measured = 1;
 static const uint counter_flag_realism = 2;
 
 static const uint class_realism_offset = 1440;
+
+static const uint class_blast_offset = 1680;
+static const uint blast_knots = 16;
+static const uint maximum_blasts = 16;

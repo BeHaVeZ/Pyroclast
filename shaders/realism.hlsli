@@ -191,6 +191,7 @@ struct EffectResidual
     uint longest_ticks;
     bool linger;
     bool varied;
+    bool skirt;
     float2 drift;
 };
 
@@ -205,6 +206,7 @@ EffectResidual load_effect_residual(uint slot)
     link.longest_ticks = words.z & ((1u << effect_longest_bits) - 1);
     link.linger = (words.z & latched_linger) != 0;
     link.varied = (words.z & latched_variation) != 0;
+    link.skirt = (words.z & latched_skirt) != 0;
     link.drift = float2(f16tof32(words.w & 0xffff), f16tof32(words.w >> 16));
     return link;
 }

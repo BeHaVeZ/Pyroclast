@@ -452,6 +452,12 @@ int main()
             refused({"--realism=on", "--realism=on"}, "only once") && parsed({"--slot-policy=evict-oldest"}).error.empty() &&
             refused({"--slot-policy=graduate-oldest"}, "requires --realism=on") && refused({"--linger=60"}, "requires --realism=on") &&
             refused({"--disable=haze"}, "requires --realism=on") && refused({"--disable=rise,shear"}, "requires --realism=on") &&
+            refused({"--disable=waves"}, "requires --realism=on") && refused({"--humidity=90"}, "requires --realism=on") &&
+            refused({"--realism=on", "--humidity=101"}, "--humidity=P") && refused({"--realism=on", "--humidity=50", "--humidity=60"}, "only once") &&
+            parsed({"--realism=on", "--humidity=95"}).options.humidity_percent == 95 && parsed({"--realism=on"}).options.humidity_percent == 80 &&
+            parsed({"--realism=on", "--disable=waves,skirt,condensation,push,shake"}).options.layer_mask ==
+                (realism::realism_full_mask & ~((1u << realism::waves_mask_bit) | (1u << realism::skirt_mask_bit) |
+                    (1u << realism::condensation_mask_bit) | (1u << realism::push_mask_bit) | (1u << realism::shake_mask_bit))) &&
             parsed({"--realism=on", "--disable=rise,shear,variation,haze"}).options.layer_mask ==
                 (realism::realism_full_mask & ~((1u << realism::rise_mask_bit) | (1u << realism::shear_mask_bit) |
                     (1u << realism::variation_mask_bit) | (1u << realism::haze_mask_bit))) &&

@@ -43,7 +43,8 @@ public:
         using pyroclast::Shader;
         auto pipeline = std::make_unique<pyroclast::GraphicsPipeline>(description.blend, description.depth, description.target);
         const bool particle = description.vertex_shader == Shader::particle_vertex;
-        if (description.vertex_shader == Shader::tonemap_vertex) present = pipeline.get();
+        if (description.vertex_shader == Shader::tonemap_vertex && description.pixel_shader == Shader::tonemap_pixel) present = pipeline.get();
+        if (description.pixel_shader == Shader::present_waves_pixel) present_waves = pipeline.get();
         if (particle && description.blend == BlendMode::premultiplied_alpha)
             (description.depth == DepthMode::test ? particles : offscreen) = pipeline.get();
         if (description.vertex_shader == Shader::particle_lod_vertex && description.pixel_shader == Shader::particle_pixel &&
@@ -215,6 +216,7 @@ public:
     const pyroclast::GraphicsPipeline* lod_particles = nullptr;
     const pyroclast::GraphicsPipeline* lod_offscreen = nullptr;
     const pyroclast::GraphicsPipeline* present = nullptr;
+    const pyroclast::GraphicsPipeline* present_waves = nullptr;
     const pyroclast::GraphicsPipeline* composite = nullptr;
     const pyroclast::GraphicsPipeline* terrain = nullptr;
     const pyroclast::GraphicsPipeline* debris = nullptr;

@@ -146,7 +146,9 @@ void ExplosionSystem::start(std::uint32_t tick, SlotPolicy policy, const Realism
                 slot.residual = residual_.reserve(tick, lingering, linger, slot.origin, slot.drift_start, slot.preset, slot.serial, variation);
                 if (slot.residual)
                 {
-                    slot.latched = realism_layout::latched_linger | (varied ? realism_layout::latched_variation : 0u);
+                    const bool skirt = ((realism->mask >> realism_layout::skirt_mask_bit) & 1) != 0;
+                    slot.latched = realism_layout::latched_linger | (varied ? realism_layout::latched_variation : 0u) |
+                        (skirt ? realism_layout::latched_skirt : 0u);
                     slot.lifetime_ticks = realism_ticks_[slot.effect_class];
                 }
             }

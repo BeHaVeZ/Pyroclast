@@ -1,3 +1,4 @@
+#include "simulation/blast_front.hpp"
 #include "simulation/effect_lights.hpp"
 #include "simulation/explosion_presets.hpp"
 #include "simulation/terrain.hpp"
@@ -293,6 +294,107 @@ int main()
     }
     check(gusty && highest - lowest > 2.0f, "gusts are deterministic, bounded by the gustiness, and vary the speed");
     check(wind_velocity({4, 0, 0}, 77, true).x == 4, "no gustiness, no gusts");
+
+    check(std::abs(overpressure_ratio(3) - 0.8127) < 5e-4 && std::abs(overpressure_ratio(10) - 0.0985) < 5e-4 &&
+        std::abs(overpressure_ratio(20) - 0.0434) < 5e-4, "Kinney-Graham: dp/p0 0.813 at Z = 3, 0.0985 at 10, 0.0434 at 20");
+    check(std::abs(particle_velocity(0.0985) - 22.97) < 0.01 && front_speed(0) == 340 && std::abs(front_speed(1) - 340 * std::sqrt(1 + 6.0 / 7)) < 1e-9,
+        "u_p is 23.0 m/s at dp/p0 = 0.0985; the front moves at the speed of sound as dp/p0 goes to 0");
+    {
+        bool knots = true;
+        bool arrivals = true;
+        bool radii = true;
+        bool ratios = true;
+        bool lives = true;
+        for (std::uint32_t preset = 0; preset < preset_count; ++preset)
+        {
+            const auto kind = static_cast<ExplosionPreset>(preset);
+            const auto blast = make_effect_class(kind, SurfaceType::dirt).blast;
+            const double kilograms = charge_kilograms(kind);
+            const double scale = std::cbrt(kilograms);
+            knots = knots && blast.knots[0].radius_cm == static_cast<std::uint32_t>(std::llround(scale * 100)) && blast.knots[0].arrival_q16 == 0 &&
+                blast.knots.back().radius_cm == 60000 && blast.charge_kilograms == static_cast<float>(kilograms);
+            for (std::uint32_t index = 1; index < blast.knots.size(); ++index)
+            {
+                const auto& knot = blast.knots[index];
+                knots = knots && knot.radius_cm > blast.knots[index - 1].radius_cm && knot.arrival_q16 > blast.knots[index - 1].arrival_q16 &&
+                    knot.ticks_per_cm_q24 > 0 && knot.overpressure < blast.knots[index - 1].overpressure;
+                radii = radii && std::abs(blast_radius(blast, knot.arrival_q16 / 65536.0f) - knot.radius_cm / 100.0f) < 1e-3f * knot.radius_cm / 100.0f;
+                ratios = ratios && std::abs(blast_overpressure(blast, knot.radius_cm / 100.0f) / knot.overpressure - 1) < 1e-4f;
+            }
+            lives = lives && blast.wave_ticks >= 100 && blast.wave_ticks <= 110 && blast.wave_ticks == (blast.knots.back().arrival_q16 + 0xffffu) >> 16;
+            for (std::uint32_t centimetres = blast.knots[0].radius_cm + 50; centimetres <= 60000; centimetres += 137)
+            {
+                const double metres = centimetres / 100.0;
+                const double exact = integrated_arrival_ticks(kilograms, metres);
+                const auto tick = blast_arrival_tick(blast, centimetres);
+                arrivals = arrivals && tick + 0.01 >= exact && tick <= exact + 1.01;
+                ratios = ratios && std::abs(blast_overpressure(blast, static_cast<float>(metres)) / overpressure_ratio(metres / scale) - 1) < 0.03;
+            }
+        }
+        check(knots, "blast knots: Z = 1 to 600 m, in order, overpressure falling");
+        check(radii, "the front's radius is the knot's at each knot's arrival");
+        check(arrivals, "the integer arrival tick is within a tick of the integrated arrival (rounded up) from Z = 1 to 600 m");
+        check(ratios, "the overpressure ratio between knots is within 3% of Kinney-Graham, exact at the knots");
+        check(lives, "a front lives 100-110 ticks (to 600 m)");
+    }
+    {
+        const auto heavy_blast = make_effect_class(ExplosionPreset::heavy, SurfaceType::dirt).blast;
+        const auto artillery_blast = make_effect_class(ExplosionPreset::artillery_he, SurfaceType::dirt).blast;
+        check(wilson_opacity(heavy_blast, 8.0f, 0.8f) > 0.29f && wilson_opacity(heavy_blast, 8.0f, 0.95f) == wilson_opacity(heavy_blast, 8.0f, 1.0f) &&
+            wilson_opacity(heavy_blast, 8.0f, 0.7f) == 0 && wilson_opacity(heavy_blast, 24, 0.95f) == 0 && wilson_opacity(heavy_blast, 1, 0.95f) == 0 &&
+            wilson_opacity(artillery_blast, 8.0f, 1.0f) == 0, "a Wilson shell only around heavy charges, only above 70% humidity, inside its window");
+    }
+    {
+        ExplosionSystem effects(64);
+        std::vector<BlastParameters> blasts;
+        for (const auto& effect : effect_classes()) blasts.push_back(effect.blast);
+        for (std::uint32_t index = 0; index < 20; ++index)
+        {
+            effects.submit({{static_cast<float>(index), 0, 0}, {0, 1, 0}, index, ExplosionPreset::artillery_he});
+            effects.start(index * 5);
+        }
+        const auto list = select_blasts(effects, blasts, 99, 100, 0.8f);
+        bool newest = list.count == 16;
+        for (std::uint32_t entry = 0; entry + 1 < list.count; ++entry)
+        {
+            newest = newest && effects.slots()[list.slots[entry]].start_tick > effects.slots()[list.slots[entry + 1]].start_tick;
+        }
+        const auto& first = effects.slots()[list.slots[0]];
+        const auto& blast = blasts[first.effect_class];
+        newest = newest && first.start_tick == 95 && list.rings[0].x == blast_radius(blast, 5) && list.fronts[0].x == blast_radius(blast, 4) &&
+            list.rings[0].y == blast.wave.x * blast_overpressure(blast, list.rings[0].x) && list.rings[0].w == 0 && list.fronts[0].z == push_speed(blast, list.rings[0].x);
+        check(newest, "the blast list holds the 16 newest fronts, newest first, with their radius before and after the frame");
+        const auto late = select_blasts(effects, blasts, 149, 150, 0.8f);
+        bool young = true;
+        for (std::uint32_t entry = 0; entry < late.count; ++entry) young = young && 150 - effects.slots()[late.slots[entry]].start_tick < blast.wave_ticks;
+        check(young && late.count < 16 && late.count > 0 && select_blasts(effects, blasts, 299, 300, 0.8f).count == 0,
+            "a front leaves the list once it has reached 600 m");
+        check(push_speed(blast, 1) == blast.push_cap && push_speed(blast, 100) < 1, "the push is capped near the origin and fades with distance");
+    }
+    {
+        ExplosionSystem effects(4);
+        std::vector<BlastParameters> blasts;
+        for (const auto& effect : effect_classes()) blasts.push_back(effect.blast);
+        effects.submit({{0, 0, 0}, {0, 1, 0}, 1, ExplosionPreset::heavy});
+        effects.start(0);
+        const float3 camera{30, 2, 0};
+        const auto& blast = blasts[effects.slots()[effects.active()[0]].effect_class];
+        const float arrival = blast_arrival_ticks(blast, std::sqrt(30.0f * 30 + 2 * 2));
+        bool quiet_before = true;
+        bool bounded = true;
+        bool moving = false;
+        bool quiet_after = true;
+        for (std::uint32_t tick = 0; tick < 200; ++tick)
+        {
+            const float angle = shake_angle(effects, blasts, camera, tick);
+            bounded = bounded && std::abs(angle) <= 0.02f;
+            if (tick + 0.0f < arrival) quiet_before = quiet_before && angle == 0;
+            else if (tick < arrival + 30) moving = moving || std::abs(angle) > 1e-3f;
+            else if (tick > arrival + 91) quiet_after = quiet_after && angle == 0;
+        }
+        check(arrival > 2 && arrival < 8 && quiet_before && moving && bounded && quiet_after,
+            "the camera shakes when the front reaches it, at most 0.02 rad, and stops 1.5 s later");
+    }
 
     return failures == 0 ? 0 : 1;
 }

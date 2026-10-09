@@ -5,6 +5,7 @@
 #include "showcase_marks.hpp"
 #include "smoke_resolution_policy.hpp"
 #include "test_range.hpp"
+#include "../simulation/blast_front.hpp"
 #include "../simulation/explosion_system.hpp"
 #include "../simulation/particle_system.hpp"
 #include "../simulation/wind.hpp"
@@ -28,6 +29,7 @@ public:
         ScalabilitySettings scalability;
         std::optional<ParticleCounters> counters;
         LingerSettings linger;
+        float humidity = 0.8f;
     };
     RenderResult render(GraphicsDevice& device, ParticleSystem& particles, ExplosionSystem& effects, const TestRange& range,
         const Camera& camera, int width, int height, double elapsed_seconds, const FrameOptions& options);
@@ -35,6 +37,7 @@ public:
     bool half_smoke() const { return half_smoke_; }
     const FrameWork& submitted_work() const { return submitted_work_; }
     const SmokeResolutionPolicy& smoke_policy() const { return smoke_policy_; }
+    std::span<const BlastParameters> blast_classes() const { return blast_classes_; }
     std::uint32_t listed_clusters() const { return listed_clusters_; }
     bool particles_drawn() const { return particles_drawn_; }
 
@@ -42,6 +45,9 @@ private:
     std::unique_ptr<RenderTarget> scene_;
     std::unique_ptr<RenderTarget> depth_;
     std::unique_ptr<GraphicsPipeline> present_;
+    std::unique_ptr<GraphicsPipeline> present_waves_;
+    std::unique_ptr<GraphicsPipeline> wilson_;
+    std::vector<BlastParameters> blast_classes_;
     std::unique_ptr<GraphicsPipeline> lines_;
     std::unique_ptr<GraphicsPipeline> showcase_lines_;
     std::unique_ptr<RenderTarget> smoke_target_;

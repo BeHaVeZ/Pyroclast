@@ -116,6 +116,28 @@ struct RealismParameters
 };
 static_assert(sizeof(RealismParameters) == 240 && offsetof(RealismParameters, layers) == 32 && offsetof(RealismParameters, spread) == 224);
 
+struct BlastKnot
+{
+    std::uint32_t radius_cm = 0;
+    std::uint32_t arrival_q16 = 0;
+    std::uint32_t ticks_per_cm_q24 = 0;
+    float overpressure = 0;
+};
+
+struct BlastParameters
+{
+    std::array<BlastKnot, realism_layout::blast_knots> knots{};
+    float4 wave{};
+    float4 skirt{};
+    float4 wilson{};
+    std::uint32_t wave_ticks = 0;
+    float charge_kilograms = 0;
+    float push_share = 0;
+    float push_cap = 0;
+};
+static_assert(sizeof(BlastKnot) == 16 && sizeof(BlastParameters) == 320 && offsetof(BlastParameters, wave) == 256 &&
+    offsetof(BlastParameters, skirt) == 272 && offsetof(BlastParameters, wilson) == 288 && offsetof(BlastParameters, wave_ticks) == 304);
+
 struct EventVariation
 {
     std::uint32_t key = 0;
@@ -132,10 +154,11 @@ struct EffectClass
     std::array<LayerParameters, particle_layout::layer_count> layers{};
     FlowParameters flow;
     RealismParameters realism;
-    std::array<std::uint8_t, particle_layout::class_stride - realism_layout::class_realism_offset - sizeof(RealismParameters)> padding{};
+    BlastParameters blast;
+    std::array<std::uint8_t, particle_layout::class_stride - realism_layout::class_blast_offset - sizeof(BlastParameters)> padding{};
 };
 static_assert(sizeof(EffectClass) == particle_layout::class_stride && offsetof(EffectClass, flow) == particle_layout::class_flow_offset &&
-    offsetof(EffectClass, realism) == realism_layout::class_realism_offset &&
+    offsetof(EffectClass, realism) == realism_layout::class_realism_offset && offsetof(EffectClass, blast) == realism_layout::class_blast_offset &&
     particle_layout::slab_groups <= particle_layout::class_layers_offset);
 
 inline constexpr std::string_view preset_names = "small-impact, small-he, artillery-he, heavy, fuel-fire, dust-blast, stress-test";

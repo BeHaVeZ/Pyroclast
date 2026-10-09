@@ -97,6 +97,8 @@ Outcome run(const Stream& stream, pyroclast::SlotPolicy policy = pyroclast::Slot
     const auto mask = stream.varied ? layout::realism_full_mask : layout::realism_full_mask & ~(1u << layout::variation_mask_bit);
     RealismStart realism{mask, {stream.linger_seconds * 60, false}, {}};
     Outcome outcome;
+    std::vector<EffectClass> dirt_classes;
+    for (std::uint32_t preset = 0; preset < preset_count; ++preset) dirt_classes.push_back(make_effect_class(static_cast<ExplosionPreset>(preset), SurfaceType::dirt));
     std::map<std::uint64_t, ResidualCluster> seen;
     std::map<std::uint64_t, float> previous_factor;
     std::map<std::uint64_t, std::pair<std::uint32_t, std::uint32_t>> previous_fade;
@@ -130,7 +132,7 @@ Outcome run(const Stream& stream, pyroclast::SlotPolicy policy = pyroclast::Slot
             const auto& slot = system.slots()[index];
             if (!slot.graduating_early) continue;
             const auto lifetime = slot.lifetime_ticks;
-            const auto effect = make_effect_class(slot.preset, SurfaceType::dirt);
+            const auto& effect = dirt_classes[static_cast<std::uint32_t>(slot.preset)];
             for (std::uint32_t layer = 3; layer < layout_layers(); ++layer)
             {
                 const auto& source = effect.layers[layer];
@@ -255,7 +257,7 @@ int main()
         system.start(100, SlotPolicy::drop_new, &realism);
         const auto& slot = system.slots()[0];
         const auto* cluster = slot.residual ? system.residual().find(*slot.residual) : nullptr;
-        check(slot.latched == layout::latched_linger && slot.residual && slot.lifetime_ticks == realism_effect_ticks(ExplosionPreset::artillery_he, SurfaceType::dirt) &&
+        check(slot.latched == (layout::latched_linger | layout::latched_skirt) && slot.residual && slot.lifetime_ticks == realism_effect_ticks(ExplosionPreset::artillery_he, SurfaceType::dirt) &&
             cluster && cluster->graduation_tick == 640 && cluster->records == 176 && cluster->groups == 3 && cluster->ring_group == 0 &&
             cluster->natural_end == 4600, "a lingering artillery-he effect reserves 3 groups; its survivors move after its 480 ticks and the crossfade");
         check(cluster && !cluster->listed(639) && cluster->listed(640) && cluster->listed(4599) && !cluster->listed(4600),
@@ -272,7 +274,7 @@ int main()
         const auto& varied = system.slots()[2];
         const auto* varied_cluster = varied.residual ? system.residual().find(*varied.residual) : nullptr;
         const auto life = event_variation(9).life;
-        check(varied.latched == (layout::latched_linger | layout::latched_variation) && varied_cluster && life >= 888 && life <= 1229 &&
+        check(varied.latched == (layout::latched_linger | layout::latched_variation | layout::latched_skirt) && varied_cluster && life >= 888 && life <= 1229 &&
             varied_cluster->natural_end == ResidualPool::death_tick(102, varied_cluster->graduation_tick, varied.residual->longest_ticks, life, 0),
             "a varied effect's cluster ends where its own life factor puts its records");
         system.clear();

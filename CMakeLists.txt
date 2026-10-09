@@ -70,7 +70,7 @@ add_executable(Pyroclast
     src/simulation/residual_pool.cpp
     src/simulation/explosion_scenarios.cpp
     src/simulation/impact_patterns.cpp
-    src/simulation/explosion_presets.cpp
+    src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp
     src/simulation/effect_lights.cpp
     src/simulation/wind.cpp
     src/simulation/terrain.cpp
@@ -114,12 +114,12 @@ include(CTest)
 set(project_targets Pyroclast ImageDiff)
 if(BUILD_TESTING)
     add_executable(CommandLineTests tests/command_line_tests.cpp src/app/command_line.cpp src/graphics/adapter_name.cpp
-        src/simulation/explosion_presets.cpp src/simulation/wind.cpp)
+        src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp src/simulation/wind.cpp)
     target_include_directories(CommandLineTests PRIVATE src)
     add_test(NAME command_line COMMAND CommandLineTests)
     list(APPEND project_targets CommandLineTests)
     add_executable(ParticleControlTests tests/particle_control_tests.cpp src/simulation/particle_system.cpp
-        src/simulation/explosion_system.cpp src/simulation/residual_pool.cpp src/simulation/explosion_scenarios.cpp src/simulation/impact_patterns.cpp src/simulation/explosion_presets.cpp
+        src/simulation/explosion_system.cpp src/simulation/residual_pool.cpp src/simulation/explosion_scenarios.cpp src/simulation/impact_patterns.cpp src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp
         src/simulation/effect_lights.cpp src/simulation/wind.cpp src/simulation/terrain.cpp src/simulation/environment.cpp src/simulation/range_props.cpp
         src/core/math.cpp src/app/explosion_renderer.cpp src/app/realism_constants.cpp src/app/smoke_resolution_policy.cpp src/app/camera.cpp src/app/camera_controls.cpp src/app/sandbox.cpp
         src/app/showcase.cpp src/app/key_bindings.cpp src/app/test_range.cpp src/app/prop_mesh.cpp src/graphics/draw_validation.cpp)
@@ -147,27 +147,27 @@ if(BUILD_TESTING)
     list(APPEND project_targets TerrainTests)
     add_executable(EnvironmentTests tests/environment_tests.cpp src/simulation/environment.cpp src/simulation/range_props.cpp
         src/simulation/terrain.cpp src/simulation/explosion_scenarios.cpp src/simulation/impact_patterns.cpp src/simulation/explosion_system.cpp src/simulation/residual_pool.cpp
-        src/simulation/explosion_presets.cpp src/app/prop_mesh.cpp src/core/math.cpp)
+        src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp src/app/prop_mesh.cpp src/core/math.cpp)
     target_include_directories(EnvironmentTests PRIVATE src)
     add_test(NAME environment COMMAND EnvironmentTests)
     list(APPEND project_targets EnvironmentTests)
     add_executable(ExplosionSystemTests tests/explosion_system_tests.cpp src/simulation/explosion_system.cpp src/simulation/residual_pool.cpp
-        src/simulation/explosion_scenarios.cpp src/simulation/impact_patterns.cpp src/simulation/explosion_presets.cpp src/simulation/terrain.cpp
+        src/simulation/explosion_scenarios.cpp src/simulation/impact_patterns.cpp src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp src/simulation/terrain.cpp
         src/simulation/environment.cpp src/simulation/range_props.cpp src/core/math.cpp)
     target_include_directories(ExplosionSystemTests PRIVATE src)
     add_test(NAME explosion_system COMMAND ExplosionSystemTests)
     list(APPEND project_targets ExplosionSystemTests)
-    add_executable(ExplosionPresetTests tests/explosion_preset_tests.cpp src/simulation/explosion_presets.cpp
+    add_executable(ExplosionPresetTests tests/explosion_preset_tests.cpp src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp
         src/simulation/effect_lights.cpp src/simulation/wind.cpp src/simulation/explosion_system.cpp src/simulation/residual_pool.cpp src/simulation/terrain.cpp src/core/math.cpp)
     target_include_directories(ExplosionPresetTests PRIVATE src)
     add_test(NAME explosion_presets COMMAND ExplosionPresetTests)
     list(APPEND project_targets ExplosionPresetTests)
     add_executable(ShowcaseTests tests/showcase_tests.cpp src/simulation/impact_patterns.cpp src/simulation/explosion_scenarios.cpp
-        src/simulation/explosion_system.cpp src/simulation/residual_pool.cpp src/simulation/explosion_presets.cpp src/simulation/environment.cpp
+        src/simulation/explosion_system.cpp src/simulation/residual_pool.cpp src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp src/simulation/environment.cpp
         src/simulation/range_props.cpp src/simulation/terrain.cpp src/simulation/wind.cpp src/core/math.cpp src/app/key_bindings.cpp
         src/app/camera.cpp src/app/camera_controls.cpp src/app/test_range.cpp src/app/prop_mesh.cpp src/app/showcase.cpp)
     target_include_directories(ShowcaseTests PRIVATE src)
-    add_executable(ScalabilityTests tests/scalability_tests.cpp src/app/smoke_resolution_policy.cpp src/simulation/explosion_presets.cpp)
+    add_executable(ScalabilityTests tests/scalability_tests.cpp src/app/smoke_resolution_policy.cpp src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp)
     target_include_directories(ScalabilityTests PRIVATE src)
     target_link_libraries(ScalabilityTests PRIVATE pyroclast_shader_list)
     add_test(NAME scalability COMMAND ScalabilityTests)
@@ -176,7 +176,7 @@ if(BUILD_TESTING)
     add_test(NAME showcase COMMAND ShowcaseTests)
     list(APPEND project_targets ShowcaseTests)
     add_executable(ResidualPoolTests tests/residual_pool_tests.cpp src/simulation/residual_pool.cpp src/simulation/explosion_system.cpp
-        src/simulation/explosion_presets.cpp src/simulation/wind.cpp src/core/math.cpp)
+        src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp src/simulation/wind.cpp src/core/math.cpp)
     target_include_directories(ResidualPoolTests PRIVATE src)
     add_test(NAME residual_pool COMMAND ResidualPoolTests)
     list(APPEND project_targets ResidualPoolTests)
