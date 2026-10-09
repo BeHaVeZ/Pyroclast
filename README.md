@@ -2,11 +2,15 @@
 
 > A real-time C++ graphics and simulation project exploring scalable, high-fidelity explosion and smoke effects across Direct3D 12 and Vulkan.
 
-![One heavy explosion at tick 180, seen from eye level](media/screenshots/heavy-ground-180.png)
+![An artillery barrage's smoke pall drifting downwind, seen from 260 m](media/screenshots/realism-far-3600.png)
 
-*One heavy explosion at tick 180 (3 s), from eye level; D3D12 in-app capture.*
+*The lingering barrage (240 artillery impacts, four a second) at tick 3,600 (60 s), from the far view: a minute of
+smoke risen into one pall, lit on top and dark beneath, carried downwind and fading into the haze. D3D12 in-app
+capture, the realism model.*
 
-**Status:** milestones M11-M21 complete. Windows x64, Direct3D 12 and Vulkan.
+**Status:** milestones M11-M25 complete. Windows x64, Direct3D 12 and Vulkan. The default is the realism model
+(lingering smoke without pops, smoke physics, visible blast waves); `--realism=off` runs the earlier model, which the
+seven M20 benchmarks keep.
 
 **Technology:** C++20, CMake 4.2, SDL 3.4.18, Direct3D 12, Vulkan 1.3, HLSL compiled by DXC to DXIL and SPIR-V,
 Dear ImGui 1.92.9b, GPU compute.
@@ -41,6 +45,9 @@ the workload scales: one explosion, several at once, sustained artillery, overla
 particle counts. Pyroclast investigates how to preserve the *perceived visual density* of the effect while keeping
 the simulation and rendering workload bounded.
 
+The realism phase (M22-M25) adds the second half of the question: smoke that lingers for a minute or more and rises
+into columns, as artillery smoke does, without ever popping out of the scene when the particle budget runs out.
+
 The rendering side is held to one rule: build exactly enough rendering infrastructure to support and study scalable
 explosion and smoke simulation well, not a renderer that could theoretically support anything.
 
@@ -72,13 +79,33 @@ per launch; details under [Performance](#performance)); points 2 and 3 from the 
    default, because each of its parts changes the image.
 5. **The two APIs agree, and runs are deterministic.** Vulkan's GPU frame average is within -6.01% to +4.67% of
    D3D12's. Particle counts and their checksums are identical across runs (112/112 checks) and across APIs (7/7).
+6. **The realism model fits a 60 Hz frame at 1080p.** At 1920x1080 the lingering barrage (240 artillery impacts, four
+   a second, smoke lingering 60-90 s, every blast wave visible) costs 7.85 / 8.20 ms of GPU frame at p95
+   (D3D12 / Vulkan), 47-49% of 16.7 ms, with every option off; 4.26 / 4.50 ms with the
+   recommended set. Seen from the far view it costs 3.10 / 3.26 ms (M25 session, details under
+   [Performance](#the-realism-model-at-1920x1080)).
+7. **Nothing pops.** Between consecutive frames through an explosion's graduation, under a saturating stress script
+   and from a still camera over a barrage, no step stands out from its neighbours. At a graduation the largest step is
+   1.5-2.7 times the median, with the next largest within 3% of it; over a barrage the larger steps are the four
+   frames after each impact, as its smoke and the push move. M21's evict-oldest pop, for comparison, is one step 4.9
+   times the median.
 
 ![GPU frame average against the number of simultaneous explosions, D3D12 and Vulkan](media/charts/scaling.svg)
 
 ## Gallery
 
-All images are in-app captures of the default 1280x720 window, copied on the GPU before presentation. Captions
+All images are in-app captures of the default 1280x720 window, copied on the GPU before presentation; the one
+difference image is `ImageDiff`'s. Captions
 give the state, the renderer and build, and any non-default flag.
+
+The realism model (the default since M25):
+
+| | |
+|---|---|
+| ![The lingering barrage from the overview](media/screenshots/realism-overview-1800.png)<br>The lingering barrage at tick 1,800 (30 s), overview: older columns rise and drift behind the newest impact. D3D12, Debug. | ![A heavy charge's condensation dome and dust skirt](media/screenshots/realism-heavy-8.png)<br>One heavy charge at tick 8, humidity 80%: the brief condensation (Wilson) dome around the fireball, the dust skirt kicked up where the front passed, and the refraction ring bending the ground's lines far out. D3D12, Debug. |
+| ![The dust skirt of a heavy charge](media/screenshots/realism-heavy-60.png)<br>The same charge at tick 60 (1 s): the soot-dark young cloud with its ejecta above the skirt's dust, thrown outwards along the ground. D3D12, Debug. | ![The blast wave's refraction, amplified](media/screenshots/realism-waves-difference-6.png)<br>An artillery charge at tick 6: the refraction ring's effect on the image, the difference against `--disable=waves` amplified 40 times (the ground ring and the air shell's arc). D3D12, Debug. |
+
+The earlier model (`--realism=off`), as M21 captured it:
 
 | | |
 |---|---|
@@ -95,9 +122,9 @@ give the state, the renderer and build, and any non-default flag.
 | Explosions | Events placed by clicks or scripts at any time and place. 7 presets (small impact, small HE, artillery HE, heavy, fuel/fire, dust blast, stress test), each a table of up to 7 layers: ground dust, blast smoke, plume, flash, fireball, sparks, debris. Dirt and concrete respond differently. Up to 16 temporary lights per frame, the brightest first. |
 | Environment | Sparks and debris collide with the terrain and the props (swept, so nothing tunnels through a thin wall); debris comes to rest on tops; dust is held back and stays on tops; the wind and each explosion's vortex ring turn aside and up over walls. |
 | Showcase | Aim and fire with the crosshair; counts 1, 10, 50 and 100 (the aimed explosion plus a Vogel disc of radius 16.3, 36.6 or 51.6 m around it); an 80-impact barrage across the view; a continuous bombardment; walk or fly; seven camera bookmarks; 0.25x slow motion; debug views (effect bounds, collision boxes, spawn regions, wind arrow). |
-| Realism model (in progress) | Opt-in with `--realism=on`. Smoke lingers: when an explosion's energetic phase ends, every eighth dust, smoke and plume particle survives into a residual pool of 65,536 particles and takes over its neighbours' share of the smoke, then lives on for about `--linger` seconds (75 by default, varying by explosion) after the explosion. It rises towards a stabilization height that grows with the charge (about 45 m for artillery) and spreads there, so a cloud becomes a column; the wind strengthens and veers with height, so columns lean and drift; every explosion varies a little in height, spread, darkness and life; lingering smoke turns a dirty grey, dust stays low and settles; and distant smoke fades into the same haze as the ground. Nothing pops: smoke leaves only by fading, a full pool fades its oldest smoke out over at least 2 s, and with every effect slot busy an older explosion graduates early so the new one starts a moment later instead of being dropped. Deterministic on both APIs. Every explosion's blast wave shows: a ring of refraction races over the ground and through the air, a dust skirt is kicked up where it passes, heavy charges in humid air (`--humidity`, 80% by default) flash a brief condensation dome, the front nudges lingering smoke outwards as it crosses it, and in interactive runs the camera shakes when it arrives. |
+| Realism model (default) | The default since M25 (`--realism=off` for the earlier model). Smoke lingers: when an explosion's energetic phase ends, every eighth dust, smoke and plume particle survives into a residual pool of 65,536 particles and takes over its neighbours' share of the smoke, then lives on for about `--linger` seconds (75 by default, varying by explosion) after the explosion. It rises towards a stabilization height that grows with the charge (about 45 m for artillery) and spreads there, so a cloud becomes a column; the wind strengthens and veers with height, so columns lean and drift; every explosion varies a little in height, spread, darkness and life; dust stays low, falls out and settles; and distant smoke fades into the same haze as the ground. The look (M25): a flash and fireball with a real charge's timing, lighting nearby smoke as a sphere; soil jets and soot-dark young smoke that turns to a ground-tied grey; columns that shade themselves and one another, lit on top and dark beneath; thin smoke that scatters sunlight; billowed puffs. Nothing pops: smoke leaves only by fading, a full pool fades its oldest smoke out over at least 2 s, and with every effect slot busy an older explosion graduates early so the new one starts a moment later instead of being dropped. Deterministic on both APIs. Every explosion's blast wave shows: a ring of refraction races over the ground and through the air, a dust skirt is kicked up where it passes, heavy charges in humid air (`--humidity`, 80% by default) flash a brief condensation dome, lingering smoke jolts outwards as the front crosses it and back as the air returns, and in interactive runs the camera shakes when it arrives. |
 | Scalability options | Coverage counters, an automatic smoke resolution with a coverage budget, half-resolution light, projected-size smoke thinning, a faint-smoke floor, effect-order keys and a slot policy. All off by default. |
-| Benchmark mode | 9 named workloads (`--benchmark`; 2 of them for the realism model at 1920x1080), each after 120 warm-up frames, with a JSON record, a per-frame CSV, an interleaved session driver and a report with charts. |
+| Benchmark mode | 10 named workloads (`--benchmark`; 3 of them for the realism model at 1920x1080), each after 120 warm-up frames, with a JSON record, a per-frame CSV, an interleaved session driver and a report with charts. |
 | Tooling | A Dear ImGui overlay that shows only values the application measures or owns; `--gpu-regions`; in-app capture (`--capture`, `--capture-sequence`); `ImageDiff`; `tools/captures.py`, `tools/ab.py`, `tools/bench`, `tools/counter_log.py`, `tools/lifecycle.ps1`. |
 
 ## Architecture
@@ -295,6 +322,55 @@ scenario the simulation dispatch takes 27.1 µs (D3D12) / 23.4 µs (Vulkan) with
 noise off did not make it faster. In the frozen state at tick 180, sphere shading costs 0.12 / 0.20 ms of a
 5.8-5.9 ms draw, 2-3.5%. Each part can be switched off (`--disable=curl,vortex,gusts,shading,shadow,emission`).
 
+### The realism model (the default)
+
+Since M25 every run uses the realism model (M22-M25) unless `--realism=off`. The seven M20 benchmarks keep the earlier
+(legacy) model, whose frames are M21's exactly.
+
+The goal is the long-lived artillery smoke of combat-simulation mods: smoke that lingers for a minute or more and rises
+into grey columns that lean and drift with the wind and fade into the haze. The model also avoids a common flaw of such
+effects: when particles run out, a new explosion makes older smoke vanish at once.
+
+- **Two-phase smoke.**
+  - An explosion's slab of 2,560 particles runs the energetic phase as before.
+  - At its graduation (4-10 s by preset, plus a 1 s crossfade) every eighth dust, smoke and plume particle survives into
+    a persistent residual pool of 65,536 particles. It takes over its neighbours' share of the smoke: over the crossfade
+    the others fade out while each survivor grows to keep optical depth times area constant, so the move is invisible.
+  - The slab is free again after 5-11 s instead of the whole smoke life. The survivors live on for about `--linger`
+    seconds (75 by default, 0.87-1.2 times that by explosion).
+- **No pops.** Smoke leaves only by fading.
+  - A CPU scheduler books the pool by integer ticks when each explosion starts. Older smoke in the way gets a forced fade
+    of at least 2 s, and under sustained fire a linger scale shortens lives smoothly.
+  - With every effect slot busy, an older explosion graduates early and the new one waits a moment for its slot
+    (`--slot-policy=graduate-oldest`, the realism default) instead of being dropped.
+- **Physics, faked plausibly.**
+  - Lingering smoke rises on an updraft to a neutral height that grows with the charge (about 45 m for artillery, a
+    design value) and spreads there. Each explosion's smoke fills a continuous column from a dusty foot to its cap.
+  - The wind strengthens and veers with height, so columns lean.
+  - Dust stays low, falls out and settles. Older smoke thins as it spreads and stretches along the wind.
+  - Every explosion varies a little in height, spread, darkness and life.
+  - Distant smoke fades into the same haze as the ground.
+- **The look.**
+  - An HE charge flashes for a few hundredths of a second, and its fireball cools from yellow-white to deep orange within
+    a fraction of a second. Its light falls on nearby smoke as from a sphere the size of the fireball.
+  - A quarter of its smoke is thrown out as dark soil jets. Young smoke is soot-dark and dense, and turns over a few
+    seconds to a grey tied to the ground it rose from.
+  - Each column shades itself at the scale of the whole cloud, lit on top and dark beneath, and the columns of a barrage
+    shade one another more deeply as the pall builds.
+  - Thin lingering smoke scatters sunlight forwards rather than shading like a ball. Large puffs break into billows.
+- **Visible blast waves.** Each preset's shock front comes from Kinney-Graham overpressure and the shock relations,
+  integrated per preset into 16 knots. As it passes:
+  - a crisp ring of refraction races over the ground and through the air (in the present pass);
+  - a sheet of dust is kicked up;
+  - heavy charges in humid air (`--humidity`, 80% by default) show a brief condensation dome that clears from the
+    inside;
+  - other explosions' lingering smoke jolts outwards and back as the air behind the front moves out and returns;
+  - in interactive runs the camera shakes as it arrives.
+
+  The charges and stabilization heights are design values, not measurements.
+- **Deterministic.** Particle counts stay integer functions of the tick, identical across runs and across D3D12 and
+  Vulkan. Every realism feature has a `--disable` name and an overlay checkbox.
+
 ## D3D12 and Vulkan
 
 | Topic | D3D12 | Vulkan |
@@ -462,6 +538,37 @@ python tools/bench/report.py out/bench/<session> --strict
 running, and interleaves the runs. `report.py` re-checks every record against its CSV, determinism across runs and
 APIs and the session's completeness, and rewrites the tables and charts byte-identically.
 
+### The realism model at 1920x1080
+
+The sections above measure the earlier model at 1280x720 (M20). The realism model's budget is 16.7 ms of GPU frame
+at p95 at 1920x1080 on this GPU. Session `20261009-091243-m25-s3-final` (M25, executable SHA-256
+`91e1ae708dbb96035c93e5b887c62a75b31913a2d95a1e51de4d0c48e3369841`), 5 runs per case, both APIs, borderless at the
+display's 1920x1080; every option off (`default`) and the recommended set. Milliseconds, GPU frame p95 / average:
+
+| Benchmark | Variant | D3D12 | Vulkan |
+|---|---|---:|---:|
+| linger-barrage | default | 7.847 / 5.203 | 8.198 / 5.469 |
+| linger-barrage | recommended | 4.261 / 2.829 | 4.495 / 2.981 |
+| linger-far | default | 3.101 / 2.036 | 3.263 / 2.141 |
+| linger-far | recommended | 1.932 / 1.297 | 2.033 / 1.362 |
+| linger-ground | default | 11.843 / 7.888 | 12.346 / 8.265 |
+| linger-ground | recommended | 6.184 / 4.129 | 6.515 / 4.347 |
+
+- `linger-barrage` is the target: 240 artillery-he impacts on a 30 m disc, four a second for 60 s, then 30 s more,
+  from the overview; `linger-far` watches it from 260 m with a 40-degree field of view; `linger-ground` stands in the
+  smoke at eye level, the case the plan said cannot be budgeted (it is reported, not a target).
+- The draw is about 11 µs per screen of smoke coverage at 1080p (records 11 and 13); the simulation stays under 0.05 ms.
+- What each part costs (records 13 and 15): rising columns about 7%, haze 2-3%, the refraction 0.4-1% of the frame
+  while a front is listed (0.07 ms for 16 rings), 16 condensation domes 0.1 ms. The M25 look pass (billows, lights as
+  spheres, the phase function, the ejecta crown) added 57-59% to the barrage's draw at p95 (an interleaved A/B
+  against M24's build).
+- The target uses 47% (D3D12) and 49% (Vulkan) of the budget at p95 with every option off; even the ground pose fits.
+  The recommended set takes 37-48% off, all of it from the 16-pixel thinning: `auto` stayed at full resolution in
+  every run (record 16). Vulkan is 4-5% slower than D3D12 at p95 here. GPU memory at the end of a run: 112-132 MB
+  (DXGI local usage).
+- The earlier model is unchanged: an interleaved A/B of M21's build against M25's on the seven M20 benchmarks is
+  neutral on 190 of 196 metrics, and the other 6 were neutral in a 7-run re-check.
+
 ## Optimization record
 
 Every change is judged the same way: a baseline, region timestamps, a hypothesis, a toggle, an interleaved A/B,
@@ -479,6 +586,15 @@ image captures, and a written record, kept even when the change is rejected. The
 | 07 Simulation side | not built | Each candidate is bounded by the whole simulation region, tens of microseconds. |
 | 08 Draw side | not built | Aggregation, HiZ, CPU and GPU bounds, OIT and a global sort, each with the evidence that would reopen it. |
 | 09 D3D12 tearing presentation | kept | Neutral on every metric; the closest match to Vulkan's `IMMEDIATE`. It does not remove D3D12's CPU tails. |
+| 10 1080p baseline | measurement | The seven M20 benchmarks at 1920x1080: smoke-field's p95 is 60 ms with every option off and 8 ms with the recommended set; the others stay under 11 ms. |
+| 11 Residual budget | kept as designed | The lingering barrage at 1080p cost 4.7-4.8 ms at p95 with M22's lingering smoke, about 11 µs per screen of coverage; the residual size cap was not recalibrated. |
+| 12 Graduation sweeps | not built | Four survivors in eight would need a ring larger than the one-level scan holds; nothing measured is limited by the graduation time. |
+| 13 Smoke physics cost | kept | Rising columns +7.5% (more coverage), haze +2-3%; sheared wind and variation make the frame slightly cheaper. |
+| 14 Far-view haze | kept | Distant smoke fades like the terrain; 2% of the far view's frame. |
+| 15 Blast waves cost | kept | 0.07 ms for 16 refraction rings at 1080p, 0.1 ms for 16 condensation domes. |
+| 16 1080p coverage budget | not built | Not needed: the realism model meets its budget with every option off. |
+| 17 Automatic thinning size | not built | Not needed, for the same reason. |
+| 18 Defaults | decided | The realism model is the default; the recommended set stays opt-in (with every option off the target uses under half the budget, and the set's thinning changes the image). |
 
 Earlier decisions, measured the same way:
 
@@ -505,6 +621,12 @@ Earlier decisions, measured the same way:
 - **Native validation.** Debug runs require the D3D12 debug layer or the Vulkan validation layer and end with
   "validation summary: 0 warnings, 0 errors". D3D12 GPU-based validation and Vulkan GPU-assisted validation run once
   per milestone (Vulkan reports 4 known setup notices and 0 errors).
+- **The realism model.** Its own exact baselines (116 Debug captures: the lingering barrage from the overview and the
+  far view, one heavy charge, the saturation script; run to run exact, cross-API within tolerance), the legacy gate
+  run with `--realism=off`, and no-pop checks: consecutive frames through a graduation, under forced fades and early
+  graduations, from a still camera over a barrage, each compared with its neighbours (no step stands out), against
+  the evict-oldest pop the model replaces. Counter logs, including the residual pool's columns, are identical across
+  runs and APIs.
 - **Lifecycle.** `tools/lifecycle.ps1` drives the interactive path under validation: the controls, the showcase keys,
   30 resizes, minimize and restore, and a minimized start.
 - **Release repeatability.** Optimized D3D12 output is not always bit-identical between runs on this driver, so the
@@ -520,7 +642,14 @@ Earlier decisions, measured the same way:
   order, and its edges against nearer geometry are half resolution.
 - No sorting within an effect, and no order-independent transparency.
 - Each scalability option changes the image, so none is on by default.
-- 128 effect slots; by default a new event is dropped while all are busy.
+- 128 effect slots: with every slot busy the realism model makes a new event wait while an older explosion graduates
+  early (dropped only when none can); the earlier model drops it.
+- The realism model's refraction is screen-space: smoke in front of a front is bent too. The condensation dome is
+  drawn before all smoke, so smoke behind it is drawn over it.
+- Draw units are sorted per effect by view depth: with a still camera they never swap, but a moving camera can swap
+  two overlapping columns in one frame (no sorting within an effect, no OIT).
+- Sustained high impact rates shorten the linger (about 28 s at 12 artillery impacts a second), smoothly.
+- The charge masses, stabilization heights, gains and the push are design values chosen by look, not measurements.
 - Prop collision has documented edge cases: seams between boxes, smoke larger than the hut's interior, a door
   closed to large smoke.
 - Slow motion is stepped (about 15 updates a second at 60 Hz); interactive impacts can start up to 3 ticks late
@@ -546,6 +675,9 @@ Each item was analysed or measured and not built; each has the condition that wo
 | HiZ or occlusion culling | A profiler capture shows many half-resolution smoke fragments behind the range |
 | The D3D12 CPU tails | A PresentMon trace (presentation mode per frame) or a fullscreen swapchain |
 | Benchmark harness additions: camera motion, a drain phase, a GPU idle-gap classifier, PresentMon telemetry | A measurement needs them (M20 left them out) |
+| The blast waves' sound | The audio milestone the realism phase deferred |
+| Ground shadows from smoke | A look check asks for them (record 13 measured the headroom) |
+| A larger residual pool (a two-level scan) | Linger shortened by sustained fire matters, or four survivors in eight are wanted (record 12) |
 
 ## Build
 
@@ -620,8 +752,8 @@ timestamps. Minimizing pauses the simulation; resizing keeps its state.
 | **L**, **F8**, **F9** | Effect bounds and collision boxes; spawn regions; wind arrow |
 | **F1** | Hide or show the overlay. While the overlay takes keyboard or mouse input, the keys do not reach the application. |
 
-When every effect slot is busy, new events are dropped, counted in the overlay and logged; with the realism model an
-older explosion graduates early and the new event waits for its slot instead, while one can.
+When every effect slot is busy, an older explosion graduates early and the new event waits for its slot (the realism
+model); with none able to, or with `--realism=off`, new events are dropped, counted in the overlay and logged.
 
 ### Examples
 
@@ -632,13 +764,15 @@ $exe = ".\out\build\windows-x64\Release\Pyroclast.exe"
 & $exe --preset=heavy --smoke-resolution=auto --half-light --smoke-lod=16
 & $exe --scenario=barrage                                          # a scripted run, then one JSON line
 & $exe --scenario=range --view=yard --disable=deflection
-& $exe --scenario=bombardment --preset=artillery-he --slot-policy=evict-oldest
+& $exe --scenario=bombardment --preset=artillery-he
 & $exe --benchmark=smoke-field --counter-log=smoke-field.csv       # a benchmark record and its per-frame CSV
 & $exe --explosions=100 --profile-tick=180 --gpu-regions           # a frozen state, timed per dispatch and pass
 & $exe --scenario=range --view=range --capture-to=120 --capture-sequence=out\video\range-120
-& $exe --realism=on --preset=artillery-he                         # lingering smoke; B for a barrage, Space adds the group
-& $exe --realism=on --scenario=linger-barrage --preset=artillery-he --view=far --linger=90
+& $exe --preset=artillery-he                                       # lingering smoke; B for a barrage, Space adds the group
+& $exe --scenario=linger-barrage --preset=artillery-he --view=far --linger=90
+& $exe --preset=heavy --humidity=95                                # condensation domes around heavy charges
 & $exe --benchmark=linger-barrage                                  # the realism model at 1920x1080, borderless
+& $exe --realism=off --scenario=bombardment --slot-policy=evict-oldest   # the earlier model and its pop
 ```
 
 ### Command-line flags
@@ -656,10 +790,10 @@ validated even when `--help` is present. Checks that need the scenario's length 
 | `--adapter=NAME\|warp` | The GPU whose name contains NAME (case-insensitive); `warp` is the D3D12 software rasterizer (use Release). |
 | `--explosions=1\|10\|50\|100` | The startup group (default 1). |
 | `--preset=NAME` | small-impact, small-he (default), artillery-he, heavy, fuel-fire, dust-blast or stress-test: the startup group, profiles, scenarios and the first click. |
-| `--disable=LIST` | Hide layers (dust, smoke, plume, flash, fireball, sparks, debris), the lights, smoke features (curl, vortex, gusts, shading, shadow, emission) or the props (props, collision, deflection); with `--realism=on` also linger, rise, shear, variation, haze, waves, skirt, condensation, push and shake. |
-| `--realism=on\|off` | The realism model (default off): lingering smoke that leaves only by fading. Not with `--benchmark`. |
-| `--humidity=P` | With `--realism=on`: the air's relative humidity in percent, 0-100 (default 80); above 70% heavy and stress-test charges show a condensation (Wilson) dome, fully from 90%. |
-| `--linger=S` | With `--realism=on`: lingering smoke lives about S seconds after its explosion (0.87-1.2 times S with variation, less when the residual pool is busy), 10-300 (default 75). |
+| `--disable=LIST` | Hide layers (dust, smoke, plume, flash, fireball, sparks, debris), the lights, smoke features (curl, vortex, gusts, shading, shadow, emission) or the props (props, collision, deflection); with the realism model also linger, rise, shear, variation, haze, waves, skirt, condensation, push and shake. |
+| `--realism=on\|off` | The realism model (default on since M25): lingering, rising smoke that leaves only by fading, haze, visible blast waves; `off` runs the earlier model. Not with `--benchmark`, whose workload fixes the model. |
+| `--humidity=P` | Realism model: the air's relative humidity in percent, 0-100 (default 80); above 70% heavy and stress-test charges show a condensation (Wilson) dome, fully from 90%. |
+| `--linger=S` | Realism model: lingering smoke lives about S seconds after its explosion (0.87-1.2 times S with variation, less when the residual pool is busy), 10-300 (default 75). |
 | `--wind=S,D,G` | Speed 0-40 m/s, heading in degrees from +x towards +z, gustiness 0-1 (default 3,0,0.3). |
 | `--view=NAME` | Start at a named pose: overview (default), ground, hill, aerial, range (the north yard's props), yard (close to its walls) or far (from near the range's south edge, with a 40 degree field of view). |
 | `--window=WxH` | The window's client size in pixels, 640x360 to 7680x4320 (default 1280x720; a benchmark's own size unless given). |
@@ -668,7 +802,7 @@ validated even when `--help` is present. Checks that need the scenario's length 
 | `--effect-lines` | Start with each effect's origin, normal and reach, and the props' collision boxes, drawn as lines. |
 | `--debug-views=LIST` | Start with bounds, boxes, regions, wind or all on. Not with `--effect-lines` or `--scenario`. |
 | `--scenario=NAME` | A scripted run, one tick per frame, then a JSON summary: single, grid-10, grid-50, grid-100, barrage, presets, range, bombardment or accumulation; for the realism model linger-barrage (240 impacts, four a second, run for 90 s) or linger-saturation (1,200 impacts, 30 a second). |
-| `--benchmark=NAME` | A named scenario, preset and pose after 120 warm-up frames: single, simultaneous-10, simultaneous-50, simultaneous-100, sustained-barrage, smoke-field or accumulation; the realism model's linger-barrage (from the overview) and linger-far (from the far view), at 1920x1080. Prints a JSON record. |
+| `--benchmark=NAME` | A named scenario, preset and pose after 120 warm-up frames: single, simultaneous-10, simultaneous-50, simultaneous-100, sustained-barrage, smoke-field or accumulation; the realism model's linger-barrage (from the overview), linger-far (from the far view) and linger-ground (from the ground), at 1920x1080. The first seven keep the earlier model. Prints a JSON record. |
 | `--profile-tick=N` | Freeze at tick 0-480 (with `--scenario`: 1 up to its duration), with timestamps on and VSync off, and sample the frozen state. |
 | `--counter-log=FILE` | With `--scenario` (or `--benchmark`) or `--profile-tick`: one CSV row per frame, written at exit. |
 | `--gpu-timing` | GPU timestamp measurements. |
@@ -684,7 +818,7 @@ validated even when `--help` is present. Checks that need the scenario's length 
 | `--smoke-lod=P` | Thin smoke particles larger than P pixels in radius (0 < P ≤ 4096). |
 | `--faint-floor=F` | Do not draw smoke whose opacity is below F (0 < F < 1). |
 | `--effect-order=origin\|cloud\|none` | Sort effects back to front by origin (default), by the rising cloud's centre, or not at all. |
-| `--slot-policy=drop-new\|evict-oldest\|graduate-oldest` | With every slot busy, drop the new event (default), replace the effect that started earliest, or (the realism model's default; evicting is refused there) graduate an older lingering effect early and let the event wait for its slot. |
+| `--slot-policy=drop-new\|evict-oldest\|graduate-oldest` | With every slot busy, graduate an older lingering effect early and let the event wait for its slot (the realism model's default), drop the new event (the earlier model's default), or replace the effect that started earliest (earlier model only: it pops). |
 | `--coverage` | Count screen coverage and off-screen particles into the counter record. |
 | `--scene-format=rgba16f\|r11g11b10f\|rgba8` | Scene target (default rgba16f; rgba8 is a cost reference and bands). |
 | `--ui=on\|off` | The overlay (default on; off with `--profile-tick`, `--scenario` or `--benchmark`). F1 hides it. |
@@ -712,9 +846,11 @@ Combinations: `--benchmark` refuses `--scenario`, `--explosions`, `--preset`, `-
 
 ```powershell
 # Captures: the fixed-state matrix, named poses, scenario frames; compare exactly, or D3D12 against Vulkan
-python tools/captures.py capture --config Debug --out out/baselines/mine
-python tools/captures.py capture --config Debug --out out/baselines/mine --views ground,hill,aerial --ticks 60,180
-python tools/captures.py capture --config Debug --out out/baselines/mine --scenarios range --views range,yard
+# (--args=--realism=off for the earlier model's gate, out/baselines/m17; without it the realism model's frames)
+python tools/captures.py capture --config Debug --out out/baselines/mine --args=--realism=off
+python tools/captures.py capture --config Debug --out out/baselines/mine --views ground,hill,aerial --ticks 60,180 --args=--realism=off
+python tools/captures.py capture --config Debug --out out/baselines/mine --scenarios range --views range,yard --args=--realism=off
+python tools/captures.py capture --config Debug --out out/baselines/realism --scenarios linger-barrage --presets artillery-he --views overview,far --ticks 300,1800,3600
 python tools/captures.py compare out/baselines/mine out/baselines/theirs    # exact by default
 python tools/captures.py cross-api out/baselines/mine                       # max 2 levels, 99.9% within 1
 python tools/captures.py policy-check out/baselines/mine out/auto-captures  # auto captures equal full or half
@@ -728,7 +864,7 @@ python tools/bench/run.py --exe out/build/windows-x64/Release --label mine --run
 python tools/bench/report.py out/bench/<session> --strict
 # Per-frame counter logs compared run to run
 python tools/counter_log.py diff (Get-ChildItem out/logs/*.csv).FullName
-# The interactive lifecycle under native validation
+# The interactive lifecycle under native validation (the earlier model; -Realism for the realism model)
 powershell -File tools/lifecycle.ps1 -Configuration Debug -Renderer vulkan -SmokeResolution half
 # A scripted run's frames as numbered PNGs (for video), here ticks 1-360
 .\out\build\windows-x64\Release\Pyroclast.exe --scenario=range --view=range --capture-to=360 --capture-sequence=out\video\range-360
@@ -765,3 +901,4 @@ powershell -File tools/lifecycle.ps1 -Configuration Debug -Renderer vulkan -Smok
 | M22 | The realism model's lingering smoke: the residual pool, graduation, forced fades instead of pops, early graduation instead of eviction; `--window`, `--borderless`, the far view, the realism scenarios and benchmarks. |
 | M23 | The realism model's smoke physics and look: rise to a stabilization height and spreading, sheared and veering wind, per-explosion variation, a lingering palette, haze on particles. |
 | M24 | The realism model's visible blast waves: the front from Kinney-Graham, refraction in the present pass, the dust skirt, the Wilson dome, the push on lingering smoke, the camera shake; `--humidity`. |
+| M25 | A look pass (soot and soil colours, a real fireball's timing, lights as spheres, self-shadowed columns and palls, scattering thin smoke, billows, an ejecta crown, a crisper wave and dome); the push made to return; the 1080p budget met with every option off, and the realism model made the default; `linger-ground`; this README's realism sections and images. |
