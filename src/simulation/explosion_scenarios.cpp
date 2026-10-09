@@ -5,7 +5,9 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cmath>
 #include <limits>
+#include <string>
 
 namespace pyroclast
 {
@@ -31,6 +33,86 @@ std::uint32_t longest_life(ExplosionPreset preset)
 {
     return std::max(effect_ticks(preset, SurfaceType::dirt), effect_ticks(preset, SurfaceType::concrete));
 }
+
+double highest_along(const Environment& environment, double ax, double az, double bx, double bz)
+{
+    const auto& terrain = environment.terrain();
+    const double length = std::hypot(bx - ax, bz - az);
+    const int samples = std::max(2, static_cast<int>(length / 2));
+    double highest = -1e30;
+    for (int index = 0; index <= samples; ++index)
+    {
+        const double t = static_cast<double>(index) / samples;
+        highest = std::max(highest, static_cast<double>(terrain.height(static_cast<float>(ax + (bx - ax) * t), static_cast<float>(az + (bz - az) * t))));
+    }
+    for (const auto& box : environment.boxes())
+    {
+        const double reach = std::hypot(box.half_extent.x, box.half_extent.z) + rotor::radius + 2;
+        const double dx = bx - ax;
+        const double dz = bz - az;
+        const double along = std::clamp(((box.centre.x - ax) * dx + (box.centre.z - az) * dz) / std::max(dx * dx + dz * dz, 1e-9), 0.0, 1.0);
+        const double nearest = std::hypot(box.centre.x - (ax + dx * along), box.centre.z - (az + dz * along));
+        if (nearest <= reach) highest = std::max(highest, static_cast<double>(box.centre.y + box.half_extent.y));
+    }
+    return highest;
+}
+
+double cruise_height(const Environment& environment, double ax, double az, double bx, double bz, double agl)
+{
+    return helicopter_cruise_height(environment, ax, az, bx, bz, agl);
+}
+
+FlightPlan helicopter_flight(std::string_view name, const Environment& environment)
+{
+    const auto& terrain = environment.terrain();
+    const auto ground = [&terrain](double x, double z) { return static_cast<double>(terrain.height(static_cast<float>(x), static_cast<float>(z))); };
+    if (name == "heli-hover")
+    {
+        const double hover = ground(0, -40) + 70;
+        const double cruise = std::max(hover, cruise_height(environment, -400, -40, 0, -40, 60));
+        FlightBuilder builder(std::string(name), 1200, {-400, cruise, -40}, {rotor::cruise_speed, 0, 0});
+        builder.cruise(227);
+        builder.change_velocity({});
+        if (builder.position().y > hover) builder.vertical_to(hover, rotor::descent_rate);
+        if (builder.tick() < 2900) builder.hold(2900 - builder.tick());
+        builder.vertical_to(ground(0, -40) + rotor::radius, rotor::descent_rate);
+        if (builder.tick() < 4940) builder.hold(4940 - builder.tick());
+        builder.depart({1, 0, 0}, 900);
+        return builder.build();
+    }
+    if (name == "heli-pass")
+    {
+        const double cruise = cruise_height(environment, -400, -30, 400, -30, 40);
+        FlightBuilder builder(std::string(name), 1200, {-400, cruise, -30}, {rotor::cruise_speed, 0, 0});
+        builder.cruise(90);
+        builder.change_velocity({10, 0, 0});
+        builder.cruise(1200);
+        builder.depart({1, 0, 0}, 2400);
+        auto plan = builder.build();
+        std::uint32_t tick = plan.list_tick;
+        while (tick < plan.unlist_tick && flight_state(plan, tick).position.x < 400) ++tick;
+        plan.unlist_tick = tick;
+        return plan;
+    }
+    const double hover = ground(-45, -20) + 30;
+    const double cruise = std::max(hover, cruise_height(environment, -420, -20, -45, -20, 60));
+    FlightBuilder builder(std::string(name), 300, {-420, cruise, -20}, {rotor::cruise_speed, 0, 0});
+    builder.cruise(190);
+    builder.change_velocity({});
+    if (builder.position().y > hover) builder.vertical_to(hover, rotor::descent_rate);
+    builder.hold(300);
+    builder.land(terrain, 300);
+    return builder.build();
+}
+}
+
+double helicopter_cruise_height(const Environment& environment, double ax, double az, double bx, double bz, double agl)
+{
+    const auto& terrain = environment.terrain();
+    double hub = agl + std::max(terrain.height(static_cast<float>(ax), static_cast<float>(az)), terrain.height(static_cast<float>(bx), static_cast<float>(bz)));
+    const double needed = highest_along(environment, ax, az, bx, bz) + rotor::hub_above_skids + 2;
+    for (int step = 0; step < 4 && hub < needed; ++step) hub += 10;
+    return hub;
 }
 
 std::uint32_t accumulation_interval(ExplosionPreset preset)
@@ -100,9 +182,10 @@ std::optional<Scenario> make_scenario(std::string_view name, const Environment& 
             scenario.events.push_back({index * interval, ground_event(terrain, offset.x, offset.y, accumulation_first_seed + index, preset)});
         }
     }
-    else if (name == "linger-barrage")
+    else if (name == "linger-barrage" || is_helicopter_scenario(name))
     {
-        for (std::uint32_t index = 0; index < 240; ++index)
+        const std::uint32_t impacts = name == "heli-pass" ? 160 : name == "heli-landing" ? 24 : 240;
+        for (std::uint32_t index = 0; index < impacts; ++index)
         {
             const auto offset = bombardment_offset(linger_barrage_key, index, 30);
             scenario.events.push_back({index * 15, ground_event(terrain, offset.x, offset.y, 6000 + index, preset)});
@@ -130,7 +213,8 @@ std::optional<Scenario> make_scenario(std::string_view name, const Environment& 
         const std::uint32_t count = name == "single" ? 1 : name == "grid-10" ? 10 : name == "grid-50" ? 50 : 100;
         for (const auto& event : group_events(terrain, count, preset)) scenario.events.push_back({0, event});
     }
-    if (name == "linger-barrage") scenario.duration_ticks = 5400;
+    if (is_helicopter_scenario(name)) scenario.flight = helicopter_flight(name, environment);
+    if (name == "linger-barrage" || is_helicopter_scenario(name)) scenario.duration_ticks = 5400;
     else if (name == "linger-saturation") scenario.duration_ticks = 3000;
     else
     {

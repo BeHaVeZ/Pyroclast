@@ -159,6 +159,7 @@ std::string CounterLog::csv() const
     if (smoke_resolution_) text += ",half";
     if (evicted_) text += ",evicted";
     if (realism_) text += ",residual,ghosts,clusters,forced,linger_scale,deferred";
+    if (rotor_) text += ",rotor_dust,emission,agl_cm";
     const auto labels = benchmark_ ? region_labels() : std::vector<std::string_view>();
     if (benchmark_)
     {
@@ -217,6 +218,11 @@ std::string CounterLog::csv() const
             text += line;
             std::snprintf(line, sizeof(line), ",%u,%llu,%u,%llu", frame.clusters, static_cast<unsigned long long>(frame.forced), frame.linger_scale,
                 static_cast<unsigned long long>(frame.deferred));
+            text += line;
+        }
+        if (rotor_)
+        {
+            std::snprintf(line, sizeof(line), ",%u,%u,%d", frame.rotor_dust, frame.emission, frame.agl_cm);
             text += line;
         }
         if (benchmark_)

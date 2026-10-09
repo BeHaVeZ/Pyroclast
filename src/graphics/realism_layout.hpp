@@ -9,6 +9,8 @@ namespace pyroclast::realism_layout
 using uint = std::uint32_t;
 using namespace particle_layout;
 #include "../../shaders/realism_layout.hlsli"
+inline constexpr uint realism_full_mask = 0x3fffffff;
+static_assert(realism_full_mask == ((1u << (brownout_mask_bit + 1)) - 1));
 }
 
 namespace pyroclast

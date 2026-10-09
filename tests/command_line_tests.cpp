@@ -60,7 +60,7 @@ int main()
         {"invalid scene format", {"--scene-format=rgba32f"}, d3d12, false, "Expected --scene-format"},
         {"barrage scenario", {"--scenario=barrage"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {},
             pyroclast::SceneFormat::rgba16f, "barrage"},
-        {"invalid scenario", {"--scenario=storm"}, d3d12, false, "Expected --scenario=single, grid-10, grid-50, grid-100, barrage, presets, range, bombardment, accumulation, linger-barrage or linger-saturation"},
+        {"invalid scenario", {"--scenario=storm"}, d3d12, false, "Expected --scenario=single, grid-10, grid-50, grid-100, barrage, presets, range, bombardment, accumulation, linger-barrage, linger-saturation, heli-hover, heli-pass or heli-landing"},
         {"presets scenario", {"--scenario=presets"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {}, {}, "presets"},
         {"preset", {"--preset=fuel-fire"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {}, {}, {}, false,
             pyroclast::ExplosionPreset::fuel_fire},
@@ -469,7 +469,14 @@ int main()
             parsed({"--realism=on", "--slot-policy=drop-new"}).options.scalability.slot_policy == pyroclast::SlotPolicy::drop_new &&
             parsed({"--realism=on", "--linger=300"}).options.linger_seconds == 300 &&
             parsed({"--realism=off"}).options.scalability.slot_policy == pyroclast::SlotPolicy::drop_new &&
-            pyroclast::parse_command_line({}).options.scalability.slot_policy == pyroclast::SlotPolicy::graduate_oldest;
+            pyroclast::parse_command_line({}).options.scalability.slot_policy == pyroclast::SlotPolicy::graduate_oldest &&
+            parsed({"--disable=rotor,brownout"}).options.layer_mask ==
+                (realism::realism_full_mask & ~((1u << realism::rotor_mask_bit) | (1u << realism::brownout_mask_bit))) &&
+            refused({"--realism=off", "--disable=rotor"}, "which --realism=off turns off") &&
+            parsed({"--scenario=heli-hover"}).error.empty() && parsed({"--scenario=heli-landing", "--preset=heavy"}).error.empty() &&
+            refused({"--realism=off", "--scenario=heli-pass"}, "flies the helicopter") &&
+            pyroclast::benchmark_workload("heli-hover") && pyroclast::benchmark_workload("heli-hover")->scenario == "heli-hover" &&
+            pyroclast::benchmark_workload("heli-ground") && pyroclast::benchmark_workload("heli-ground")->view == pyroclast::RangeView::ground;
         if (!accepted || !rules)
         {
             std::fprintf(stderr, "FAIL: --realism (accepted %d, rules %d)\n", accepted, rules);

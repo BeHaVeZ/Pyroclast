@@ -16,7 +16,8 @@ with --gpu-regions).
 
 diff compares the deterministic columns row by row, every log against the first: the columns above up to
 debris, plus the appended columns offscreen, thinned, faint, half, evicted, the realism group (residual, ghosts,
-clusters, forced, linger_scale, deferred), phase, dispatches, passes and draws when every log has them (--columns replaces the whole set). With --measured it drops the warm-up rows (phase
+clusters, forced, linger_scale, deferred; the helicopter's rotor_dust, emission and agl_cm, M26), phase, dispatches, passes
+and draws when every log has them (--columns replaces the whole set). With --measured it drops the warm-up rows (phase
 warmup) and ignores the frame column (which counts the warm-up rows too), so the logs are compared from their
 first measured row and a benchmark's log can be compared with the plain --scenario log of the same script,
 preset and pose (a log without a phase column has only measured rows). Two runs of one build, API and
@@ -41,7 +42,7 @@ from pathlib import Path
 
 BASE_COLUMNS = ("frame", "tick", "steps", "active", "started", "dropped", "counter_tick", "alive", "smoke", "light", "debris")
 DETERMINISTIC = ("offscreen", "thinned", "faint", "half", "evicted", "residual", "ghosts", "clusters", "forced", "linger_scale",
-                 "deferred", "phase", "dispatches", "passes", "draws")
+                 "deferred", "rotor_dust", "emission", "agl_cm", "phase", "dispatches", "passes", "draws")
 
 
 def read_log(path):

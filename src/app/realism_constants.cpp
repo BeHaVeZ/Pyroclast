@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <bit>
 #include <cassert>
+#include <cmath>
 #include <vector>
 
 namespace pyroclast
@@ -18,6 +19,7 @@ struct UnitKey
     float depth;
     std::uint64_t serial;
     bool cluster;
+    bool first = false;
 };
 }
 
@@ -45,6 +47,7 @@ float pall_shadow_power(const ExplosionSystem& effects, std::uint32_t tick)
 FrameUnits count_units(const ExplosionSystem& effects, std::uint32_t tick)
 {
     FrameUnits units{static_cast<std::uint32_t>(effects.active().size()), static_cast<std::uint32_t>(effects.active().size()) * particle_layout::slab_groups};
+    if (effects.rotor_disc_slot()) units.groups -= particle_layout::slab_groups - 1;
     for (const auto& cluster : effects.residual().clusters())
     {
         if (!cluster.listed(tick)) continue;
@@ -55,7 +58,7 @@ FrameUnits count_units(const ExplosionSystem& effects, std::uint32_t tick)
 }
 
 RealismUnits fill_realism_constants(FrameConstants& constants, const ExplosionSystem& effects, std::uint32_t tick, std::uint32_t key_tick,
-    const Camera& camera, EffectOrder order, float3 drift, const LingerSettings& linger)
+    const Camera& camera, EffectOrder order, float3 drift, const LingerSettings& linger, std::optional<float3> rotor_key, std::optional<float3> disc_key)
 {
     const auto forward = camera.forward();
     const auto depth = [&camera, forward, key_tick, order, drift](float3 origin, float3 drift_start, ExplosionPreset preset, std::uint32_t start) {
@@ -74,6 +77,16 @@ RealismUnits fill_realism_constants(FrameConstants& constants, const ExplosionSy
     for (const auto index : effects.active())
     {
         const auto& slot = slots[index];
+        if (slot.kind != EffectKind::explosion)
+        {
+            const bool discs = slot.kind == EffectKind::rotor_disc;
+            const float3 point = (discs ? disc_key : rotor_key).value_or(slot.origin);
+            assert(std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z));
+            keys.push_back({index, discs ? 1u : particle_layout::slab_groups, dot(point - camera.position, forward), slot.serial, false, discs});
+            const std::uint32_t end = slot.start_tick + slot.lifetime_ticks;
+            constants.effect_residual[index] = {discs ? 1u : 0u, realism_layout::no_fade, layout::latched_rotor, end};
+            continue;
+        }
         keys.push_back({index, particle_layout::slab_groups, depth(slot.origin, slot.drift_start, slot.preset, slot.start_tick), slot.serial, false});
         if (const auto& link = slot.residual)
         {
@@ -100,6 +113,7 @@ RealismUnits fill_realism_constants(FrameConstants& constants, const ExplosionSy
     std::stable_sort(keys.begin(), keys.end(), [order](const UnitKey& a, const UnitKey& b) {
         if (order != EffectOrder::none && a.depth != b.depth) return a.depth > b.depth;
         if (a.serial != b.serial) return a.serial < b.serial;
+        if (a.first != b.first) return a.first;
         return !a.cluster && b.cluster;
     });
     constants.unit_order = {};

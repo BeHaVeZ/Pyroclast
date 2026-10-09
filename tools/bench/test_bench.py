@@ -121,7 +121,8 @@ class RunTests(unittest.TestCase):
 
     def test_benchmark_names(self):
         self.assertEqual(run.BENCHMARKS, ("single", "simultaneous-10", "simultaneous-50", "simultaneous-100", "sustained-barrage",
-                                          "smoke-field", "accumulation", "linger-barrage", "linger-far", "linger-ground"))
+                                          "smoke-field", "accumulation", "linger-barrage", "linger-far", "linger-ground", "heli-hover",
+                                          "heli-ground"))
 
     def test_nvidia_version(self):
         self.assertEqual(run.nvidia_version("32.0.16.1714"), "617.14")

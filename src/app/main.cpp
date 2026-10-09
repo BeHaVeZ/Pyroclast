@@ -15,6 +15,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -209,7 +210,7 @@ public:
                 ++found->samples;
             }
         }
-        peak_effects_ = std::max(peak_effects_, static_cast<std::uint32_t>(sandbox.effects.active().size()));
+        peak_effects_ = std::max(peak_effects_, static_cast<std::uint32_t>(sandbox.effects.explosions()));
     }
     void count(const pyroclast::ParticleCounters& counters)
     {
@@ -453,7 +454,13 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
     std::uint32_t peak_clusters = 0;
     std::uint32_t peak_residual = 0;
     std::uint32_t ghosts = 0;
-    const auto scalability_json = [&coverage, &sandbox, automatic, realism, &peak_clusters, &peak_residual, &ghosts]() {
+    std::deque<std::pair<std::uint32_t, std::uint32_t>> rotor_expected;
+    std::uint32_t rotor_mismatches = 0;
+    std::uint32_t peak_dust = 0;
+    std::int32_t lowest_hub_cm = std::numeric_limits<std::int32_t>::max();
+    std::pair<std::uint32_t, std::uint32_t> rotor_slot{pyroclast::never, pyroclast::never};
+    const auto scalability_json = [&coverage, &sandbox, automatic, realism, &peak_clusters, &peak_residual, &ghosts, &rotor_mismatches, &peak_dust,
+                                      &lowest_hub_cm, &rotor_slot]() {
         std::string text = coverage.json();
         if (automatic)
         {
@@ -501,6 +508,15 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                 static_cast<unsigned long long>(sandbox.effects.residual().forced_fades()),
                 static_cast<unsigned long long>(sandbox.effects.deferred()), peak_clusters, peak_residual, ghosts);
             text += (text.empty() ? "" : ",") + std::string(lingering);
+            if (const auto& helicopter = sandbox.rotorcraft.helicopter())
+            {
+                char flight[320];
+                std::snprintf(flight, sizeof(flight),
+                    ",\"helicopter\":{\"flight\":\"%s\",\"listed\":[%u,%u],\"rotor_slot\":[%u,%u],\"peak_dust\":%u,\"lowest_hub_cm\":%d,\"mismatches\":%u}",
+                    helicopter->plan.name.c_str(), helicopter->plan.list_tick, helicopter->plan.unlist_tick, rotor_slot.first, rotor_slot.second, peak_dust,
+                    lowest_hub_cm == std::numeric_limits<std::int32_t>::max() ? -1 : lowest_hub_cm, rotor_mismatches);
+                text += flight;
+            }
         }
         return text;
     };
@@ -684,14 +700,14 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                 const auto submit_begin = SDL_GetPerformanceCounter();
                 const auto result = sandbox.renderer.render(renderer, demo, sandbox.effects, sandbox.range, drawn, width, height, elapsed,
                     {capture, overlay, sandbox.views, sandbox.layer_mask, sandbox.wind, sandbox.marks, sandbox.scalability, sandbox.counters,
-                        sandbox.linger, sandbox.humidity});
+                        sandbox.linger, sandbox.humidity, &sandbox.rotorcraft});
                 const auto submit_end = SDL_GetPerformanceCounter();
                 if (result == pyroclast::RenderResult::failed) return 1;
                 if (!unattended)
                 {
                     const double now = static_cast<double>(SDL_GetPerformanceCounter()) / static_cast<double>(SDL_GetPerformanceFrequency());
                     if (const auto report = sandbox.pressure.record(tick_before, now,
-                            static_cast<std::uint32_t>(sandbox.effects.active().size()), sandbox.effects.dropped()))
+                            static_cast<std::uint32_t>(sandbox.effects.explosions()), sandbox.effects.dropped()))
                     {
                         sandbox.report_drops(*report);
                     }
@@ -699,13 +715,30 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                 last_steps = demo.tick() - tick_before;
                 if (counter_log && result == pyroclast::RenderResult::submitted)
                 {
-                    counter_log->add_frame({demo.tick(), last_steps, static_cast<std::uint32_t>(sandbox.effects.active().size()),
+                    counter_log->add_frame({demo.tick(), last_steps, static_cast<std::uint32_t>(sandbox.effects.explosions()),
                         sandbox.effects.started() - started_before, sandbox.effects.dropped() - dropped_before, sandbox.renderer.particles_drawn(),
                         sandbox.renderer.half_smoke(), sandbox.effects.evicted() - evicted_before,
                         warming ? pyroclast::FramePhase::warmup : pyroclast::FramePhase::measured,
                         static_cast<double>(start - run_start) * counter_milliseconds, static_cast<double>(submit_end - submit_begin) * counter_milliseconds,
                         renderer.last_submit_timings(), sandbox.renderer.submitted_work(), sandbox.renderer.listed_clusters(),
-                        sandbox.effects.residual().forced_fades(), sandbox.effects.residual().last_scale(), sandbox.effects.deferred()});
+                        sandbox.effects.residual().forced_fades(), sandbox.effects.residual().last_scale(), sandbox.effects.deferred(),
+                        sandbox.renderer.rotor_frame().census.alive, sandbox.renderer.rotor_frame().emission,
+                        sandbox.renderer.rotor_frame().hub_height_cm});
+                }
+                if (result == pyroclast::RenderResult::submitted && realism)
+                {
+                    const auto& rotor = sandbox.renderer.rotor_frame();
+                    if (rotor.exists && rotor.listed) lowest_hub_cm = std::min(lowest_hub_cm, rotor.hub_height_cm);
+                    peak_dust = std::max(peak_dust, rotor.census.alive);
+                    if (rotor.slot)
+                    {
+                        const auto& slot = sandbox.effects.slots()[*rotor.slot];
+                        rotor_slot = {slot.start_tick, slot.start_tick + slot.lifetime_ticks};
+                        if (sandbox.effects.explosions() == 0 && sandbox.renderer.particles_drawn())
+                        {
+                            rotor_expected.push_back({demo.tick(), rotor.census.alive + (rotor.listed ? pyroclast::rotor_layout::rotor_disc_records : 0u)});
+                        }
+                    }
                 }
                 const double wall = static_cast<double>(SDL_GetPerformanceCounter()) / static_cast<double>(SDL_GetPerformanceFrequency());
                 tick_rate.add(wall, demo.tick());
@@ -721,6 +754,21 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                 {
                     peak_residual = std::max(peak_residual, counters->residual);
                     ghosts = std::max(ghosts, counters->ghosts);
+                    while (!rotor_expected.empty() && rotor_expected.front().first < counters->tick) rotor_expected.pop_front();
+                    if (!rotor_expected.empty() && rotor_expected.front().first == counters->tick)
+                    {
+                        const auto expected = rotor_expected.front().second;
+                        rotor_expected.pop_front();
+                        if (counters->smoke - counters->residual != expected)
+                        {
+                            if (rotor_mismatches == 0)
+                            {
+                                SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Rotor slot at tick %u: the GPU counts %u records, the CPU's twin %u.",
+                                    counters->tick, counters->smoke - counters->residual, expected);
+                            }
+                            ++rotor_mismatches;
+                        }
+                    }
                 }
                 if (scenario && !frozen && counters && scenario->benchmark().empty()) scenario->count(*counters);
                 if (counter_log && counters) counter_log->add_counters(*counters);
@@ -757,7 +805,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                         }
                         continue;
                     }
-                    if (!profile_tick && baseline.enabled() && sandbox.effects.active().size() != sandbox.group.size())
+                    if (!profile_tick && baseline.enabled() && sandbox.effects.explosions() != sandbox.group.size())
                     {
                         baseline.disable();
                         SDL_Log("Startup sample stopped: the group retired before the sample completed; use --profile-tick or --scenario.");
@@ -795,17 +843,23 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                         if (scenario->benchmark().empty()) scenario->record(milliseconds, renderer.completed_gpu_timings(), sandbox);
                         if (scenario->finished(sandbox))
                         {
+                            if (rotor_mismatches != 0)
+                            {
+                                SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The rotor slot's counts differed from the CPU's twin in %u frames.", rotor_mismatches);
+                            }
                             if (scenario->benchmark().empty())
                             {
-                                return scenario->report(sandbox, options, renderer.adapter_name(), width, height, ui != nullptr, record_json());
+                                const int code = scenario->report(sandbox, options, renderer.adapter_name(), width, height, ui != nullptr, record_json());
+                                return rotor_mismatches != 0 ? 1 : code;
                             }
                             const auto summary = counter_log->summary();
                             if (counter_log->mismatches() != 0) scenario->invalidate("counter log samples did not match their frames");
                             if (summary.gpu_samples == 0) scenario->invalidate("no GPU timestamps arrived");
                             const auto tail = benchmark_tail(*scenario, summary, renderer, options.renderer, options.gpu_validation, display_hz,
                                 focused, memory_start, renderer.memory_usage());
-                            return scenario->report(sandbox, options, renderer.adapter_name(), width, height, ui != nullptr, scalability_json(),
+                            const int code = scenario->report(sandbox, options, renderer.adapter_name(), width, height, ui != nullptr, scalability_json(),
                                 &summary, tail);
+                            return rotor_mismatches != 0 ? 1 : code;
                         }
                     }
                     if (options.exit_after && ++submitted_frames >= *options.exit_after)
@@ -900,7 +954,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
     auto sandbox = std::make_unique<Sandbox>();
     if (!sandbox->range.initialize(device, scene_format) ||
         !sandbox->particles.initialize(device, sandbox->range.environment_buffer(), {scene_format, pyroclast::ExplosionRenderer::smoke_format},
-            pyroclast::effect_classes()) ||
+            pyroclast::gpu_effect_classes()) ||
         !sandbox->renderer.initialize(device, scene_format))
     {
         return 1;
@@ -956,6 +1010,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
                 options.benchmark.c_str(), options.scenario.c_str(), static_cast<int>(pyroclast::preset_name(options.preset).size()),
                 pyroclast::preset_name(options.preset).data(), pose_name(options), pyroclast::benchmark_warmup_frames, script->duration_ticks);
         }
+        if (script->flight) sandbox->rotorcraft.fly(*script->flight, pyroclast::helicopter_seed);
         scenario.emplace(std::move(*script), options.benchmark, benchmark ? pyroclast::benchmark_warmup_frames : 0);
         if (!options.profile_tick) sandbox->particles.set_fixed_ticks(true);
         if (benchmark) sandbox->particles.toggle_pause();
@@ -979,7 +1034,8 @@ int run_application(const pyroclast::ApplicationOptions& options)
     {
         const auto& settings = options.scalability;
         counter_log.emplace(settings.coverage || automatic_smoke, automatic_smoke, settings.smoke_lod > 0 || settings.faint_floor > 0,
-            settings.slot_policy == pyroclast::SlotPolicy::evict_oldest, !options.benchmark.empty(), pyroclast::realism_enabled(options.layer_mask));
+            settings.slot_policy == pyroclast::SlotPolicy::evict_oldest, !options.benchmark.empty(), pyroclast::realism_enabled(options.layer_mask),
+            pyroclast::is_helicopter_scenario(options.scenario));
         counter_log->reserve(std::max({scripted_frames, static_cast<std::size_t>(options.exit_after.value_or(0)),
             options.profile_tick ? static_cast<std::size_t>(*options.profile_tick) + 720 : std::size_t{0}}));
     }
@@ -1061,13 +1117,16 @@ int main(int argc, char** argv)
             "                     range (seven explosions of six presets among the north yard's props), bombardment (400\n"
             "                     impacts within 30 m, 20 a second: more than the 128 effect slots hold) or accumulation\n"
             "                     (impacts within 30 m as often as the 128 slots allow, for 30 s of steady state); with the\n"
-            "                     realism model: linger-barrage (240 impacts within 30 m, four a second, run for 90 s) or\n"
-            "                     linger-saturation (1,200 heavy and small-impact impacts, 30 a second, for 50 s).\n"
+            "                     realism model: linger-barrage (240 impacts within 30 m, four a second, run for 90 s),\n"
+            "                     linger-saturation (1,200 heavy and small-impact impacts, 30 a second, for 50 s), or the\n"
+            "                     helicopter over the barrage for 90 s: heli-hover (above the pall, then a low hover beside it),\n"
+            "                     heli-pass (a slow pass through the pall) or heli-landing (a landing in its own brownout).\n"
             "  --benchmark=NAME   A named scenario, preset and pose, after 120 warm-up frames at tick 0: single,\n"
             "                     simultaneous-10, -50 or -100 (small-he groups), sustained-barrage (artillery-he),\n"
             "                     smoke-field (100 heavy, from the ground), accumulation (artillery-he), or the realism model\n"
-            "                     at 1920x1080: linger-barrage (from the overview), linger-far (from the far view) or linger-ground\n"
-            "                     (from the ground, inside the smoke). The first seven keep the legacy model. Prints a JSON\n"
+            "                     at 1920x1080: linger-barrage (from the overview), linger-far (from the far view), linger-ground\n"
+            "                     (from the ground, inside the smoke), heli-hover (heli-hover from the overview) or heli-ground\n"
+            "                     (heli-hover from the ground). The first seven keep the legacy model. Prints a JSON\n"
             "                     record with frame, submit, GPU and work statistics; --counter-log adds the per-frame CSV.\n"
             "  --preset=NAME      small-impact, small-he (default), artillery-he, heavy, fuel-fire, dust-blast or stress-test,\n"
             "                     for the startup group, profiles, scenarios and the first click.\n"
@@ -1077,7 +1136,8 @@ int main(int argc, char** argv)
             "                     deflection (props do not turn the air aside); with the realism model also linger (no smoke lingers),\n"
             "                     rise (no rising columns), shear (no wind shear), variation (identical effects), haze, waves (no\n"
             "                     blast-wave refraction), skirt (no dust skirt), condensation (no Wilson shell), push (fronts do\n"
-            "                     not move smoke) or shake (no camera shake).\n"
+            "                     not move smoke), shake (no camera shake), rotor (the helicopter's air moves nothing and\n"
+            "                     raises no dust) or brownout (its rotor raises no dust).\n"
             "  --realism=on|off   The realism model (default on since M25): lingering, rising smoke that fades out instead of\n"
             "                     popping, haze and visible blast waves; off runs the legacy model (M21's frames). Not with\n"
             "                     --benchmark, which fixes its model.\n"

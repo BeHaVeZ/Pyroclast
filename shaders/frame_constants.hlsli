@@ -43,6 +43,16 @@ struct FrameConstants
     float4 blast_rings[maximum_blasts];
     float4 blast_fronts[maximum_blasts];
     float4 blast_returns[maximum_blasts];
+#ifdef PYROCLAST_ROTOR
+    uint4 rotor_state;
+    float4 rotor_hubs[maximum_simulation_steps];
+    float4 rotor_wakes[maximum_simulation_steps];
+    float4 rotor_jets[maximum_simulation_steps];
+    uint4 rotor_births[maximum_simulation_steps];
+    float4 rotor_draw[3];
+    float4 rotor_discs[6];
+    float4 rotor_dust_shadow[2];
+#endif
 #endif
 };
 ConstantBuffer<FrameConstants> frame : register(b1);

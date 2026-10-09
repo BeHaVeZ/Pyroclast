@@ -1,5 +1,6 @@
 #include "explosion_renderer.hpp"
 #include "realism_constants.hpp"
+#include "rotor_constants.hpp"
 #include "../graphics/realism_layout.hpp"
 #include "../simulation/effect_lights.hpp"
 
@@ -22,7 +23,7 @@ bool ExplosionRenderer::initialize(GraphicsDevice& device, TargetFormat scene_fo
         {Shader::debug_lines_vertex, Shader::debug_lines_pixel, BlendMode::opaque, DepthMode::test, scene_format, Topology::lines});
     showcase_lines_ = device.create_graphics_pipeline(
         {Shader::showcase_lines_vertex, Shader::debug_lines_pixel, BlendMode::opaque, DepthMode::test, scene_format, Topology::lines});
-    if (!scene_ || !depth_ || !present_ || !present_waves_ || !wilson_ || !lines_ || !showcase_lines_)
+    if (!scene_ || !depth_ || !present_ || !present_waves_ || !wilson_ || !lines_ || !showcase_lines_ || !helicopter_.initialize(device, scene_format))
     {
         return false;
     }
@@ -40,9 +41,18 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     const bool gusts = ((options.layer_mask >> particle_layout::gusts_mask_bit) & 1) != 0;
     const auto tick = particles.tick();
     const RealismStart realism_start{options.layer_mask, options.linger, drift_.at(tick, options.wind, gusts)};
+    auto* rotorcraft = realism ? options.rotorcraft : nullptr;
+    const bool stepping = !particles.paused() || particles.has_pending_steps();
+    if (rotorcraft && rotorcraft->helicopter() && rotorcraft->request_pending() && stepping && tick >= rotorcraft->helicopter()->plan.list_tick)
+    {
+        const auto& helicopter = *rotorcraft->helicopter();
+        effects.request_rotor(helicopter.seed, to_float3(flight_state(helicopter.plan, tick).position), rotorcraft->slot_end());
+        rotorcraft->requested();
+    }
     effects.start(tick, options.scalability.slot_policy, realism ? &realism_start : nullptr);
     const auto active = effects.active();
-    const auto units = realism ? count_units(effects, tick) : FrameUnits{};
+    auto units = realism ? count_units(effects, tick) : FrameUnits{};
+    units.rotor = rotorcraft && rotorcraft->variants();
     const auto& scalability = options.scalability;
     const bool automatic = scalability.smoke_resolution == SmokeResolution::automatic;
     const double screen_pixels = static_cast<double>(width) * static_cast<double>(height);
@@ -135,12 +145,23 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     const Draw present{waves ? *present_waves_ : *present_, {}, {}, 3, 1, waves ? "Tonemap and blast waves" : "Tonemap"};
     const Draw lines{*lines_, {}, {work.effects}, 32, std::max(work.effects, 1u), "Effect lines"};
     listed_clusters_ = 0;
+    rotor_frame_ = {};
     if (realism)
     {
+        if (rotorcraft)
+        {
+            const auto drift_at = [this, &options, gusts](std::uint32_t at) { return drift_.at(at, options.wind, gusts); };
+            rotor_frame_ = prepare_rotor(*rotorcraft, effects, range.terrain(), options.wind, gusts, options.layer_mask, tick, work.steps, key_tick, drift_at);
+        }
         const auto filled = fill_realism_constants(constants, effects, tick, key_tick, camera, effect_order, drift_.at(key_tick, options.wind, gusts),
-            options.linger);
+            options.linger, rotor_frame_.slot ? std::optional<float3>(rotor_frame_.key) : std::nullopt,
+            rotor_frame_.exists ? std::optional<float3>(rotor_frame_.disc_key) : std::nullopt);
         assert(filled.units.units == units.units && filled.units.groups == units.groups);
         listed_clusters_ = filled.clusters;
+        if (rotorcraft)
+        {
+            fill_rotor_constants(constants, *rotorcraft, rotor_frame_);
+        }
     }
     const bool simulate = realism ? work.units != 0 : work.effects != 0;
     particles_drawn_ = simulate;
@@ -149,7 +170,11 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     if (props) scene_draws.push_back(opaque.props);
     scene_draws.push_back(opaque.terrain);
     if (simulate) scene_draws.push_back(work.debris);
+    std::vector<Draw> helicopter_shadow;
+    const float3 sun_towards{constants.sun_direction.x, constants.sun_direction.y, constants.sun_direction.z};
+    if (realism) helicopter_.scene_draws(rotor_frame_, range.environment_buffer(), sun_towards, scene_draws, helicopter_shadow);
     scene_draws.push_back(opaque.sky);
+    for (const auto& draw : helicopter_shadow) scene_draws.push_back(draw);
     if (props && options.views.collision_boxes) scene_draws.push_back(opaque.colliders);
     Bindings environment{};
     environment.read[0] = &range.environment_buffer();

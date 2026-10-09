@@ -50,6 +50,7 @@ struct FrameUnits
 {
     std::uint32_t units = 0;
     std::uint32_t groups = 0;
+    bool rotor = false;
 };
 
 struct ParticleCounters
@@ -138,6 +139,12 @@ private:
     std::unique_ptr<GraphicsPipeline> realism_offscreen_graphics_;
     std::unique_ptr<GraphicsPipeline> realism_lod_graphics_;
     std::unique_ptr<GraphicsPipeline> realism_lod_offscreen_graphics_;
+    std::unique_ptr<ComputePipeline> rotor_compute_;
+    std::unique_ptr<ComputePipeline> rotor_scatter_measure_;
+    std::unique_ptr<GraphicsPipeline> rotor_graphics_;
+    std::unique_ptr<GraphicsPipeline> rotor_offscreen_graphics_;
+    std::unique_ptr<GraphicsPipeline> rotor_lod_graphics_;
+    std::unique_ptr<GraphicsPipeline> rotor_lod_offscreen_graphics_;
     std::uint32_t tick_ = 0;
     std::uint32_t pending_steps_ = 0;
     double accumulator_ = 0;

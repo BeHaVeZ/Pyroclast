@@ -525,6 +525,49 @@ int main()
             "without an aim the wind arrow stands on the terrain ahead");
     }
 
+    {
+        bool entries = true;
+        bool clear = true;
+        for (const char* name : {"heli-hover", "heli-pass", "heli-landing"})
+        {
+            const auto scenario = make_scenario(name, environment, ExplosionPreset::artillery_he);
+            if (!scenario || !scenario->flight)
+            {
+                entries = false;
+                continue;
+            }
+            const auto& plan = *scenario->flight;
+            const auto hub = to_float3(flight_state(plan, plan.list_tick).position);
+            for (const auto view : {RangeView::overview, RangeView::far, RangeView::ground, RangeView::aerial})
+            {
+                const auto camera = test_range.view(view);
+                const auto matrix = camera.projection(16.0f / 9.0f) * camera.view();
+                for (int corner = 0; corner < 8; ++corner)
+                {
+                    const float3 point = hub + float3{(corner & 1) ? 10.0f : -10.0f, (corner & 2) ? 10.0f : -10.0f, (corner & 4) ? 10.0f : -10.0f};
+                    const auto clip = matrix * float4{point.x, point.y, point.z, 1};
+                    const bool on_screen = clip.w > 0 && std::abs(clip.x) <= clip.w && std::abs(clip.y) <= clip.w;
+                    entries = entries && !on_screen;
+                }
+            }
+            const std::uint32_t last = std::min(plan.unlist_tick, plan.touchdown_tick == never ? plan.knots.back().tick : plan.touchdown_tick - 900);
+            for (std::uint32_t tick = plan.list_tick; tick < last; tick += 6)
+            {
+                const auto position = flight_state(plan, tick).position;
+                const double skids = position.y - rotor::hub_above_skids;
+                double highest = terrain.height(static_cast<float>(position.x), static_cast<float>(position.z));
+                for (const auto& box : environment.boxes())
+                {
+                    const double reach = std::hypot(box.half_extent.x, box.half_extent.z) + rotor::radius;
+                    if (std::hypot(box.centre.x - position.x, box.centre.z - position.z) <= reach) highest = std::max(highest, static_cast<double>(box.centre.y + box.half_extent.y));
+                }
+                clear = clear && skids >= highest + 2 - 1e-6;
+            }
+        }
+        check(entries, "the helicopter's scripts enter outside the overview, far, ground and aerial views");
+        check(clear, "the helicopter's skids clear the terrain and props by 2 m until its landing");
+    }
+
     if (failures == 0) std::puts("showcase tests passed");
     return failures == 0 ? 0 : 1;
 }

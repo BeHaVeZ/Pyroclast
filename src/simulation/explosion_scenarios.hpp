@@ -2,6 +2,7 @@
 
 #include "environment.hpp"
 #include "explosion_system.hpp"
+#include "rotorcraft.hpp"
 #include "terrain.hpp"
 #include "../graphics/particle_layout.hpp"
 
@@ -34,16 +35,24 @@ struct Scenario
     std::string_view name;
     std::vector<ScriptedEvent> events;
     std::uint32_t duration_ticks = 0;
+    std::optional<FlightPlan> flight;
 };
 
-inline constexpr std::string_view scenario_names =
-    "single, grid-10, grid-50, grid-100, barrage, presets, range, bombardment, accumulation, linger-barrage, linger-saturation";
+inline constexpr std::string_view scenario_names = "single, grid-10, grid-50, grid-100, barrage, presets, range, bombardment, accumulation, "
+                                                   "linger-barrage, linger-saturation, heli-hover, heli-pass, heli-landing";
+constexpr bool is_helicopter_scenario(std::string_view name)
+{
+    return name == "heli-hover" || name == "heli-pass" || name == "heli-landing";
+}
 constexpr bool is_scenario_name(std::string_view name)
 {
     return name == "single" || name == "grid-10" || name == "grid-50" || name == "grid-100" || name == "barrage" ||
         name == "presets" || name == "range" || name == "bombardment" || name == "accumulation" || name == "linger-barrage" ||
-        name == "linger-saturation";
+        name == "linger-saturation" || is_helicopter_scenario(name);
 }
+
+inline constexpr std::uint32_t helicopter_seed = 26000;
+double helicopter_cruise_height(const Environment& environment, double ax, double az, double bx, double bz, double agl);
 
 inline constexpr std::uint32_t linger_barrage_key = 14000;
 inline constexpr std::uint32_t linger_saturation_key = 15000;

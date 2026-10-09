@@ -50,6 +50,21 @@ bool ParticleSystem::initialize(GraphicsDevice& device, const Buffer& environmen
         {Shader::particle_realism_lod_vertex, Shader::particle_realism_pixel, BlendMode::premultiplied_alpha, DepthMode::test, targets.scene});
     realism_lod_offscreen_graphics_ = device.create_graphics_pipeline(
         {Shader::particle_realism_lod_vertex, Shader::particle_realism_pixel, BlendMode::premultiplied_alpha, DepthMode::none, targets.offscreen});
+    rotor_compute_ = device.create_compute_pipeline(Shader::particle_rotor_simulation);
+    rotor_scatter_measure_ = device.create_compute_pipeline(Shader::particle_scatter_rotor_measure);
+    rotor_graphics_ = device.create_graphics_pipeline(
+        {Shader::particle_rotor_vertex, Shader::particle_rotor_pixel, BlendMode::premultiplied_alpha, DepthMode::test, targets.scene});
+    rotor_offscreen_graphics_ = device.create_graphics_pipeline(
+        {Shader::particle_rotor_vertex, Shader::particle_rotor_pixel, BlendMode::premultiplied_alpha, DepthMode::none, targets.offscreen});
+    rotor_lod_graphics_ = device.create_graphics_pipeline(
+        {Shader::particle_rotor_lod_vertex, Shader::particle_rotor_pixel, BlendMode::premultiplied_alpha, DepthMode::test, targets.scene});
+    rotor_lod_offscreen_graphics_ = device.create_graphics_pipeline(
+        {Shader::particle_rotor_lod_vertex, Shader::particle_rotor_pixel, BlendMode::premultiplied_alpha, DepthMode::none, targets.offscreen});
+    if (!rotor_compute_ || !rotor_scatter_measure_ || !rotor_graphics_ || !rotor_offscreen_graphics_ || !rotor_lod_graphics_ ||
+        !rotor_lod_offscreen_graphics_)
+    {
+        return false;
+    }
     if (!particles_ || !alive_masks_ || !offsets_ || !alive_ || !arguments_ || !classes_ || !graphics_ || !offscreen_graphics_ ||
         !debris_graphics_ || !lod_graphics_ || !lod_offscreen_graphics_ || !compute_ || !scan_ || !scatter_ || !scatter_measure_ ||
         !realism_compute_ || !units_scan_ || !units_scatter_ || !units_scatter_measure_ || !realism_graphics_ || !realism_offscreen_graphics_ ||
@@ -128,18 +143,23 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_e
     const DrawConstants every_layer = lod ? DrawConstants{records, 0, records, std::max(offscreen_divisor, 1u), lod_pixels, faint_floor} :
         DrawConstants{records, 0, records, std::max(offscreen_divisor, 1u)};
     const DrawConstants debris_list{capacity, particle_layout::debris_list_first, capacity};
-    const auto& particle_pipeline = units ? (lod ? *realism_lod_graphics_ : *realism_graphics_) : (lod ? *lod_graphics_ : *graphics_);
-    const auto& offscreen_pipeline = units ? (lod ? *realism_lod_offscreen_graphics_ : *realism_offscreen_graphics_) :
-        (lod ? *lod_offscreen_graphics_ : *offscreen_graphics_);
-    const auto& scatter_pipeline = units ? (listing.measure ? *units_scatter_measure_ : *units_scatter_) : (listing.measure ? *scatter_measure_ : *scatter_);
+    const bool rotor = units && units->rotor;
+    const auto& realism_pipeline = rotor ? *rotor_graphics_ : *realism_graphics_;
+    const auto& realism_lod_pipeline = rotor ? *rotor_lod_graphics_ : *realism_lod_graphics_;
+    const auto& realism_offscreen = rotor ? *rotor_offscreen_graphics_ : *realism_offscreen_graphics_;
+    const auto& realism_lod_offscreen = rotor ? *rotor_lod_offscreen_graphics_ : *realism_lod_offscreen_graphics_;
+    const auto& particle_pipeline = units ? (lod ? realism_lod_pipeline : realism_pipeline) : (lod ? *lod_graphics_ : *graphics_);
+    const auto& offscreen_pipeline = units ? (lod ? realism_lod_offscreen : realism_offscreen) : (lod ? *lod_offscreen_graphics_ : *offscreen_graphics_);
+    const auto& units_measure = rotor ? *rotor_scatter_measure_ : *units_scatter_measure_;
+    const auto& scatter_pipeline = units ? (listing.measure ? units_measure : *units_scatter_) : (listing.measure ? *scatter_measure_ : *scatter_);
     const bool whole_record = listing.measure || units;
     return {
-        {{{units ? *realism_compute_ : *compute_, simulation, parameters, {groups, 1, 1}, "Particle simulation"},
+        {{{units ? (rotor ? *rotor_compute_ : *realism_compute_) : *compute_, simulation, parameters, {groups, 1, 1}, "Particle simulation"},
             {units ? *units_scan_ : *scan_, scan, scan_parameters, {1, 1, 1}, "Particle scan"},
             {scatter_pipeline, scatter, scatter_parameters, {groups, 1, 1}, "Particle scatter"}}},
         {particle_pipeline, drawing, both_layers, 0, 0, "Particles", arguments_.get(), particle_layout::particle_arguments_offset},
         {offscreen_pipeline, drawing, smoke_layer, 0, 0, "Smoke", arguments_.get(), particle_layout::smoke_arguments_offset},
-        {units ? *realism_graphics_ : *graphics_, drawing, light_layer, 0, 0, "Light", arguments_.get(), particle_layout::light_arguments_offset},
+        {units ? realism_pipeline : *graphics_, drawing, light_layer, 0, 0, "Light", arguments_.get(), particle_layout::light_arguments_offset},
         {offscreen_pipeline, drawing, every_layer, 0, 0, "Smoke and light", arguments_.get(), particle_layout::particle_arguments_offset},
         {*debris_graphics_, drawing, debris_list, 0, 0, "Debris", arguments_.get(), particle_layout::debris_arguments_offset},
         {arguments_.get(), particle_layout::counters_offset, whole_record ? particle_layout::counters_bytes : particle_layout::counters_basic_bytes},

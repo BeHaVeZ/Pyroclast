@@ -7,6 +7,7 @@
 
 #include <array>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -85,6 +86,16 @@ struct DiagnosticsSnapshot
         std::uint64_t forced_fades = 0;
         std::uint32_t linger_scale = 0;
         std::uint32_t linger_seconds = 0;
+        std::uint32_t rotor_slots = 0;
+        struct Helicopter
+        {
+            std::string_view state;
+            float hub_height = 0;
+            std::uint32_t emission = 0;
+            std::uint32_t dust = 0;
+            bool waiting = false;
+        };
+        std::optional<Helicopter> helicopter;
     };
     struct Aim
     {
@@ -175,6 +186,7 @@ struct UiCommand
         set_faint_floor,
         set_effect_order,
         set_slot_policy,
+        send_helicopter,
     };
     Kind kind;
     std::uint32_t value = 0;

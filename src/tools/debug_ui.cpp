@@ -130,11 +130,13 @@ void engine_window(const DiagnosticsSnapshot& snapshot)
 
     if (ImGui::CollapsingHeader("Load", ImGuiTreeNodeFlags_DefaultOpen))
     {
-        const float used = load.effect_slots != 0 ? static_cast<float>(load.active_effects) / static_cast<float>(load.effect_slots) : 0.0f;
-        const ImVec4 colour = load.active_effects >= load.effect_slots ? ImVec4(0.85f, 0.2f, 0.2f, 1) :
+        const std::uint32_t busy = load.active_effects + load.rotor_slots;
+        const float used = load.effect_slots != 0 ? static_cast<float>(busy) / static_cast<float>(load.effect_slots) : 0.0f;
+        const ImVec4 colour = busy >= load.effect_slots ? ImVec4(0.85f, 0.2f, 0.2f, 1) :
             used >= 0.75f ? ImVec4(0.9f, 0.65f, 0.15f, 1) : ImVec4(0.3f, 0.7f, 0.3f, 1);
-        char slots[64];
-        std::snprintf(slots, sizeof(slots), "%u of %u effect slots", load.active_effects, load.effect_slots);
+        char slots[80];
+        if (load.rotor_slots != 0) std::snprintf(slots, sizeof(slots), "%u of %u effect slots (%u the helicopter's)", busy, load.effect_slots, load.rotor_slots);
+        else std::snprintf(slots, sizeof(slots), "%u of %u effect slots", busy, load.effect_slots);
         ImGui::PushStyleColor(ImGuiCol_PlotHistogram, colour);
         ImGui::ProgressBar(used, ImVec2(panel_width - 16, 0), slots);
         ImGui::PopStyleColor();
@@ -187,6 +189,12 @@ void engine_window(const DiagnosticsSnapshot& snapshot)
                 row("Linger", "%u s, scale %.2f, %llu forced fades", load.linger_seconds, load.linger_scale / 1024.0,
                     static_cast<unsigned long long>(load.forced_fades));
                 if (load.particles && load.particles->ghosts != 0) row("Ghosts", "%u (must be 0)", load.particles->ghosts);
+                if (const auto& helicopter = load.helicopter)
+                {
+                    row("Helicopter", "%.*s, hub %.1f m up", length(helicopter->state), helicopter->state.data(), static_cast<double>(helicopter->hub_height));
+                    if (helicopter->waiting) row("  rotor slots", "waiting for two free");
+                    else row("  brownout", "emission %u of 1024, %u of 2558 dust", helicopter->emission, helicopter->dust);
+                }
             }
             row("Temporary lights", "%u of %u", load.lights, particle_layout::maximum_lights);
             if (load.smoke_resolution == "auto")
@@ -301,6 +309,16 @@ void showcase_window(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>
     {
         commands.push_back({UiCommand::Kind::set_bombardment, showcase.bombardment_interval, {}, radius_edit});
     }
+    ImGui::BeginDisabled(!snapshot.load.realism);
+    if (ImGui::Button("Helicopter (H)")) commands.push_back({UiCommand::Kind::send_helicopter});
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (!snapshot.load.realism) ImGui::TextDisabled("needs the realism model");
+    else if (const auto& helicopter = snapshot.load.helicopter)
+    {
+        ImGui::Text("%.*s, hub %.1f m up", length(helicopter->state), helicopter->state.data(), static_cast<double>(helicopter->hub_height));
+    }
+    else ImGui::TextDisabled("hovers over the last click or the crosshair");
     if (showcase.preset_ticks != 0)
     {
         ImGui::TextDisabled("Expected ~%u of %u slots; %.1f impacts/s sustainable", showcase.preset_ticks / showcase.bombardment_interval,
@@ -470,7 +488,7 @@ void showcase_window(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>
                 {"variation (new effects)", realism_layout::variation_mask_bit}, {"haze", realism_layout::haze_mask_bit},
                 {"waves", realism_layout::waves_mask_bit}, {"skirt (new effects)", realism_layout::skirt_mask_bit},
                 {"condensation", realism_layout::condensation_mask_bit}, {"push", realism_layout::push_mask_bit},
-                {"shake", realism_layout::shake_mask_bit}};
+                {"shake", realism_layout::shake_mask_bit}, {"rotor", realism_layout::rotor_mask_bit}, {"brownout", realism_layout::brownout_mask_bit}};
             for (std::size_t index = 0; index < std::size(features); ++index)
             {
                 const auto [name, mask_bit] = features[index];

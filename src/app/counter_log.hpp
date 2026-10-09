@@ -23,9 +23,9 @@ class CounterLog final
 {
 public:
     explicit CounterLog(bool coverage = false, bool smoke_resolution = false, bool lod = false, bool evicted = false, bool benchmark = false,
-        bool realism = false) :
+        bool realism = false, bool rotor = false) :
         coverage_(coverage), smoke_resolution_(smoke_resolution), lod_(coverage && lod), evicted_(evicted), benchmark_(benchmark),
-        realism_(realism)
+        realism_(realism), rotor_(realism && rotor)
     {
     }
     struct Frame
@@ -47,6 +47,9 @@ public:
         std::uint64_t forced = 0;
         std::uint32_t linger_scale = 0;
         std::uint64_t deferred = 0;
+        std::uint32_t rotor_dust = 0;
+        std::uint32_t emission = 0;
+        std::int32_t agl_cm = 0;
     };
 
     void add_frame(const Frame& frame);
@@ -106,5 +109,6 @@ private:
     bool evicted_ = false;
     bool benchmark_ = false;
     bool realism_ = false;
+    bool rotor_ = false;
 };
 }

@@ -280,6 +280,11 @@ struct EffectResidual
     bool varied;
     bool skirt;
     float2 drift;
+#ifdef PYROCLAST_ROTOR
+    bool rotor;
+    bool rotor_disc;
+    uint end;
+#endif
 };
 
 EffectResidual load_effect_residual(uint slot)
@@ -295,6 +300,11 @@ EffectResidual load_effect_residual(uint slot)
     link.varied = (words.z & latched_variation) != 0;
     link.skirt = (words.z & latched_skirt) != 0;
     link.drift = float2(f16tof32(words.w & 0xffff), f16tof32(words.w >> 16));
+#ifdef PYROCLAST_ROTOR
+    link.rotor = (words.z & latched_rotor) != 0;
+    link.rotor_disc = link.rotor && words.x == 1;
+    link.end = words.w;
+#endif
     return link;
 }
 

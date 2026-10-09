@@ -47,6 +47,14 @@ struct FrameConstants
     std::array<float4, realism_layout::maximum_blasts> blast_rings;
     std::array<float4, realism_layout::maximum_blasts> blast_fronts;
     std::array<float4, realism_layout::maximum_blasts> blast_returns;
+    std::array<std::uint32_t, 4> rotor_state;
+    std::array<float4, particle_layout::maximum_simulation_steps> rotor_hubs;
+    std::array<float4, particle_layout::maximum_simulation_steps> rotor_wakes;
+    std::array<float4, particle_layout::maximum_simulation_steps> rotor_jets;
+    std::array<std::array<std::uint32_t, 4>, particle_layout::maximum_simulation_steps> rotor_births;
+    std::array<float4, 3> rotor_draw;
+    std::array<float4, 6> rotor_discs;
+    std::array<float4, 2> rotor_dust_shadow;
 };
 inline constexpr std::size_t legacy_frame_constant_bytes = 400 + 52 * particle_layout::maximum_effects + 32 * particle_layout::maximum_lights;
 static_assert(particle_layout::maximum_effects % 4 == 0);
@@ -71,6 +79,9 @@ static_assert(offsetof(FrameConstants, residual) == 7584 && offsetof(FrameConsta
     offsetof(FrameConstants, clusters) == 9648 && offsetof(FrameConstants, effect_residual) == 12720 &&
     offsetof(FrameConstants, blast_state) == 14768 && offsetof(FrameConstants, blast_slots) == 14784 &&
     offsetof(FrameConstants, blast_rings) == 14800 && offsetof(FrameConstants, blast_fronts) == 15056 && offsetof(FrameConstants, blast_returns) == 15312 &&
-    sizeof(FrameConstants) == 15568 &&
+    offsetof(FrameConstants, rotor_state) == 15568 && offsetof(FrameConstants, rotor_hubs) == 15584 && offsetof(FrameConstants, rotor_wakes) == 15648 &&
+    offsetof(FrameConstants, rotor_jets) == 15712 && offsetof(FrameConstants, rotor_births) == 15776 && offsetof(FrameConstants, rotor_draw) == 15840 &&
+    offsetof(FrameConstants, rotor_discs) == 15888 && offsetof(FrameConstants, rotor_dust_shadow) == 15984 && sizeof(FrameConstants) == 16016 &&
+    particle_layout::maximum_simulation_steps == 4 &&
     realism_layout::maximum_units % 4 == 0 && realism_layout::maximum_clusters % 2 == 0 && sizeof(FrameConstants) <= 16384);
 }

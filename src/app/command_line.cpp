@@ -60,7 +60,7 @@ std::optional<std::uint32_t> disable_bit(std::string_view name)
         {"linger", realism_layout::linger_mask_bit}, {"rise", realism_layout::rise_mask_bit}, {"shear", realism_layout::shear_mask_bit},
         {"variation", realism_layout::variation_mask_bit}, {"haze", realism_layout::haze_mask_bit}, {"waves", realism_layout::waves_mask_bit},
         {"skirt", realism_layout::skirt_mask_bit}, {"condensation", realism_layout::condensation_mask_bit}, {"push", realism_layout::push_mask_bit},
-        {"shake", realism_layout::shake_mask_bit}};
+        {"shake", realism_layout::shake_mask_bit}, {"rotor", realism_layout::rotor_mask_bit}, {"brownout", realism_layout::brownout_mask_bit}};
     for (const auto& [other, bit] : others)
     {
         if (other == name) return bit;
@@ -692,8 +692,12 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
         "; --benchmark=" + result.options.benchmark + " runs the legacy model.";
     if ((disabled >> realism_layout::realism_mask_bit) != 0 && !realism_enabled(model))
     {
-        result.error = "--disable names a part of the realism model (linger, rise, shear, variation, haze, waves, skirt, condensation, push or "
-                       "shake); it needs the realism model" + legacy_reason;
+        result.error = "--disable names a part of the realism model (linger, rise, shear, variation, haze, waves, skirt, condensation, push, "
+                       "shake, rotor or brownout); it needs the realism model" + legacy_reason;
+    }
+    if (is_helicopter_scenario(result.options.scenario) && !realism_enabled(model))
+    {
+        result.error = "--scenario=" + result.options.scenario + " flies the helicopter; it needs the realism model" + legacy_reason;
     }
     if (linger_specified && !realism_enabled(model))
     {

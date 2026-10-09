@@ -72,7 +72,7 @@ struct BenchmarkWorkload
     bool borderless = false;
 };
 inline constexpr WindowSize realism_benchmark_window{1920, 1080};
-inline constexpr std::array<BenchmarkWorkload, 10> benchmark_workloads{{
+inline constexpr std::array<BenchmarkWorkload, 12> benchmark_workloads{{
     {"single", "single", ExplosionPreset::small_he, RangeView::overview},
     {"simultaneous-10", "grid-10", ExplosionPreset::small_he, RangeView::overview},
     {"simultaneous-50", "grid-50", ExplosionPreset::small_he, RangeView::overview},
@@ -85,10 +85,14 @@ inline constexpr std::array<BenchmarkWorkload, 10> benchmark_workloads{{
     {"linger-far", "linger-barrage", ExplosionPreset::artillery_he, RangeView::far, realism_benchmark_window,
         realism_layout::realism_full_mask, {2, 300, 0.3f}, true},
     {"linger-ground", "linger-barrage", ExplosionPreset::artillery_he, RangeView::ground, realism_benchmark_window,
+        realism_layout::realism_full_mask, {2, 270, 0.3f}, true},
+    {"heli-hover", "heli-hover", ExplosionPreset::artillery_he, RangeView::overview, realism_benchmark_window,
+        realism_layout::realism_full_mask, {2, 270, 0.3f}, true},
+    {"heli-ground", "heli-hover", ExplosionPreset::artillery_he, RangeView::ground, realism_benchmark_window,
         realism_layout::realism_full_mask, {2, 270, 0.3f}, true}}};
 inline constexpr std::string_view benchmark_names =
     "single, simultaneous-10, simultaneous-50, simultaneous-100, sustained-barrage, smoke-field, accumulation, linger-barrage, linger-far, "
-    "linger-ground";
+    "linger-ground, heli-hover, heli-ground";
 inline constexpr std::uint32_t benchmark_warmup_frames = 120;
 constexpr const BenchmarkWorkload* benchmark_workload(std::string_view name)
 {
@@ -116,6 +120,6 @@ const char* view_name(RangeView view);
 const char* scene_format_name(SceneFormat format);
 inline constexpr std::string_view disable_names = "dust, smoke, plume, flash, fireball, sparks, debris, lights, curl, vortex, gusts, "
                                                   "shading, shadow, emission, props, collision, deflection, linger, rise, shear, "
-                                                  "variation, haze, waves, skirt, condensation, push, shake";
+                                                  "variation, haze, waves, skirt, condensation, push, shake, rotor, brownout";
 std::optional<std::uint32_t> disable_bit(std::string_view name);
 }

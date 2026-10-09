@@ -13,7 +13,8 @@ static const uint skirt_mask_bit = 24;
 static const uint condensation_mask_bit = 25;
 static const uint push_mask_bit = 26;
 static const uint shake_mask_bit = 27;
-static const uint realism_full_mask = 0xfffffff;
+static const uint rotor_mask_bit = 28;
+static const uint brownout_mask_bit = 29;
 
 static const uint residual_groups = 1024;
 static const uint residual_records = residual_groups * simulation_group_size;
@@ -42,6 +43,7 @@ static const uint effect_longest_bits = 15;
 static const uint latched_linger = 1u << 15;
 static const uint latched_variation = 1u << 16;
 static const uint latched_skirt = 1u << 17;
+static const uint latched_rotor = 1u << 18;
 static const uint scale_one = 1024;
 
 static const uint residual_packed_offset = 36;

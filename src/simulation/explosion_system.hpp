@@ -22,8 +22,11 @@ struct ExplosionEvent
     SurfaceType surface = SurfaceType::dirt;
 };
 
+enum class EffectKind { explosion, rotor, rotor_disc };
+
 struct EffectSlot
 {
+    EffectKind kind = EffectKind::explosion;
     float3 origin;
     float3 normal{0, 1, 0};
     std::uint32_t seed = 0;
@@ -63,6 +66,11 @@ public:
     std::uint64_t dropped() const { return dropped_; }
     std::uint64_t evicted() const { return evicted_; }
     std::uint64_t deferred() const { return deferred_; }
+    std::size_t explosions() const { return active_.size() - (rotor_slot() ? 1 : 0) - (rotor_disc_slot() ? 1 : 0); }
+    void request_rotor(std::uint32_t seed, float3 origin, std::uint32_t end_tick);
+    std::optional<std::uint32_t> rotor_slot() const;
+    std::optional<std::uint32_t> rotor_disc_slot() const;
+    bool rotor_requested() const { return rotor_request_.has_value(); }
     std::size_t waiting() const { return waiting_.size(); }
     std::size_t pending() const { return pending_.size() + waiting_.size(); }
     const ResidualPool& residual() const { return residual_; }
@@ -78,6 +86,13 @@ private:
     bool graduate_one_early(std::uint32_t tick);
     std::vector<std::uint32_t> active_;
     std::vector<ExplosionEvent> pending_;
+    struct RotorRequest
+    {
+        std::uint32_t seed = 0;
+        float3 origin;
+        std::uint32_t end_tick = 0;
+    };
+    std::optional<RotorRequest> rotor_request_;
     std::uint64_t started_ = 0;
     std::uint64_t dropped_ = 0;
     std::uint64_t evicted_ = 0;

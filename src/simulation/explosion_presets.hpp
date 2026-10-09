@@ -190,6 +190,11 @@ static_assert(effect_class_count <= particle_layout::maximum_effect_classes);
 
 EffectClass make_effect_class(ExplosionPreset preset, SurfaceType surface);
 std::vector<EffectClass> effect_classes();
+inline constexpr std::uint32_t rotor_class_index = effect_class_count;
+inline constexpr std::uint32_t gpu_class_count = effect_class_count + 1;
+static_assert(gpu_class_count <= particle_layout::maximum_effect_classes);
+EffectClass make_rotor_class();
+std::vector<EffectClass> gpu_effect_classes();
 
 float cloud_rise(ExplosionPreset preset, float seconds);
 std::uint32_t realism_effect_ticks(ExplosionPreset preset, SurfaceType surface);

@@ -67,6 +67,15 @@ set(PYROCLAST_SHADERS
     present_waves_pixel:present_waves:ps:ps_waves
     wilson_vertex:wilson:vs:vs_wilson
     wilson_pixel:wilson:ps:ps_wilson
+    particle_rotor_simulation:particles_compute_rotor:cs:cs_realism
+    particle_scatter_rotor_measure:particle_scatter_rotor:cs:cs_measure
+    particle_rotor_vertex:particles_rotor:vs:vs_realism
+    particle_rotor_lod_vertex:particles_rotor_lod:vs:vs_realism_lod
+    particle_rotor_pixel:particles_rotor_pixel:ps:ps_realism
+    helicopter_vertex:helicopter:vs:vs_helicopter
+    helicopter_pixel:helicopter:ps:ps_helicopter
+    helicopter_shadow_vertex:helicopter_shadow:vs:vs_shadow
+    helicopter_shadow_pixel:helicopter_shadow:ps:ps_shadow
 )
 
 # Vulkan bindings come from the shared binding layout, so C++ (binding_layout.hpp) and SPIR-V agree.

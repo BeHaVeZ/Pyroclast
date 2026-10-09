@@ -60,6 +60,9 @@ add_executable(Pyroclast
     src/app/prop_mesh.cpp
     src/app/sandbox.cpp
     src/app/realism_constants.cpp
+    src/app/rotor_constants.cpp
+    src/app/helicopter_mesh.cpp
+    src/app/helicopter_renderer.cpp
     src/app/key_bindings.cpp
     src/app/camera_controls.cpp
     src/app/showcase.cpp
@@ -68,6 +71,7 @@ add_executable(Pyroclast
     src/simulation/particle_system.cpp
     src/simulation/explosion_system.cpp
     src/simulation/residual_pool.cpp
+    src/simulation/rotorcraft.cpp
     src/simulation/explosion_scenarios.cpp
     src/simulation/impact_patterns.cpp
     src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp
@@ -121,7 +125,9 @@ if(BUILD_TESTING)
     add_executable(ParticleControlTests tests/particle_control_tests.cpp src/simulation/particle_system.cpp
         src/simulation/explosion_system.cpp src/simulation/residual_pool.cpp src/simulation/explosion_scenarios.cpp src/simulation/impact_patterns.cpp src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp
         src/simulation/effect_lights.cpp src/simulation/wind.cpp src/simulation/terrain.cpp src/simulation/environment.cpp src/simulation/range_props.cpp
-        src/core/math.cpp src/app/explosion_renderer.cpp src/app/realism_constants.cpp src/app/smoke_resolution_policy.cpp src/app/camera.cpp src/app/camera_controls.cpp src/app/sandbox.cpp
+        src/core/math.cpp src/app/explosion_renderer.cpp src/app/realism_constants.cpp src/app/rotor_constants.cpp src/simulation/rotorcraft.cpp
+        src/app/helicopter_mesh.cpp src/app/helicopter_renderer.cpp
+        src/app/smoke_resolution_policy.cpp src/app/camera.cpp src/app/camera_controls.cpp src/app/sandbox.cpp
         src/app/showcase.cpp src/app/key_bindings.cpp src/app/test_range.cpp src/app/prop_mesh.cpp src/graphics/draw_validation.cpp)
     target_include_directories(ParticleControlTests PRIVATE src)
     target_link_libraries(ParticleControlTests PRIVATE SDL3::SDL3-static pyroclast_shader_list)
@@ -147,13 +153,15 @@ if(BUILD_TESTING)
     list(APPEND project_targets TerrainTests)
     add_executable(EnvironmentTests tests/environment_tests.cpp src/simulation/environment.cpp src/simulation/range_props.cpp
         src/simulation/terrain.cpp src/simulation/explosion_scenarios.cpp src/simulation/impact_patterns.cpp src/simulation/explosion_system.cpp src/simulation/residual_pool.cpp
-        src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp src/app/prop_mesh.cpp src/core/math.cpp)
+        src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp src/simulation/rotorcraft.cpp src/simulation/wind.cpp src/simulation/effect_lights.cpp
+        src/app/prop_mesh.cpp src/core/math.cpp)
     target_include_directories(EnvironmentTests PRIVATE src)
     add_test(NAME environment COMMAND EnvironmentTests)
     list(APPEND project_targets EnvironmentTests)
     add_executable(ExplosionSystemTests tests/explosion_system_tests.cpp src/simulation/explosion_system.cpp src/simulation/residual_pool.cpp
         src/simulation/explosion_scenarios.cpp src/simulation/impact_patterns.cpp src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp src/simulation/terrain.cpp
-        src/simulation/environment.cpp src/simulation/range_props.cpp src/core/math.cpp)
+        src/simulation/environment.cpp src/simulation/range_props.cpp src/simulation/rotorcraft.cpp src/simulation/wind.cpp src/simulation/effect_lights.cpp
+        src/core/math.cpp)
     target_include_directories(ExplosionSystemTests PRIVATE src)
     add_test(NAME explosion_system COMMAND ExplosionSystemTests)
     list(APPEND project_targets ExplosionSystemTests)
@@ -162,7 +170,7 @@ if(BUILD_TESTING)
     target_include_directories(ExplosionPresetTests PRIVATE src)
     add_test(NAME explosion_presets COMMAND ExplosionPresetTests)
     list(APPEND project_targets ExplosionPresetTests)
-    add_executable(ShowcaseTests tests/showcase_tests.cpp src/simulation/impact_patterns.cpp src/simulation/explosion_scenarios.cpp
+    add_executable(ShowcaseTests tests/showcase_tests.cpp src/simulation/impact_patterns.cpp src/simulation/explosion_scenarios.cpp src/simulation/rotorcraft.cpp
         src/simulation/explosion_system.cpp src/simulation/residual_pool.cpp src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp src/simulation/environment.cpp
         src/simulation/range_props.cpp src/simulation/terrain.cpp src/simulation/wind.cpp src/core/math.cpp src/app/key_bindings.cpp
         src/app/camera.cpp src/app/camera_controls.cpp src/app/test_range.cpp src/app/prop_mesh.cpp src/app/showcase.cpp)
@@ -180,6 +188,11 @@ if(BUILD_TESTING)
     target_include_directories(ResidualPoolTests PRIVATE src)
     add_test(NAME residual_pool COMMAND ResidualPoolTests)
     list(APPEND project_targets ResidualPoolTests)
+    add_executable(RotorcraftTests tests/rotorcraft_tests.cpp src/simulation/rotorcraft.cpp src/simulation/terrain.cpp src/simulation/wind.cpp
+        src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp src/simulation/effect_lights.cpp src/core/math.cpp)
+    target_include_directories(RotorcraftTests PRIVATE src)
+    add_test(NAME rotorcraft COMMAND RotorcraftTests)
+    list(APPEND project_targets RotorcraftTests)
     add_executable(ImageCompareTests tests/image_compare_tests.cpp tools/image_diff/image_compare.cpp)
     target_include_directories(ImageCompareTests PRIVATE tools)
     add_test(NAME image_compare COMMAND ImageCompareTests)

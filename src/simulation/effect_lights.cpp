@@ -21,6 +21,7 @@ std::uint32_t select_lights(std::span<const EffectSlot> slots, std::span<const s
     for (const auto index : active)
     {
         const auto& slot = slots[index];
+        if (slot.kind != EffectKind::explosion) continue;
         const float seconds = static_cast<float>(tick - slot.start_tick) / 60.0f;
         const float intensity = light_intensity(curve_of(slot.preset), seconds);
         if (intensity > 0) candidates[count++] = {intensity, index};

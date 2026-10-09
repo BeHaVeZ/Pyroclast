@@ -100,7 +100,16 @@ void cs_measure(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID)
     if (listed && records.layer_index != layer_debris && record < min(parameters.record_count, pool_records))
     {
         bool smoke = smoke_like(records.layer_index);
+#ifdef PYROCLAST_ROTOR
+        RealismFootprint realism;
+        bool rotor = !records.residual && rotor_record(record);
+        if (rotor) realism = rotor_footprint(particles, classes, record);
+        else realism = realism_footprint(particles, classes, record);
+        bool whole = rotor && load_effect_residual(records.slot).rotor_disc;
+        bool hidden = rotor && !whole && realism.footprint.opacity <= 0;
+#else
         RealismFootprint realism = realism_footprint(particles, classes, record);
+#endif
         Footprint footprint;
         bool odd;
         if (realism.realism)
@@ -114,8 +123,19 @@ void cs_measure(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID)
             footprint = particle_footprint(particles, record, load_layer(classes, effect_class, records.layer_index), smoke);
             odd = (records.local & 1) != 0;
         }
+#ifdef PYROCLAST_ROTOR
+        if (whole) odd = false;
+        if (smoke && parameters.lod_pixels > 0 && odd && footprint.pixels >= 2 * parameters.lod_pixels) InterlockedAdd(measured[6], 1);
+        if (smoke && !whole && parameters.faint_floor > 0 && footprint.opacity < parameters.faint_floor) InterlockedAdd(measured[7], 1);
+        if (hidden)
+        {
+            footprint.pixels = 0;
+            footprint.flat = false;
+        }
+#else
         if (smoke && parameters.lod_pixels > 0 && odd && footprint.pixels >= 2 * parameters.lod_pixels) InterlockedAdd(measured[6], 1);
         if (smoke && parameters.faint_floor > 0 && footprint.opacity < parameters.faint_floor) InterlockedAdd(measured[7], 1);
+#endif
         if (sphere_outside_view(footprint.position, footprint.bound))
         {
             InterlockedAdd(measured[5], 1);

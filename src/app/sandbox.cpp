@@ -1,4 +1,5 @@
 #include "sandbox.hpp"
+#include "../simulation/explosion_scenarios.hpp"
 #include "../simulation/impact_patterns.hpp"
 
 #include <SDL3/SDL.h>
@@ -44,12 +45,90 @@ void Sandbox::clear()
 {
     effects.clear();
     particles.discard_pending();
+    rotorcraft.clear();
     SDL_Log("Particle pool cleared.");
 }
 
 void Sandbox::spawn(const Ray& ray, std::string_view source)
 {
     showcase.fire(range.environment(), props_shown(), ray, showcase.count, source, effects);
+    if (const auto hit = range.environment().raycast(ray, std::numeric_limits<float>::infinity(), props_shown())) last_click = hit->point;
+}
+
+void Sandbox::send_helicopter()
+{
+    if (!realism_enabled(layer_mask))
+    {
+        SDL_Log("The helicopter needs the realism model.");
+        return;
+    }
+    std::optional<float3> target = last_click;
+    if (!target)
+    {
+        if (const auto hit = range.environment().raycast(crosshair_ray(camera.camera()), std::numeric_limits<float>::infinity(), props_shown()))
+        {
+            target = hit->point;
+        }
+    }
+    if (!target)
+    {
+        SDL_Log("Nothing to hover over.");
+        return;
+    }
+    const auto tick = particles.tick();
+    const auto& environment = range.environment();
+    const double hover = target->y + 1.5 * rotor::radius;
+    const auto& helicopter = rotorcraft.helicopter();
+    const bool listed = helicopter && tick >= helicopter->plan.list_tick && tick < helicopter->plan.unlist_tick;
+    const auto view = camera.camera();
+    const float3 forward = view.forward();
+    const double3 ahead = normalize(double3{forward.x, 0, forward.z});
+    if (!listed)
+    {
+        double3 side{-ahead.z, 0, ahead.x};
+        const float3 towards = *target - view.position;
+        if (dot(to_double3(towards), side) < 0) side = side * -1.0;
+        const double3 goal = to_double3(*target);
+        const double3 entry = goal + side * 300;
+        const double cruise = std::max(hover, helicopter_cruise_height(environment, entry.x, entry.z, goal.x, goal.z, 40));
+        const double3 heading = normalize(goal - entry);
+        FlightBuilder builder("sandbox", tick, {entry.x, cruise, entry.z}, double3{heading.x, 0, heading.z} * rotor::cruise_speed);
+        builder.cruise(77);
+        builder.change_velocity({});
+        if (builder.position().y > hover) builder.vertical_to(hover, rotor::descent_rate);
+        if (helicopter) rotorcraft.replan(builder.build());
+        else rotorcraft.fly(builder.build(), helicopter_seed + flights);
+        ++flights;
+        SDL_Log("Helicopter: inbound to (%.1f, %.1f, %.1f).", static_cast<double>(target->x), static_cast<double>(target->y), static_cast<double>(target->z));
+        return;
+    }
+    const auto& plan = helicopter->plan;
+    if (plan.unlist_tick != never)
+    {
+        SDL_Log("Helicopter: departing.");
+        return;
+    }
+    if (tick < plan.knots.back().tick)
+    {
+        SDL_Log("Helicopter: on its way.");
+        return;
+    }
+    const auto here = plan.knots.back().position;
+    FlightBuilder builder(plan);
+    if (tick > builder.tick()) builder.hold(tick - builder.tick());
+    if (std::hypot(target->x - here.x, target->z - here.z) <= 10)
+    {
+        builder.depart(ahead, 900);
+        rotorcraft.replan(builder.build());
+        SDL_Log("Helicopter: departing.");
+        return;
+    }
+    const double travel = std::max({here.y, hover, helicopter_cruise_height(environment, here.x, here.z, target->x, target->z, 12)});
+    if (travel > here.y) builder.vertical_to(travel, rotor::descent_rate);
+    builder.transit_to({target->x, travel, target->z});
+    if (travel > hover) builder.vertical_to(hover, rotor::descent_rate);
+    rotorcraft.replan(builder.build());
+    SDL_Log("Helicopter: to (%.1f, %.1f, %.1f).", static_cast<double>(target->x), static_cast<double>(target->y), static_cast<double>(target->z));
 }
 
 void Sandbox::report_drops(const SlotPressure::Report& report, bool before_clear) const
@@ -90,7 +169,7 @@ void Sandbox::fill_snapshot(DiagnosticsSnapshot& snapshot) const
 
     auto& load = snapshot.load;
     load.explosions = static_cast<std::uint32_t>(group.size());
-    load.active_effects = static_cast<std::uint32_t>(effects.active().size());
+    load.active_effects = static_cast<std::uint32_t>(effects.explosions());
     load.effect_slots = effects.capacity();
     load.started = effects.started();
     load.dropped = effects.dropped();
@@ -105,7 +184,12 @@ void Sandbox::fill_snapshot(DiagnosticsSnapshot& snapshot) const
     load.linger_scale = effects.residual().last_scale();
     load.linger_seconds = linger.linger_ticks / 60;
     load.queued = effects.pending();
-    for (const auto slot : effects.active()) ++load.active_by_preset[static_cast<std::uint32_t>(effects.slots()[slot].preset)];
+    for (const auto slot : effects.active())
+    {
+        const auto& effect = effects.slots()[slot];
+        if (effect.kind == EffectKind::explosion) ++load.active_by_preset[static_cast<std::uint32_t>(effect.preset)];
+    }
+    load.rotor_slots = static_cast<std::uint32_t>(effects.active().size() - effects.explosions());
     load.simulated_records = load.active_effects * ParticleSystem::slab_records;
     load.pool_capacity = ParticleSystem::capacity;
     if (load.realism)
@@ -114,9 +198,25 @@ void Sandbox::fill_snapshot(DiagnosticsSnapshot& snapshot) const
         {
             if (cluster.listed(tick)) load.simulated_records += cluster.groups * particle_layout::simulation_group_size;
         }
+        if (effects.rotor_slot()) load.simulated_records += ParticleSystem::slab_records;
+        if (effects.rotor_disc_slot()) load.simulated_records += particle_layout::simulation_group_size;
         load.pool_capacity = ParticleSystem::pool_records;
     }
     if (renderer.particles_drawn()) load.particles = counters;
+    if (const auto& helicopter = rotorcraft.helicopter())
+    {
+        const auto& plan = helicopter->plan;
+        const auto& frame = renderer.rotor_frame();
+        DiagnosticsSnapshot::Load::Helicopter shown;
+        shown.state = tick < plan.list_tick ? "not yet in" : tick >= plan.unlist_tick ? "gone" :
+            plan.touchdown_tick != never && tick >= plan.touchdown_tick ? "landed" : plan.unlist_tick != never ? "departing" :
+            tick < plan.knots.back().tick ? "flying" : "hovering";
+        shown.hub_height = static_cast<float>(frame.hub_height_cm) / 100.0f;
+        shown.emission = frame.emission;
+        shown.dust = frame.census.alive;
+        shown.waiting = effects.rotor_requested();
+        load.helicopter = shown;
+    }
     load.lights = renderer.lights();
     load.coverage = scalability.coverage || scalability.smoke_resolution == SmokeResolution::automatic;
     load.coverage_flag = scalability.coverage;
@@ -302,6 +402,7 @@ void apply(UiCommand command, Sandbox& sandbox)
         sandbox.showcase.fire(sandbox.range.environment(), sandbox.props_shown(), crosshair_ray(sandbox.camera.camera()),
             command.value != 0 ? command.value : sandbox.showcase.count, "crosshair", sandbox.effects);
         break;
+    case Kind::send_helicopter: sandbox.send_helicopter(); break;
     case Kind::barrage:
         sandbox.showcase.start_barrage(sandbox.range.environment(), sandbox.props_shown(), sandbox.camera.camera(), sandbox.particles.tick());
         break;

@@ -39,6 +39,39 @@ void ExplosionSystem::clear()
     pending_.clear();
     waiting_.clear();
     residual_.clear();
+    rotor_request_.reset();
+}
+
+void ExplosionSystem::request_rotor(std::uint32_t seed, float3 origin, std::uint32_t end_tick)
+{
+    if (const auto slot = rotor_slot())
+    {
+        for (auto& rotor : slots_)
+        {
+            if (!rotor.active || rotor.kind == EffectKind::explosion) continue;
+            rotor.lifetime_ticks = end_tick > rotor.start_tick ? end_tick - rotor.start_tick : 1;
+        }
+        return;
+    }
+    rotor_request_ = RotorRequest{seed, origin, end_tick};
+}
+
+std::optional<std::uint32_t> ExplosionSystem::rotor_slot() const
+{
+    for (const auto index : active_)
+    {
+        if (slots_[index].kind == EffectKind::rotor) return index;
+    }
+    return std::nullopt;
+}
+
+std::optional<std::uint32_t> ExplosionSystem::rotor_disc_slot() const
+{
+    for (const auto index : active_)
+    {
+        if (slots_[index].kind == EffectKind::rotor_disc) return index;
+    }
+    return std::nullopt;
 }
 
 bool ExplosionSystem::graduate_one_early(std::uint32_t tick)
@@ -81,6 +114,31 @@ void ExplosionSystem::start(std::uint32_t tick, SlotPolicy policy, const Realism
         return true;
     });
     std::uint32_t candidate = 0;
+    std::optional<std::uint32_t> held;
+    if (rotor_request_)
+    {
+        assert(realism && !rotor_slot() && !rotor_disc_slot());
+        std::array<std::uint32_t, 2> free{};
+        std::uint32_t found = 0;
+        for (std::uint32_t index = 0; index < slots_.size() && found < 2; ++index)
+        {
+            if (!slots_[index].active) free[found++] = index;
+        }
+        if (found == 2)
+        {
+            for (std::uint32_t part = 0; part < 2; ++part)
+            {
+                auto& slot = slots_[free[part]];
+                slot = EffectSlot{part == 0 ? EffectKind::rotor : EffectKind::rotor_disc, rotor_request_->origin, {0, 1, 0}, rotor_request_->seed, slot.generation,
+                    tick, ExplosionPreset::small_impact, rotor_class_index, rotor_request_->end_tick > tick ? rotor_request_->end_tick - tick : 1, true,
+                    started_, 0, realism->drift, std::nullopt, false};
+                slot.generation = slot.generation == 0xffffffffu ? 1 : slot.generation + 1;
+                active_.insert(std::lower_bound(active_.begin(), active_.end(), free[part]), free[part]);
+            }
+            rotor_request_.reset();
+        }
+        else if (found == 1) held = free[0];
+    }
     std::vector<ExplosionEvent> queue(waiting_.begin(), waiting_.end());
     const std::size_t promised = waiting_.size();
     waiting_.clear();
@@ -88,7 +146,7 @@ void ExplosionSystem::start(std::uint32_t tick, SlotPolicy policy, const Realism
     for (std::size_t position = 0; position < queue.size(); ++position)
     {
         const auto& event = queue[position];
-        while (candidate < slots_.size() && slots_[candidate].active) ++candidate;
+        while (candidate < slots_.size() && (slots_[candidate].active || held == candidate)) ++candidate;
         std::uint32_t chosen = candidate;
         bool evicting = false;
         if (candidate == slots_.size() && position < promised)
@@ -110,9 +168,13 @@ void ExplosionSystem::start(std::uint32_t tick, SlotPolicy policy, const Realism
         if (candidate == slots_.size())
         {
             const auto oldest = std::min_element(active_.begin(), active_.end(), [this](std::uint32_t a, std::uint32_t b) {
+                const bool rotor_a = slots_[a].kind != EffectKind::explosion;
+                const bool rotor_b = slots_[b].kind != EffectKind::explosion;
+                if (rotor_a != rotor_b) return rotor_b;
                 return slots_[a].start_tick < slots_[b].start_tick || (slots_[a].start_tick == slots_[b].start_tick && a < b);
             });
-            if (policy == SlotPolicy::drop_new || oldest == active_.end() || slots_[*oldest].start_tick == tick)
+            if (policy == SlotPolicy::drop_new || oldest == active_.end() || slots_[*oldest].start_tick == tick ||
+                slots_[*oldest].kind != EffectKind::explosion)
             {
                 ++dropped_;
                 continue;
@@ -121,6 +183,7 @@ void ExplosionSystem::start(std::uint32_t tick, SlotPolicy policy, const Realism
             evicting = true;
         }
         auto& slot = slots_[chosen];
+        slot.kind = EffectKind::explosion;
         slot.origin = event.position;
         slot.normal = event.normal;
         slot.seed = event.seed;

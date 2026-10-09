@@ -254,5 +254,52 @@ int main()
         crowded.slots()[0].start_tick == 1 && crowded.active().size() == 128, "an evicted slot restarts with a new generation; same-tick starts stay");
     check(busiest == 128 && saturated.dropped() == 64 && saturated.started() + saturated.dropped() == 400,
         "the bombardment fills the 128 slots and drops the rest");
+
+    {
+        const RealismStart realism{realism_layout::realism_full_mask, {}, {}};
+        ExplosionSystem rotor(4);
+        rotor.request_rotor(5, {1, 0, 1}, never);
+        rotor.request_rotor(6, {1, 0, 1}, never);
+        rotor.submit({{2, 0, 2}, {0, 1, 0}, 1, ExplosionPreset::small_he});
+        rotor.start(10, SlotPolicy::graduate_oldest, &realism);
+        check(rotor.rotor_slot() == 0u && rotor.rotor_disc_slot() == 1u && rotor.slots()[0].seed == 6 && rotor.slots()[0].effect_class == rotor_class_index &&
+                rotor.slots()[1].kind == EffectKind::rotor_disc && rotor.slots()[2].kind == EffectKind::explosion && rotor.explosions() == 1 &&
+                rotor.started() == 1 && rotor.active().size() == 3 && !rotor.rotor_requested(),
+            "a rotor request takes the two lowest free slots before events, idempotently");
+        rotor.request_rotor(6, {1, 0, 1}, 400);
+        check(rotor.slots()[0].lifetime_ticks == 390 && rotor.slots()[1].lifetime_ticks == 390, "a request while the rotor slots run sets their end");
+        rotor.start(400, SlotPolicy::graduate_oldest, &realism);
+        check(!rotor.rotor_slot() && !rotor.rotor_disc_slot(), "the rotor slots retire at their end");
+        rotor.request_rotor(7, {}, never);
+        rotor.clear();
+        rotor.start(401, SlotPolicy::graduate_oldest, &realism);
+        check(!rotor.rotor_slot() && !rotor.rotor_requested(), "clear forgets the rotor request");
+        ExplosionSystem full(particle_layout::maximum_effects);
+        for (std::uint32_t seed = 0; seed < particle_layout::maximum_effects; ++seed) full.submit({{0, 0, 0}, {0, 1, 0}, seed, ExplosionPreset::small_he});
+        full.start(0, SlotPolicy::graduate_oldest, &realism);
+        full.request_rotor(9, {}, never);
+        std::uint64_t dropped = full.dropped();
+        bool waited = true;
+        for (std::uint32_t tick = 1; tick < 1000; ++tick)
+        {
+            full.start(tick, SlotPolicy::graduate_oldest, &realism);
+            if (full.rotor_slot()) break;
+            waited = waited && full.rotor_requested() && full.dropped() == dropped && full.deferred() == 0;
+        }
+        check(waited && full.rotor_slot() && full.rotor_disc_slot() && full.deferred() == 0 && full.dropped() == dropped,
+            "with every slot busy the rotor request waits for two free slots, graduating, dropping and deferring nothing");
+        ExplosionSystem stream(particle_layout::maximum_effects);
+        constexpr std::uint32_t not_started = 0xffffffffu;
+        std::uint32_t started = not_started;
+        for (std::uint32_t tick = 0; tick < 3000 && started == not_started; ++tick)
+        {
+            stream.submit({{0, 0, 0}, {0, 1, 0}, 1000 + tick, ExplosionPreset::small_he});
+            if (tick == 300) stream.request_rotor(11, {}, 0xffffffffu);
+            stream.start(tick, SlotPolicy::graduate_oldest, &realism);
+            if (stream.rotor_slot()) started = tick;
+        }
+        check(started != not_started && started < 300 + 600 && stream.rotor_disc_slot(),
+            "under a stream of events the rotor request keeps a freed slot and starts with the next");
+    }
     return failures == 0 ? 0 : 1;
 }

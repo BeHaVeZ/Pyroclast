@@ -1,0 +1,49 @@
+#pragma once
+
+static const float rotor_radius = 8.0f;
+static const float rotor_mass = 10000.0f;
+static const float rotor_air_density = 1.225f;
+static const float rotor_gravity = 9.81f;
+static const uint rotor_blades = 4;
+static const float rotor_chord = 0.53f;
+static const float rotor_speed = 27.0f;
+static const float tail_rotor_radius = 1.68f;
+static const float tail_rotor_chord = 0.25f;
+static const float tail_rotor_speed = 124.7f;
+
+static const uint rotor_disc_records = 2;
+static const uint rotor_cycle_min_ticks = 360;
+static const uint rotor_cycle_range_ticks = 721;
+static const uint rotor_emission_one = 1024;
+static const uint rotor_salt_cycle = 0x2c1b3c6du;
+static const uint rotor_salt_phase = 0x297a2d39u;
+static const uint rotor_salt_birth = 0x7a2e9c4fu;
+static const uint rotor_salt_radius = 0x1d8e4e27u;
+static const uint rotor_salt_azimuth = 0x5bd1e995u;
+static const uint rotor_salt_size = 0x3c6ef372u;
+static const uint rotor_salt_kick = 0x6a09e667u;
+static const uint rotor_flag_born = 1u;
+static const uint rotor_flag_phantom = 2u;
+static const uint rotor_flags_offset = 40;
+static const uint rotor_death_offset = 44;
+
+static const float rotor_fermi = 6.0f;
+static const float rotor_fermi_norm = 1.000413f;
+static const float rotor_contraction_floor = -0.9375f;
+static const float rotor_far_wake_start = 3.0f;
+static const float rotor_far_wake_growth = 0.1f;
+static const float rotor_skew_blend = 0.25f;
+static const float rotor_wall_growth = 0.1f;
+static const float rotor_entrainment_height = 3.0f;
+static const float rotor_ring_radius = 1.75f;
+static const float rotor_ring_height = 0.6f;
+static const float rotor_ring_core = 0.5f;
+static const float rotor_ring_ground = 0.25f;
+static const float rotor_turbulence = 0.2f;
+static const float rotor_window_top_start = 4.0f;
+static const float rotor_window_top_end = 6.0f;
+static const float rotor_window_side_start = 10.0f;
+static const float rotor_window_side_end = 12.0f;
+static const float rotor_speed_limit = 40.0f;
+static const float rotor_coupling = 15.0f;
+static const float rotor_coupling_speed = 2.0f;

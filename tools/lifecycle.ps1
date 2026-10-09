@@ -1,6 +1,7 @@
 # Drives one Pyroclast window through the interactive lifecycle and checks native validation:
 # pause/clear/trigger/single steps, a click on the terrain or a prop, effect lines, the showcase's keys (preset,
-# count, fire at the crosshair, slot saturation, barrage, bombardment, slow motion, walk, two bookmarks), 30 odd-size resizes,
+# count, fire at the crosshair, slot saturation, barrage, bombardment, the helicopter's H twice, slow motion, walk, two
+# bookmarks), 30 odd-size resizes,
 # three minimize/restore cycles, a running trigger, a normal close, and separately a start in a minimized
 # window that is later restored. -Realism runs the realism model (M22; the application's default since M25), where Space
 # adds the group to the scene; without it the run passes --realism=off and checks the legacy model.
@@ -146,6 +147,8 @@ function Run-Interactive {
         Start-Sleep -Milliseconds 300
         Send-Key $window 0x42 0x30    # B: barrage
         Send-Key $window 0x56 0x2F    # V: bombardment
+        Send-Key $window 0x48 0x23    # H: the helicopter inbound to the crosshair (realism) or refused (legacy)
+        Send-Key $window 0x48 0x23    # H: on its way (realism)
         Send-Key $window 0x77 0x42    # F8: spawn regions, on through the resizes below
         Send-Key $window 0x78 0x43    # F9: wind arrow
         for ($tick = 0; $tick -lt 30; ++$tick) { Send-Key $window 78 0x31 }   # N: impacts release while stepping
@@ -156,7 +159,7 @@ function Run-Interactive {
         Send-Key $window 0x72 0x3D    # F3: bookmark 2, the ground view
         Send-Key $window 0x7A 0x57    # F11: bookmark 7, the far view
         Send-Key $window 0x56 0x2F    # V: stop the bombardment
-        Send-Key $window 82 0x13      # R: clear, stopping the barrage
+        Send-Key $window 82 0x13      # R: clear, stopping the barrage and removing the helicopter
         Start-Sleep -Milliseconds 300
         for ($iteration = 0; $iteration -lt 30; ++$iteration) {
             $width = 700 + 15 * ($iteration % 10) + ($iteration % 3)
@@ -187,6 +190,10 @@ function Run-Interactive {
             'Simulation speed: 1x', 'Camera: walk', 'Camera: fly', 'Camera bookmark 2 (ground) recalled', 'Camera bookmark 7 (far) recalled',
             'Bombardment stopped after',
             'Barrage stopped after', 'spawn regions on', 'wind arrow on') {
+            if (-not $text.Contains($expected)) { throw "The application never logged '$expected'; input or resizes did not arrive." }
+        }
+        $helicopter = if ($Realism) { @('Helicopter: inbound to (', 'Helicopter: on its way.') } else { @('The helicopter needs the realism model.') }
+        foreach ($expected in $helicopter) {
             if (-not $text.Contains($expected)) { throw "The application never logged '$expected'; input or resizes did not arrive." }
         }
         if (-not ($text.Contains('Explosion at (') -or $text.Contains('Nothing under the cursor.') -or

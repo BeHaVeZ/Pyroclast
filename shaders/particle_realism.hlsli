@@ -2,6 +2,9 @@
 
 #include "particle_footprint.hlsli"
 #include "realism.hlsli"
+#ifdef PYROCLAST_ROTOR
+#include "rotor_flow.hlsli"
+#endif
 
 struct RealismFootprint
 {
@@ -28,6 +31,37 @@ struct RealismFootprint
     float spawn_size;
     uint pattern;
 };
+
+#ifdef PYROCLAST_ROTOR
+void rotor_stretch(inout RealismFootprint result)
+{
+    RotorFlow flow = rotor_flow_at(frame.rotor_draw[0], frame.rotor_draw[1], frame.rotor_draw[2]);
+    float3 rotor = rotor_air(flow, result.footprint.position, flow.hub.y - flow.height);
+    float speed = length(rotor);
+    if (speed <= 0) return;
+    float3 along = rotor + frame.wind.xyz;
+    float reach = length(along);
+    if (reach < 1e-3) return;
+    along /= reach;
+    float2 axis = float2(dot(along, frame.camera_right.xyz), dot(along, frame.camera_up.xyz));
+    float projected = length(axis);
+    if (projected < 1e-3) return;
+    axis /= projected;
+    float weight = saturate(speed / rotor_coupling_speed);
+    float2 wind_axis = result.stretch_axis;
+    float2 doubled = lerp((result.stretch - 1) * float2(wind_axis.x * wind_axis.x - wind_axis.y * wind_axis.y, 2 * wind_axis.x * wind_axis.y),
+        2 * saturate(speed / 20) * projected * float2(axis.x * axis.x - axis.y * axis.y, 2 * axis.x * axis.y), weight);
+    float excess = length(doubled);
+    result.stretch = 1 + excess;
+    if (excess > 1e-4)
+    {
+        float2 unit = doubled / excess;
+        result.stretch_axis = float2(sqrt(saturate(0.5 * (1 + unit.x))), (unit.y < 0 ? -1 : 1) * sqrt(saturate(0.5 * (1 - unit.x))));
+    }
+    result.footprint.bound = 1.4142136 * result.footprint.size * sqrt(result.stretch) +
+        result.footprint.distance / max(frame.projection.x, 1e-6);
+}
+#endif
 
 RealismFootprint realism_footprint(ByteAddressBuffer particles, ByteAddressBuffer classes, uint record)
 {
@@ -178,5 +212,11 @@ RealismFootprint realism_footprint(ByteAddressBuffer particles, ByteAddressBuffe
     float coverage = footprint.flat ? 1.5707963 * footprint.pixels * footprint.pixels : 1;
     footprint.opacity = (1 - exp(-depth)) * coverage;
     result.footprint = footprint;
+#ifdef PYROCLAST_ROTOR
+    rotor_stretch(result);
+#endif
     return result;
 }
+#ifdef PYROCLAST_ROTOR
+#include "rotor_footprint.hlsli"
+#endif

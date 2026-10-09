@@ -34,6 +34,9 @@ struct Sandbox
     ScalabilitySettings scalability;
     LingerSettings linger;
     float humidity = 0.8f;
+    Rotorcraft rotorcraft;
+    std::optional<float3> last_click;
+    std::uint32_t flights = 0;
     std::optional<ParticleCounters> counters;
     std::uint64_t counter_sample = 0;
 
@@ -43,6 +46,7 @@ struct Sandbox
     void trigger_group();
     void clear();
     void spawn(const Ray& ray, std::string_view source);
+    void send_helicopter();
     void release_due();
     void update_aim(bool needed);
     void build_marks();

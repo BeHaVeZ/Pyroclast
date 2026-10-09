@@ -1,10 +1,32 @@
 #define PYROCLAST_REALISM
 #include "particles_lod.hlsl"
 #include "particle_realism_vertex.hlsli"
+#ifdef PYROCLAST_ROTOR
+#include "rotor_draw.hlsli"
+#endif
 
 RealismPixelInput vs_realism_lod(uint vertex : SV_VertexID, uint instance : SV_InstanceID)
 {
     uint record = drawn_record(instance);
+#ifdef PYROCLAST_ROTOR
+    if (record < min(draw.record_count, residual_first) && rotor_record(record))
+    {
+        RealismPixelInput rotor = rotor_vertex(vertex, record);
+        if (load_effect_residual(record / explosion_particles).rotor_disc) return rotor;
+        float rotor_opacity = rotor.base.color.a;
+        if (draw.lod_pixels > 0)
+        {
+            float pixels = rotor_footprint(particles, classes, record).footprint.pixels;
+            float weight = saturate((2 * draw.lod_pixels - pixels) / draw.lod_pixels);
+            float even = 1 - pow(saturate(1 - rotor_opacity), 2 - weight);
+            rotor_opacity = ((record % explosion_particles) & 1) != 0 ? rotor_opacity * weight : even;
+        }
+        if (draw.faint_floor > 0) rotor_opacity *= saturate((rotor_opacity - draw.faint_floor) / draw.faint_floor);
+        if (rotor_opacity <= 0) rotor.base.position = float4(0, 0, 0, 1);
+        rotor.base.color.a = rotor_opacity;
+        return rotor;
+    }
+#endif
     if (record < min(draw.record_count, pool_records))
     {
         RealismFootprint realism = realism_footprint(particles, classes, record);

@@ -540,6 +540,59 @@ std::vector<EffectClass> effect_classes()
     return classes;
 }
 
+EffectClass make_rotor_class()
+{
+    const auto dirt = make_effect_class(ExplosionPreset::artillery_he, SurfaceType::dirt);
+    EffectClass effect;
+    effect.group_layers.fill(static_cast<std::uint8_t>(particle_layout::no_layer));
+    for (std::uint32_t group = 0; group < particle_layout::slab_groups; ++group) effect.group_layers[group] = particle_layout::layer_ground_dust;
+    auto& dust = effect.layers[particle_layout::layer_ground_dust];
+    dust = dirt.layers[particle_layout::layer_ground_dust];
+    dust.first_group = 0;
+    dust.groups = particle_layout::slab_groups;
+    dust.count = particle_layout::explosion_particles;
+    dust.radius = 0;
+    dust.speed_min = 0;
+    dust.speed_range = 0;
+    dust.up_kick = 0;
+    dust.delay_range = 0;
+    dust.drag = 2.2f;
+    dust.buoyancy = 0;
+    dust.cooling = 0;
+    dust.heat = 0;
+    dust.expansion = 0;
+    dust.emission = 0;
+    dust.fade_in_rate = 6;
+    dust.strength = 0.2f;
+    dust.size_min = 1;
+    dust.size_range = 1;
+    const auto& settled = dirt.realism.layers[particle_layout::layer_ground_dust];
+    dust.first_color = {settled.albedo.x, settled.albedo.y, settled.albedo.z, dust.first_color.w};
+    dust.second_color = dust.first_color;
+    auto& lingering = effect.realism.layers[particle_layout::layer_ground_dust];
+    lingering = settled;
+    lingering.survivor_stride = 0;
+    lingering.survivor_area = 1;
+    lingering.diffusion_seconds = 4;
+    lingering.size_cap = 2.89f * 1.5f;
+    lingering.optical_depth = -std::log(1 - dust.strength);
+    lingering.end_share = 0.35f;
+    lingering.settling = 0.5f;
+    lingering.residual_drag = 2.2f;
+    lingering.residual_turbulence = 0.4f;
+    lingering.residual_offset = 0;
+    lingering.albedo.w = 0;
+    effect.realism.graduation_ticks = 120;
+    return effect;
+}
+
+std::vector<EffectClass> gpu_effect_classes()
+{
+    auto classes = effect_classes();
+    classes.push_back(make_rotor_class());
+    return classes;
+}
+
 std::uint32_t effect_ticks(ExplosionPreset preset, SurfaceType surface)
 {
     float seconds = 0;

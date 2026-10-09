@@ -234,8 +234,18 @@ int main()
         std::printf("residual ring: at most %u groups handed out while an effect waits %u ticks to graduate (of %u; slots restart after %u)\n",
             worst, window, realism::residual_groups, shortest_life);
         check(worst + largest_groups <= realism::residual_groups, "no reservation is handed out again before it graduates");
-        check(largest_smoke * layout::maximum_effects + realism::residual_records <= layout::light_list_first &&
+        check(largest_smoke * (layout::maximum_effects - 2) + layout::explosion_particles + realism::residual_records <= layout::light_list_first &&
+                largest_smoke * layout::maximum_effects + realism::residual_records <= layout::light_list_first &&
                 realism::pool_records <= layout::debris_list_first, "the smoke list holds every slab's smoke and the residual pool");
+        const auto rotor = make_rotor_class();
+        bool groups = true;
+        for (std::uint32_t group = 0; group < layout::slab_groups; ++group) groups = groups && rotor.group_layers[group] == layout::layer_ground_dust;
+        const auto& rotor_dust = rotor.realism.layers[layout::layer_ground_dust];
+        check(groups && rotor.layers[layout::layer_ground_dust].count == layout::explosion_particles && rotor_dust.survivor_stride == 0 &&
+                rotor_dust.residual_drag == 2.2f && rotor.layers[layout::layer_ground_dust].drag == 2.2f && rotor.realism.residual_groups == 0 &&
+                rotor.blast.wave_ticks == 0 && rotor_class_index == effect_class_count && gpu_class_count <= layout::maximum_effect_classes &&
+                gpu_effect_classes().size() == gpu_class_count,
+            "the rotor class: 40 dust groups, no survivors, drag 2.2 /s, class 14 of 15");
         check(realism::residual_first == layout::maximum_effects * layout::explosion_particles &&
                 realism::pool_records == realism::residual_first + realism::residual_groups * layout::simulation_group_size &&
                 realism::maximum_unit_groups * 4 + layout::scan_threads * 12 <= 32768,

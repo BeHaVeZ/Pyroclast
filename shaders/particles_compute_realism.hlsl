@@ -2,6 +2,9 @@
 #include "particles_compute.hlsl"
 #include "realism.hlsli"
 #include "blast.hlsli"
+#ifdef PYROCLAST_ROTOR
+#include "rotor_flow.hlsli"
+#endif
 
 RWByteAddressBuffer arguments : register(u2);
 
@@ -22,7 +25,25 @@ struct Lift
     bool jet;
     float vortex_scale;
     float3 offset;
+#ifdef PYROCLAST_ROTOR
+    uint rotor_step;
+#endif
 };
+
+#ifdef PYROCLAST_ROTOR
+float3 rotor_step_air(uint step, float3 position, float terrain)
+{
+    RotorFlow flow = rotor_flow_at(frame.rotor_hubs[step], frame.rotor_wakes[step], frame.rotor_jets[step]);
+    float3 air = rotor_air(flow, position, terrain);
+    float mean = length(air);
+    if (mean <= 0) return 0;
+    uint tick = parameters.tick + step + 1;
+    air += curl_noise(position / (0.5 * rotor_radius) + float3(0, 0.5 * float(tick) / 60.0, 0)) * (rotor_turbulence * mean);
+    float speed_squared = dot(air, air);
+    if (speed_squared > rotor_speed_limit * rotor_speed_limit) air *= rotor_speed_limit * rsqrt(speed_squared);
+    return air;
+}
+#endif
 
 void lingering_step(inout float4 position, inout float4 velocity, float size, Layer layer, RealismLayer lingering, bool ring,
     float vortex_weight, Flow flow, float3 effect_origin, float seconds, float crossfade, uint mask, Lift lift)
@@ -60,8 +81,17 @@ void lingering_step(inout float4 position, inout float4 velocity, float size, La
     {
         air += curl_noise(position.xyz * lingering.turbulence_scale - float3(0, position.w * 0.05, 0)) * (lingering.residual_turbulence * crossfade);
     }
+#ifdef PYROCLAST_ROTOR
+    float3 rotor = rotor_step_air(lift.rotor_step, position.xyz, terrain);
+    air += rotor;
+#endif
     if (deflect && any(near != 0)) air = deflect_air(environment, near, position.xyz, radius, air);
+#ifdef PYROCLAST_ROTOR
+    float coupled = lerp(lerp(layer.drag, lingering.residual_drag, crossfade), rotor_coupling, crossfade * saturate(length(rotor) / rotor_coupling_speed));
+    velocity.xyz += (air - velocity.xyz) * (lerp(coupled, 0.3, ballistic) * dt);
+#else
     velocity.xyz += (air - velocity.xyz) * (lerp(lerp(layer.drag, lingering.residual_drag, crossfade), 0.3, ballistic) * dt);
+#endif
     velocity.y -= 9.81 * ballistic * dt;
     if (layer.buoyancy > 0) velocity.y += layer.buoyancy * layer_temperature(layer, position.w) * (1 - ballistic) * dt;
     float speed_squared = dot(velocity.xyz, velocity.xyz);
@@ -226,6 +256,9 @@ bool simulate_lingering(uint slot, uint local, uint record, uint layer_index, La
             lift.direction = reach > 1e-3 ? outward / reach : float2(1, 0);
         }
         lift.since = graduated ? position.w - graduation_age : 0;
+#ifdef PYROCLAST_ROTOR
+        lift.rotor_step = step;
+#endif
         lingering_step(position, velocity, size, layer, lingering, ring, vortex_weight, flow, effect_origin, seconds, 1 - vortex_weight, mask, lift);
         if (tick == graduation)
         {
@@ -305,6 +338,9 @@ bool simulate_residual(uint cluster_index, uint group_in_cluster, uint thread)
     {
         position.w += 1.0 / 60.0;
         lift.since = max(position.w - velocity.w, 0);
+#ifdef PYROCLAST_ROTOR
+        lift.rotor_step = step;
+#endif
         if (step == 0) velocity.xyz += blast_push(position.xyz, mask, maximum_effects, position.w);
         lingering_step(position, velocity, size, layer, lingering, ring, 0, none, float3(0, 0, 0), 0, 1, mask, lift);
     }
@@ -316,6 +352,10 @@ bool simulate_residual(uint cluster_index, uint group_in_cluster, uint thread)
     return tick_before + steps < end && layer_enabled(mask, layer_index);
 }
 
+#ifdef PYROCLAST_ROTOR
+#include "rotor_compute.hlsli"
+#endif
+
 bool simulate_slab(uint slot, uint local)
 {
     uint record = slot * explosion_particles + local;
@@ -323,6 +363,9 @@ bool simulate_slab(uint slot, uint local)
     uint effect_class = frame.effect_states[slot].w;
     uint layer_index = group_layer(classes, effect_class, local / simulation_group_size);
     EffectResidual link = load_effect_residual(slot);
+#ifdef PYROCLAST_ROTOR
+    if (link.rotor) return simulate_rotor(slot, local);
+#endif
     if (link.linger && layer_index <= layer_plume)
     {
         Layer layer = load_layer(classes, effect_class, layer_index);

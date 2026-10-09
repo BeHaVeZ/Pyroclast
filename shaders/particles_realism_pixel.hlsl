@@ -1,6 +1,9 @@
 #define PYROCLAST_REALISM
 #include "particles.hlsl"
 #include "particle_realism_vertex.hlsli"
+#ifdef PYROCLAST_ROTOR
+#include "rotor_draw.hlsli"
+#endif
 
 float2 billow_gradient(int2 cell, uint salt)
 {
@@ -63,6 +66,9 @@ float4 billowed(RealismPixelInput realism)
 
 float4 ps_realism(RealismPixelInput realism) : SV_Target
 {
+#ifdef PYROCLAST_ROTOR
+    if (realism.detail.z < -0.5) return rotor_disc_pixel(realism);
+#endif
     PixelInput input = realism.base;
     float4 color = realism.detail.w > 0 ? billowed(realism) : ps_main(input);
     if (!mask_enabled(frame.light_state.y, haze_mask_bit)) return color;
