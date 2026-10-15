@@ -56,6 +56,8 @@ inline constexpr double saltation_threshold = 6;
 inline constexpr double emission_reach = 10;
 }
 
+double3 lingering_wind_at(const WindSettings& wind, std::uint32_t tick, bool gusts, double height, std::uint32_t mask);
+
 struct FlightKnot
 {
     std::uint32_t tick = 0;
@@ -99,7 +101,8 @@ public:
     double3 position() const { return state_.position; }
     double3 velocity() const { return state_.velocity; }
     void cruise(std::uint32_t ticks);
-    void change_velocity(double3 target);
+    void change_velocity(double3 target, double limit = rotor::acceleration_limit);
+    void arc(double3 towards, double radians, double acceleration);
     void transit_to(double3 point);
     void turn_to(double heading);
     void hold(std::uint32_t ticks);

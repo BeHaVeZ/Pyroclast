@@ -311,6 +311,8 @@ void showcase_window(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>
     }
     ImGui::BeginDisabled(!snapshot.load.realism);
     if (ImGui::Button("Helicopter (H)")) commands.push_back({UiCommand::Kind::send_helicopter});
+    ImGui::SameLine();
+    if (ImGui::Button("Jet (J)")) commands.push_back({UiCommand::Kind::send_jet});
     ImGui::EndDisabled();
     ImGui::SameLine();
     if (!snapshot.load.realism) ImGui::TextDisabled("needs the realism model");

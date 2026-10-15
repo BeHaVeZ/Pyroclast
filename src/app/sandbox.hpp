@@ -35,6 +35,7 @@ struct Sandbox
     LingerSettings linger;
     float humidity = 0.8f;
     Rotorcraft rotorcraft;
+    Jetcraft jetcraft;
     std::optional<float3> last_click;
     std::uint32_t flights = 0;
     std::optional<ParticleCounters> counters;
@@ -47,6 +48,7 @@ struct Sandbox
     void clear();
     void spawn(const Ray& ray, std::string_view source);
     void send_helicopter();
+    void send_jet();
     void release_due();
     void update_aim(bool needed);
     void build_marks();

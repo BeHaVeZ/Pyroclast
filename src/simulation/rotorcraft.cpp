@@ -188,6 +188,11 @@ RotorStep make_step(double3 hub, double3 air, double thrust_share, const std::fu
 }
 }
 
+double3 lingering_wind_at(const WindSettings& wind, std::uint32_t tick, bool gusts, double height, std::uint32_t mask)
+{
+    return wind_at_hub(wind, tick, gusts, height, mask);
+}
+
 double length(double3 a)
 {
     return std::sqrt(dot(a, a));
@@ -298,14 +303,14 @@ void FlightBuilder::cruise(std::uint32_t ticks)
     append(ticks, state_.position + state_.velocity * (ticks * tick_seconds), state_.velocity, {});
 }
 
-void FlightBuilder::change_velocity(double3 target)
+void FlightBuilder::change_velocity(double3 target, double limit)
 {
     const double3 change = target - state_.velocity;
     const double magnitude = length(change);
     if (magnitude <= 0) return;
     const double3 direction = change * (1 / magnitude);
     const double ramp = rotor::jerk_ticks * tick_seconds;
-    const auto steady_ticks = static_cast<std::uint32_t>(std::max(0.0, std::ceil((magnitude / rotor::acceleration_limit - ramp) * 60 - 1e-9)));
+    const auto steady_ticks = static_cast<std::uint32_t>(std::max(0.0, std::ceil((magnitude / limit - ramp) * 60 - 1e-9)));
     const double steady = steady_ticks * tick_seconds;
     const double acceleration = magnitude / (ramp + steady);
     const double3 a = direction * acceleration;
@@ -320,6 +325,34 @@ void FlightBuilder::change_velocity(double3 target)
     }
     position = position + velocity * ramp + a * (ramp * ramp / 3);
     append(rotor::jerk_ticks, position, target, {});
+}
+
+void FlightBuilder::arc(double3 towards, double radians, double acceleration)
+{
+    const double speed = length(state_.velocity);
+    if (speed <= 0 || radians <= 0 || acceleration <= 0) return;
+    const double3 forward = state_.velocity * (1 / speed);
+    const double3 across = normalize(towards - forward * dot(towards, forward));
+    if (length(across) <= 0) return;
+    const auto ticks = std::max<std::uint32_t>(1, static_cast<std::uint32_t>(std::lround(radians * speed / acceleration * 60)));
+    const double rate = radians / (ticks * tick_seconds);
+    const double radius = speed / rate;
+    const double3 start = state_.position;
+    const auto pieces = std::max<std::uint32_t>(1, static_cast<std::uint32_t>(std::ceil(radians / (rotor::pi / 12) - 1e-9)));
+    plan_.knots.back().acceleration = across * (speed * rate);
+    state_.acceleration = plan_.knots.back().acceleration;
+    std::uint32_t done = 0;
+    for (std::uint32_t piece = 1; piece <= pieces; ++piece)
+    {
+        const std::uint32_t at = static_cast<std::uint32_t>(std::lround(static_cast<double>(ticks) * piece / pieces));
+        if (at == done) continue;
+        const double angle = rate * at * tick_seconds;
+        const double3 position = start + (forward * std::sin(angle) + across * (1 - std::cos(angle))) * radius;
+        const double3 velocity = (forward * std::cos(angle) + across * std::sin(angle)) * speed;
+        const double3 centripetal = (across * std::cos(angle) - forward * std::sin(angle)) * (speed * rate);
+        append(at - done, position, velocity, centripetal);
+        done = at;
+    }
 }
 
 void FlightBuilder::transit_to(double3 point)

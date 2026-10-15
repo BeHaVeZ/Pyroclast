@@ -2,7 +2,7 @@
 // parsed by cmake/Shaders.cmake for the Vulkan shifts: only `static const uint` declarations belong here.
 
 static const uint draw_constant_words = 16;
-static const uint frame_constant_bytes = 16384;
+static const uint frame_constant_bytes = 32768;
 static const uint read_buffer_slots = 8;
 static const uint texture_slots = 2;
 static const uint write_buffer_slots = 6;

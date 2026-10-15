@@ -699,6 +699,10 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
     {
         result.error = "--scenario=" + result.options.scenario + " flies the helicopter; it needs the realism model" + legacy_reason;
     }
+    if (is_jet_scenario(result.options.scenario) && !realism_enabled(model))
+    {
+        result.error = "--scenario=" + result.options.scenario + " flies the jet; it needs the realism model" + legacy_reason;
+    }
     if (linger_specified && !realism_enabled(model))
     {
         result.error = "--linger needs the realism model" + legacy_reason;

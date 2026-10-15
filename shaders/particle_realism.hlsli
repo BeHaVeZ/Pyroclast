@@ -4,6 +4,7 @@
 #include "realism.hlsli"
 #ifdef PYROCLAST_ROTOR
 #include "rotor_flow.hlsli"
+#include "jet_flow.hlsli"
 #endif
 
 struct RealismFootprint
@@ -215,7 +216,8 @@ RealismFootprint realism_footprint(ByteAddressBuffer particles, ByteAddressBuffe
     else depth *= 1 - result.crossfade;
 #ifdef PYROCLAST_ROTOR
     float3 rotor = rotor_draw_air(position.xyz, size);
-    float shred = smoothstep(rotor_shred_start, rotor_shred_full, length(rotor));
+    float3 jet = jet_draw_air(position.xyz, size);
+    float shred = max(smoothstep(rotor_shred_start, rotor_shred_full, length(rotor)), smoothstep(jet_shred_start, jet_shred_full, length(jet)));
     size *= 1 - rotor_shred_size * shred;
     depth *= 1 - rotor_shred_depth * shred;
 #endif
@@ -233,7 +235,7 @@ RealismFootprint realism_footprint(ByteAddressBuffer particles, ByteAddressBuffe
     footprint.opacity = (1 - exp(-depth)) * coverage;
     result.footprint = footprint;
 #ifdef PYROCLAST_ROTOR
-    rotor_stretch(result, rotor);
+    rotor_stretch(result, rotor + jet);
 #endif
     return result;
 }

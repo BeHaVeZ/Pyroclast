@@ -262,6 +262,11 @@ bool VulkanRenderer::create_device(std::string_view requested_adapter)
             skip("compute groups smaller than D3D12's (1,024 threads, 32 KB shared memory)");
             continue;
         }
+        if (limits.maxUniformBufferRange < binding_layout::frame_constant_bytes)
+        {
+            skip("a uniform buffer range below the frame constants' size");
+            continue;
+        }
         VkFormatProperties depth_properties{};
         vkGetPhysicalDeviceFormatProperties(adapter, depth_format, &depth_properties);
         constexpr VkFormatFeatureFlags depth_features = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;

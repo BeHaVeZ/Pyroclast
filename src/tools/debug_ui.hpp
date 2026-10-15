@@ -187,6 +187,7 @@ struct UiCommand
         set_effect_order,
         set_slot_policy,
         send_helicopter,
+        send_jet,
     };
     Kind kind;
     std::uint32_t value = 0;

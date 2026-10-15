@@ -459,8 +459,9 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
     std::uint32_t peak_dust = 0;
     std::int32_t lowest_hub_cm = std::numeric_limits<std::int32_t>::max();
     std::pair<std::uint32_t, std::uint32_t> rotor_slot{pyroclast::never, pyroclast::never};
+    std::uint32_t peak_knots = 0;
     const auto scalability_json = [&coverage, &sandbox, automatic, realism, &peak_clusters, &peak_residual, &ghosts, &rotor_mismatches, &peak_dust,
-                                      &lowest_hub_cm, &rotor_slot]() {
+                                      &lowest_hub_cm, &rotor_slot, &peak_knots]() {
         std::string text = coverage.json();
         if (automatic)
         {
@@ -516,6 +517,13 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     helicopter->plan.name.c_str(), helicopter->plan.list_tick, helicopter->plan.unlist_tick, rotor_slot.first, rotor_slot.second, peak_dust,
                     lowest_hub_cm == std::numeric_limits<std::int32_t>::max() ? -1 : lowest_hub_cm, rotor_mismatches);
                 text += flight;
+            }
+            if (const auto& jet = sandbox.jetcraft.flight())
+            {
+                char passes[160];
+                std::snprintf(passes, sizeof(passes), ",\"jet\":{\"flight\":\"%s\",\"passes\":%zu,\"peak_knots\":%u}", jet->name.c_str(),
+                    jet->passes.size(), peak_knots);
+                text += passes;
             }
         }
         return text;
@@ -700,7 +708,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                 const auto submit_begin = SDL_GetPerformanceCounter();
                 const auto result = sandbox.renderer.render(renderer, demo, sandbox.effects, sandbox.range, drawn, width, height, elapsed,
                     {capture, overlay, sandbox.views, sandbox.layer_mask, sandbox.wind, sandbox.marks, sandbox.scalability, sandbox.counters,
-                        sandbox.linger, sandbox.humidity, &sandbox.rotorcraft});
+                        sandbox.linger, sandbox.humidity, &sandbox.rotorcraft, &sandbox.jetcraft});
                 const auto submit_end = SDL_GetPerformanceCounter();
                 if (result == pyroclast::RenderResult::failed) return 1;
                 if (!unattended)
@@ -730,6 +738,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     const auto& rotor = sandbox.renderer.rotor_frame();
                     if (rotor.exists && rotor.listed) lowest_hub_cm = std::min(lowest_hub_cm, rotor.hub_height_cm);
                     peak_dust = std::max(peak_dust, rotor.census.alive);
+                    peak_knots = std::max(peak_knots, sandbox.renderer.jet_frame().wake.count);
                     if (rotor.slot)
                     {
                         const auto& slot = sandbox.effects.slots()[*rotor.slot];
@@ -1011,6 +1020,16 @@ int run_application(const pyroclast::ApplicationOptions& options)
                 pyroclast::preset_name(options.preset).data(), pose_name(options), pyroclast::benchmark_warmup_frames, script->duration_ticks);
         }
         if (script->flight) sandbox->rotorcraft.fly(*script->flight, pyroclast::helicopter_seed);
+        if (script->jet)
+        {
+            sandbox->jetcraft.fly(*script->jet);
+            for (const auto& pass : script->jet->passes)
+            {
+                const auto over = pyroclast::flight_state(pass, (pass.list_tick + pass.unlist_tick) / 2).position;
+                SDL_Log("Jet pass: listed %u-%u, over (%.1f, %.1f, %.1f), %.1f m above the ground there.", pass.list_tick, pass.unlist_tick, over.x, over.y,
+                    over.z, over.y - static_cast<double>(sandbox->range.terrain().height(static_cast<float>(over.x), static_cast<float>(over.z))));
+            }
+        }
         scenario.emplace(std::move(*script), options.benchmark, benchmark ? pyroclast::benchmark_warmup_frames : 0);
         if (!options.profile_tick) sandbox->particles.set_fixed_ticks(true);
         if (benchmark) sandbox->particles.toggle_pause();
@@ -1120,7 +1139,8 @@ int main(int argc, char** argv)
             "                     realism model: linger-barrage (240 impacts within 30 m, four a second, run for 90 s),\n"
             "                     linger-saturation (1,200 heavy and small-impact impacts, 30 a second, for 50 s), or the\n"
             "                     helicopter over the barrage for 90 s: heli-hover (above the pall, then a low hover beside it),\n"
-            "                     heli-pass (a slow pass through the pall) or heli-landing (a landing in its own brownout).\n"
+            "                     heli-pass (a slow pass through the pall) or heli-landing (a landing in its own brownout),\n"
+            "                     or a jet over the barrage: jet-pass (down the pall at 30 m, then back low at 15 m).\n"
             "  --benchmark=NAME   A named scenario, preset and pose, after 120 warm-up frames at tick 0: single,\n"
             "                     simultaneous-10, -50 or -100 (small-he groups), sustained-barrage (artillery-he),\n"
             "                     smoke-field (100 heavy, from the ground), accumulation (artillery-he), or the realism model\n"

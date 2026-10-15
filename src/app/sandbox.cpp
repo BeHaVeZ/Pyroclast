@@ -46,6 +46,7 @@ void Sandbox::clear()
     effects.clear();
     particles.discard_pending();
     rotorcraft.clear();
+    jetcraft.clear();
     SDL_Log("Particle pool cleared.");
 }
 
@@ -53,6 +54,38 @@ void Sandbox::spawn(const Ray& ray, std::string_view source)
 {
     showcase.fire(range.environment(), props_shown(), ray, showcase.count, source, effects);
     if (const auto hit = range.environment().raycast(ray, std::numeric_limits<float>::infinity(), props_shown())) last_click = hit->point;
+}
+
+void Sandbox::send_jet()
+{
+    if (!realism_enabled(layer_mask))
+    {
+        SDL_Log("The jet needs the realism model.");
+        return;
+    }
+    std::optional<float3> target = last_click;
+    if (!target)
+    {
+        if (const auto hit = range.environment().raycast(crosshair_ray(camera.camera()), std::numeric_limits<float>::infinity(), props_shown()))
+        {
+            target = hit->point;
+        }
+    }
+    if (!target)
+    {
+        SDL_Log("Nothing to fly over.");
+        return;
+    }
+    const float3 forward = camera.camera().forward();
+    const double3 across = normalize(double3{-forward.z, 0, forward.x});
+    std::uint32_t crossing = particles.tick() + 300;
+    if (const auto& flight = jetcraft.flight(); flight && !flight->passes.empty())
+    {
+        crossing = std::max(crossing, flight->passes.back().unlist_tick + 1200);
+    }
+    jetcraft.add_pass(straight_pass("sandbox", double3{target->x, target->y + 40.0, target->z}, across, jet::pass_speed, crossing, 10));
+    SDL_Log("Jet: a pass over (%.1f, %.1f, %.1f) at tick %u.", static_cast<double>(target->x), static_cast<double>(target->y),
+        static_cast<double>(target->z), crossing);
 }
 
 void Sandbox::send_helicopter()
@@ -403,6 +436,7 @@ void apply(UiCommand command, Sandbox& sandbox)
             command.value != 0 ? command.value : sandbox.showcase.count, "crosshair", sandbox.effects);
         break;
     case Kind::send_helicopter: sandbox.send_helicopter(); break;
+    case Kind::send_jet: sandbox.send_jet(); break;
     case Kind::barrage:
         sandbox.showcase.start_barrage(sandbox.range.environment(), sandbox.props_shown(), sandbox.camera.camera(), sandbox.particles.tick());
         break;

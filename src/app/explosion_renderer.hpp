@@ -2,6 +2,7 @@
 
 #include "camera.hpp"
 #include "helicopter_renderer.hpp"
+#include "jet_renderer.hpp"
 #include "rotor_constants.hpp"
 #include "scalability.hpp"
 #include "showcase_marks.hpp"
@@ -33,6 +34,7 @@ public:
         LingerSettings linger;
         float humidity = 0.8f;
         Rotorcraft* rotorcraft = nullptr;
+        Jetcraft* jetcraft = nullptr;
     };
     RenderResult render(GraphicsDevice& device, ParticleSystem& particles, ExplosionSystem& effects, const TestRange& range,
         const Camera& camera, int width, int height, double elapsed_seconds, const FrameOptions& options);
@@ -43,6 +45,7 @@ public:
     std::span<const BlastParameters> blast_classes() const { return blast_classes_; }
     std::uint32_t listed_clusters() const { return listed_clusters_; }
     const RotorFrame& rotor_frame() const { return rotor_frame_; }
+    const JetFrame& jet_frame() const { return jet_frame_; }
     bool particles_drawn() const { return particles_drawn_; }
 
 private:
@@ -60,6 +63,8 @@ private:
     std::uint32_t listed_clusters_ = 0;
     RotorFrame rotor_frame_;
     HelicopterRenderer helicopter_;
+    JetFrame jet_frame_;
+    JetRenderer jet_;
     bool particles_drawn_ = false;
     bool half_smoke_ = false;
     WindDrift drift_;

@@ -48,6 +48,7 @@ constexpr std::array bindings{
     KeyBinding{SDLK_B, false, {Kind::barrage}},
     KeyBinding{SDLK_V, false, {Kind::toggle_bombardment}},
     KeyBinding{SDLK_H, false, {Kind::send_helicopter}},
+    KeyBinding{SDLK_J, false, {Kind::send_jet}},
     KeyBinding{SDLK_F8, false, {Kind::toggle_debug_view, 2}},
     KeyBinding{SDLK_F9, false, {Kind::toggle_debug_view, 3}},
 };
@@ -60,7 +61,7 @@ std::span<const KeyBinding> key_bindings()
 
 std::string_view controls_summary()
 {
-    return "WASD/QE + right mouse: move | click/F: fire | 1-7: preset | C: count | B: barrage | V: bombardment | H: helicopter | "
+    return "WASD/QE + right mouse: move | click/F: fire | 1-7: preset | C: count | B: barrage | V: bombardment | H: helicopter | J: jet | "
            "T: 0.25x | G: walk | F2-F7, F11: views (Ctrl stores) | F8/F9/L: debug views | Space: group | R: clear | P: pause | N: step";
 }
 

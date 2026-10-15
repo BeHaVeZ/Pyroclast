@@ -4,6 +4,7 @@
 #include "blast.hlsli"
 #ifdef PYROCLAST_ROTOR
 #include "rotor_flow.hlsli"
+#include "jet_flow.hlsli"
 #endif
 
 RWByteAddressBuffer arguments : register(u2);
@@ -41,6 +42,18 @@ float3 rotor_step_air(uint step, float3 position, float terrain)
     air += curl_noise(position / (0.5 * rotor_radius) + float3(0, 0.5 * float(tick) / 60.0, 0)) * (rotor_turbulence * mean);
     float speed_squared = dot(air, air);
     if (speed_squared > rotor_speed_limit * rotor_speed_limit) air *= rotor_speed_limit * rsqrt(speed_squared);
+    return air;
+}
+
+float3 jet_step_air(uint step, float3 position)
+{
+    float3 air = jet_air(position, step);
+    float mean = length(air);
+    if (mean <= 0) return 0;
+    uint tick = parameters.tick + step + 1;
+    air += curl_noise(position / jet_turbulence_scale + float3(0, float(tick) / 60.0, 0)) * (jet_turbulence * mean);
+    float speed_squared = dot(air, air);
+    if (speed_squared > jet_speed_limit * jet_speed_limit) air *= jet_speed_limit * rsqrt(speed_squared);
     return air;
 }
 #endif
@@ -84,7 +97,7 @@ void lingering_step(inout float4 position, inout float4 velocity, float size, La
         air += curl_noise(position.xyz * lingering.turbulence_scale - float3(0, position.w * 0.05, 0)) * (lingering.residual_turbulence * crossfade);
     }
 #ifdef PYROCLAST_ROTOR
-    float3 rotor = rotor_step_air(lift.rotor_step, position.xyz, terrain);
+    float3 rotor = rotor_step_air(lift.rotor_step, position.xyz, terrain) + jet_step_air(lift.rotor_step, position.xyz);
     air += rotor;
 #endif
     if (deflect && any(near != 0)) air = deflect_air(environment, near, position.xyz, radius, air);

@@ -3,6 +3,9 @@
 #include "particle_layout.hlsli"
 #ifdef PYROCLAST_REALISM
 #include "realism_layout.hlsli"
+#ifdef PYROCLAST_ROTOR
+#include "jet_layout.hlsli"
+#endif
 #endif
 
 struct FrameConstants
@@ -52,6 +55,10 @@ struct FrameConstants
     float4 rotor_draw[3];
     float4 rotor_discs[6];
     float4 rotor_dust_shadow[2];
+    uint4 jet_state;
+    float4 jet_box[2];
+    float4 jet_heads[maximum_simulation_steps * 4];
+    float4 jet_knots[jet_knot_limit * 4];
 #endif
 #endif
 };

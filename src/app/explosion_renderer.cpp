@@ -1,5 +1,6 @@
 #include "explosion_renderer.hpp"
 #include "realism_constants.hpp"
+#include "jet_constants.hpp"
 #include "rotor_constants.hpp"
 #include "../graphics/realism_layout.hpp"
 #include "../simulation/effect_lights.hpp"
@@ -23,7 +24,8 @@ bool ExplosionRenderer::initialize(GraphicsDevice& device, TargetFormat scene_fo
         {Shader::debug_lines_vertex, Shader::debug_lines_pixel, BlendMode::opaque, DepthMode::test, scene_format, Topology::lines});
     showcase_lines_ = device.create_graphics_pipeline(
         {Shader::showcase_lines_vertex, Shader::debug_lines_pixel, BlendMode::opaque, DepthMode::test, scene_format, Topology::lines});
-    if (!scene_ || !depth_ || !present_ || !present_waves_ || !wilson_ || !lines_ || !showcase_lines_ || !helicopter_.initialize(device, scene_format))
+    if (!scene_ || !depth_ || !present_ || !present_waves_ || !wilson_ || !lines_ || !showcase_lines_ || !helicopter_.initialize(device, scene_format) ||
+        !jet_.initialize(device, scene_format))
     {
         return false;
     }
@@ -51,8 +53,9 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     }
     effects.start(tick, options.scalability.slot_policy, realism ? &realism_start : nullptr);
     const auto active = effects.active();
+    auto* jetcraft = realism ? options.jetcraft : nullptr;
     auto units = realism ? count_units(effects, tick) : FrameUnits{};
-    units.rotor = rotorcraft && rotorcraft->variants();
+    units.rotor = (rotorcraft && rotorcraft->variants()) || (jetcraft && jetcraft->variants());
     const auto& scalability = options.scalability;
     const bool automatic = scalability.smoke_resolution == SmokeResolution::automatic;
     const double screen_pixels = static_cast<double>(width) * static_cast<double>(height);
@@ -146,6 +149,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     const Draw lines{*lines_, {}, {work.effects}, 32, std::max(work.effects, 1u), "Effect lines"};
     listed_clusters_ = 0;
     rotor_frame_ = {};
+    jet_frame_ = {};
     if (realism)
     {
         if (rotorcraft)
@@ -162,6 +166,11 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
         {
             fill_rotor_constants(constants, *rotorcraft, rotor_frame_);
         }
+        if (jetcraft)
+        {
+            jet_frame_ = prepare_jet(*jetcraft, range.terrain(), options.wind, gusts, options.layer_mask, tick, work.steps, key_tick);
+            fill_jet_constants(constants, jet_frame_);
+        }
     }
     const bool simulate = realism ? work.units != 0 : work.effects != 0;
     particles_drawn_ = simulate;
@@ -173,6 +182,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     std::vector<Draw> helicopter_shadow;
     const float3 sun_towards{constants.sun_direction.x, constants.sun_direction.y, constants.sun_direction.z};
     if (realism) helicopter_.scene_draws(rotor_frame_, range.environment_buffer(), sun_towards, scene_draws, helicopter_shadow);
+    if (realism) jet_.scene_draws(jet_frame_, scene_draws);
     scene_draws.push_back(opaque.sky);
     for (const auto& draw : helicopter_shadow) scene_draws.push_back(draw);
     if (props && options.views.collision_boxes) scene_draws.push_back(opaque.colliders);

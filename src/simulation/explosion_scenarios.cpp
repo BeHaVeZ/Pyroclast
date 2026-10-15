@@ -106,6 +106,21 @@ FlightPlan helicopter_flight(std::string_view name, const Environment& environme
 }
 }
 
+JetFlight jet_flight(std::string_view name, const Environment& environment)
+{
+    JetFlight flight;
+    flight.name = std::string(name);
+    const auto& terrain = environment.terrain();
+    const auto level = [&terrain](double z, double agl) {
+        double height = terrain.height(0, static_cast<float>(z)) + agl;
+        for (double x = -300; x <= 300; x += 2) height = std::max(height, terrain.height(static_cast<float>(x), static_cast<float>(z)) + 8.0);
+        return height;
+    };
+    flight.passes.push_back(straight_pass("jet-pass", {0, level(0, 30), 0}, {1, 0, 0}, jet::pass_speed, 2400, 10));
+    flight.passes.push_back(straight_pass("jet-pass", {0, level(0, 15), 0}, {-1, 0, 0}, jet::pass_speed, 3600, 10));
+    return flight;
+}
+
 double helicopter_cruise_height(const Environment& environment, double ax, double az, double bx, double bz, double agl)
 {
     const auto& terrain = environment.terrain();
@@ -182,7 +197,7 @@ std::optional<Scenario> make_scenario(std::string_view name, const Environment& 
             scenario.events.push_back({index * interval, ground_event(terrain, offset.x, offset.y, accumulation_first_seed + index, preset)});
         }
     }
-    else if (name == "linger-barrage" || is_helicopter_scenario(name))
+    else if (name == "linger-barrage" || is_helicopter_scenario(name) || is_jet_scenario(name))
     {
         const std::uint32_t impacts = name == "heli-pass" ? 160 : name == "heli-landing" ? 24 : 240;
         for (std::uint32_t index = 0; index < impacts; ++index)
@@ -214,7 +229,8 @@ std::optional<Scenario> make_scenario(std::string_view name, const Environment& 
         for (const auto& event : group_events(terrain, count, preset)) scenario.events.push_back({0, event});
     }
     if (is_helicopter_scenario(name)) scenario.flight = helicopter_flight(name, environment);
-    if (name == "linger-barrage" || is_helicopter_scenario(name)) scenario.duration_ticks = 5400;
+    if (is_jet_scenario(name)) scenario.jet = jet_flight(name, environment);
+    if (name == "linger-barrage" || is_helicopter_scenario(name) || is_jet_scenario(name)) scenario.duration_ticks = 5400;
     else if (name == "linger-saturation") scenario.duration_ticks = 3000;
     else
     {
