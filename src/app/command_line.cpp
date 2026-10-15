@@ -3,6 +3,7 @@
 #include "../simulation/explosion_scenarios.hpp"
 
 #include <array>
+#include <bitset>
 #include <charconv>
 #include <cmath>
 #include <optional>
@@ -79,588 +80,431 @@ std::string or_list(std::string_view names)
 }
 }
 
+namespace
+{
+struct ParseState
+{
+    ApplicationOptions& options;
+    std::optional<bool> realism;
+    std::uint32_t disabled = 0;
+};
+
+using FlagHandler = std::string (*)(std::string_view value, ParseState& state);
+
+struct Flag
+{
+    std::string_view name;
+    bool takes_value;
+    FlagHandler apply;
+};
+
+std::string ok()
+{
+    return {};
+}
+
+template <typename Take>
+bool each_listed(std::string_view list, Take&& take)
+{
+    for (std::size_t start = 0;;)
+    {
+        const auto comma = list.find(',', start);
+        if (!take(list.substr(start, comma == std::string_view::npos ? std::string_view::npos : comma - start))) return false;
+        if (comma == std::string_view::npos) return true;
+        start = comma + 1;
+    }
+}
+
+std::string parse_window(std::string_view value, ParseState& state)
+{
+    const auto separator = value.find('x');
+    const auto width = separator == std::string_view::npos ? std::nullopt :
+        parse_count(value.substr(0, separator), minimum_window.width, maximum_window.width);
+    const auto height = separator == std::string_view::npos ? std::nullopt :
+        parse_count(value.substr(separator + 1), minimum_window.height, maximum_window.height);
+    if (!width || !height) return "Expected --window=WxH in pixels, from 640x360 to 7680x4320.";
+    state.options.window = {*width, *height};
+    return ok();
+}
+
+std::string parse_debug_views(std::string_view list, ParseState& state)
+{
+    auto& views = state.options.debug_views;
+    const bool listed = each_listed(list, [&views](std::string_view name) {
+        if (name == "bounds") views.effect_bounds = true;
+        else if (name == "boxes") views.collision_boxes = true;
+        else if (name == "regions") views.spawn_regions = true;
+        else if (name == "wind") views.wind_arrow = true;
+        else if (name == "all") views = {true, true, true, true};
+        else return false;
+        return true;
+    });
+    return listed ? ok() : "Expected --debug-views=bounds, boxes, regions, wind or all, comma-separated.";
+}
+
+std::string parse_adapter(std::string_view value, ParseState& state)
+{
+    state.options.adapter = value;
+    return value.empty() ? "Expected --adapter=<part of the GPU name> or --adapter=warp." : ok();
+}
+
+std::string parse_realism(std::string_view value, ParseState& state)
+{
+    if (value != "on" && value != "off") return "Expected --realism=on or off.";
+    state.realism = value == "on";
+    return ok();
+}
+
+std::string parse_linger(std::string_view value, ParseState& state)
+{
+    const auto seconds = parse_count(value, 10, 300);
+    if (!seconds) return "Expected --linger=S, seconds from 10 to 300.";
+    state.options.linger_seconds = *seconds;
+    return ok();
+}
+
+std::string parse_humidity(std::string_view value, ParseState& state)
+{
+    const auto percent = parse_count(value, 0, 100);
+    if (!percent) return "Expected --humidity=P, relative humidity in percent from 0 to 100.";
+    state.options.humidity_percent = *percent;
+    return ok();
+}
+
+std::string parse_ui(std::string_view value, ParseState& state)
+{
+    if (value != "on" && value != "off") return "Expected --ui=on or off.";
+    state.options.ui = value == "on";
+    return ok();
+}
+
+std::string parse_view(std::string_view value, ParseState& state)
+{
+    for (std::uint32_t index = 0; index <= static_cast<std::uint32_t>(RangeView::far); ++index)
+    {
+        if (value == view_name(static_cast<RangeView>(index)))
+        {
+            state.options.view = static_cast<RangeView>(index);
+            return ok();
+        }
+    }
+    return "Expected --view=overview, ground, hill, aerial, range, yard or far.";
+}
+
+std::string parse_camera(std::string_view value, ParseState& state)
+{
+    std::array<float, 6> pose{};
+    const bool parsed = parse_numbers(value, pose);
+    const float x = pose[3] - pose[0];
+    const float y = pose[4] - pose[1];
+    const float z = pose[5] - pose[2];
+    if (!parsed || x * x + y * y + z * z < 1e-4f) return "Expected --camera=EX,EY,EZ,TX,TY,TZ: an eye and a different target in metres.";
+    state.options.camera = pose;
+    return ok();
+}
+
+std::string parse_counter_log(std::string_view value, ParseState& state)
+{
+    state.options.counter_log = value;
+    return value.empty() ? "Expected --counter-log=<file.csv>." : ok();
+}
+
+std::string parse_benchmark(std::string_view value, ParseState& state)
+{
+    if (!benchmark_workload(value)) return "Expected --benchmark=" + or_list(benchmark_names) + ".";
+    state.options.benchmark = std::string(value);
+    return ok();
+}
+
+std::string parse_scenario(std::string_view value, ParseState& state)
+{
+    state.options.scenario = value;
+    return is_scenario_name(state.options.scenario) ? ok() : "Expected --scenario=" + or_list(scenario_names) + ".";
+}
+
+std::string parse_preset(std::string_view value, ParseState& state)
+{
+    const auto preset = preset_from_name(value);
+    if (!preset) return "Expected --preset=" + or_list(preset_names) + ".";
+    state.options.preset = *preset;
+    return ok();
+}
+
+std::string parse_wind(std::string_view value, ParseState& state)
+{
+    float parsed[3]{};
+    const auto wind = parse_numbers(value, parsed) ? validated({parsed[0], parsed[1], parsed[2]}) : std::nullopt;
+    if (!wind) return "Expected --wind=SPEED,DIRECTION,GUSTINESS (0-40 m/s, degrees, 0-1).";
+    state.options.wind = *wind;
+    return ok();
+}
+
+std::string parse_disable(std::string_view list, ParseState& state)
+{
+    const bool listed = each_listed(list, [&state](std::string_view name) {
+        const auto bit = disable_bit(name);
+        if (bit) state.disabled |= 1u << *bit;
+        return bit.has_value();
+    });
+    return listed ? ok() : "Expected --disable=<comma-separated " + or_list(disable_names) + ">.";
+}
+
+std::string parse_scene_format(std::string_view value, ParseState& state)
+{
+    for (const auto format : {SceneFormat::rgba16f, SceneFormat::r11g11b10f, SceneFormat::rgba8})
+    {
+        if (value == scene_format_name(format))
+        {
+            state.options.scene_format = format;
+            return ok();
+        }
+    }
+    return "Expected --scene-format=rgba16f, r11g11b10f or rgba8.";
+}
+
+std::string parse_smoke_resolution(std::string_view value, ParseState& state)
+{
+    auto& resolution = state.options.scalability.smoke_resolution;
+    if (value == "half") resolution = SmokeResolution::half;
+    else if (value == "auto") resolution = SmokeResolution::automatic;
+    else if (value != "full") return "Expected --smoke-resolution=full, half or auto.";
+    return ok();
+}
+
+std::string parse_smoke_lod(std::string_view value, ParseState& state)
+{
+    float pixels[1]{};
+    if (!parse_numbers(value, pixels) || pixels[0] <= 0 || pixels[0] > 4096) return "Expected --smoke-lod=P, a radius in pixels above 0 and at most 4096.";
+    state.options.scalability.smoke_lod = pixels[0];
+    return ok();
+}
+
+std::string parse_faint_floor(std::string_view value, ParseState& state)
+{
+    float opacity[1]{};
+    if (!parse_numbers(value, opacity) || opacity[0] <= 0 || opacity[0] >= 1) return "Expected --faint-floor=F, an opacity between 0 and 1.";
+    state.options.scalability.faint_floor = opacity[0];
+    return ok();
+}
+
+std::string parse_slot_policy(std::string_view value, ParseState& state)
+{
+    auto& policy = state.options.scalability.slot_policy;
+    if (value == "evict-oldest") policy = SlotPolicy::evict_oldest;
+    else if (value == "graduate-oldest") policy = SlotPolicy::graduate_oldest;
+    else if (value != "drop-new") return "Expected --slot-policy=drop-new, evict-oldest or graduate-oldest.";
+    return ok();
+}
+
+std::string parse_effect_order(std::string_view value, ParseState& state)
+{
+    auto& order = state.options.scalability.effect_order;
+    if (value == "none") order = EffectOrder::none;
+    else if (value == "cloud") order = EffectOrder::cloud;
+    else if (value != "origin") return "Expected --effect-order=origin, none or cloud.";
+    return ok();
+}
+
+std::string parse_smoke_budget(std::string_view value, ParseState& state)
+{
+    const bool count = value.starts_with("count:");
+    float limit[1]{};
+    const auto number = value.substr(value.find(':') == std::string_view::npos ? value.size() : value.find(':') + 1);
+    if ((!count && !value.starts_with("coverage:")) || !parse_numbers(number, limit) || limit[0] <= 0)
+    {
+        return "Expected --smoke-budget=coverage:SCREENS or count:PARTICLES, a positive number.";
+    }
+    state.options.scalability.smoke_budget = {count, limit[0]};
+    return ok();
+}
+
+std::string parse_profile_tick(std::string_view value, ParseState& state)
+{
+    state.options.profile_tick = parse_count(value, 0, 100'000);
+    return state.options.profile_tick ? ok() : "Expected --profile-tick=N with an integer from 0 to 480 (1 up to the scenario's duration with --scenario).";
+}
+
+std::string parse_exit_after(std::string_view value, ParseState& state)
+{
+    state.options.exit_after = parse_count(value, 1, 10'000'000);
+    return state.options.exit_after ? ok() : "Expected --exit-after=N with an integer from 1 to 10000000.";
+}
+
+std::string parse_capture_sequence(std::string_view value, ParseState& state)
+{
+    state.options.capture_sequence = value;
+    return value.empty() ? "Expected --capture-sequence=<folder>." : ok();
+}
+
+std::string parse_capture_from(std::string_view value, ParseState& state)
+{
+    state.options.capture_from = parse_count(value, 1, 100'000);
+    return state.options.capture_from ? ok() : "Expected --capture-from=T with an integer from 1 to 100000.";
+}
+
+std::string parse_capture_to(std::string_view value, ParseState& state)
+{
+    state.options.capture_to = parse_count(value, 1, 100'000);
+    return state.options.capture_to ? ok() : "Expected --capture-to=T with an integer from 1 to 100000.";
+}
+
+std::string parse_capture_tick(std::string_view value, ParseState& state)
+{
+    state.options.capture_tick = parse_count(value, 1, 100'000);
+    return state.options.capture_tick ? ok() : "Expected --capture-tick=N with an integer from 1 to 100000.";
+}
+
+std::string parse_capture(std::string_view value, ParseState& state)
+{
+    state.options.capture_path = value;
+    return value.empty() ? "Expected --capture=<file.png>." : ok();
+}
+
+std::string parse_explosions(std::string_view value, ParseState& state)
+{
+    const auto explosions = parse_count(value, 1, maximum_explosions);
+    if (!explosions || !is_explosion_scenario(*explosions)) return "Expected --explosions=1, 10, 50, or 100.";
+    state.options.explosions = *explosions;
+    return ok();
+}
+
+std::string parse_renderer(std::string_view value, ParseState& state)
+{
+    if (value == "d3d12") state.options.renderer = Renderer::d3d12;
+    else if (value == "vulkan") state.options.renderer = Renderer::vulkan;
+    else return "Invalid renderer '" + std::string(value) + "'. Expected --renderer=d3d12 or --renderer=vulkan.";
+    return ok();
+}
+
+template <bool ApplicationOptions::*Member>
+std::string set_switch(std::string_view, ParseState& state)
+{
+    state.options.*Member = true;
+    return ok();
+}
+
+std::string set_half_light(std::string_view, ParseState& state)
+{
+    state.options.scalability.half_light = true;
+    return ok();
+}
+
+std::string set_coverage(std::string_view, ParseState& state)
+{
+    state.options.scalability.coverage = true;
+    return ok();
+}
+
+std::string set_help(std::string_view, ParseState& state)
+{
+    state.options.show_help = true;
+    return ok();
+}
+
+constexpr Flag flags[] = {
+    {"--help", false, set_help},
+    {"--gpu-timing", false, set_switch<&ApplicationOptions::gpu_timing>},
+    {"--gpu-regions", false, set_switch<&ApplicationOptions::gpu_regions>},
+    {"--half-light", false, set_half_light},
+    {"--coverage", false, set_coverage},
+    {"--borderless", false, set_switch<&ApplicationOptions::borderless>},
+    {"--effect-lines", false, set_switch<&ApplicationOptions::effect_lines>},
+    {"--gpu-validation", false, set_switch<&ApplicationOptions::gpu_validation>},
+    {"--window", true, parse_window},
+    {"--debug-views", true, parse_debug_views},
+    {"--adapter", true, parse_adapter},
+    {"--realism", true, parse_realism},
+    {"--linger", true, parse_linger},
+    {"--humidity", true, parse_humidity},
+    {"--ui", true, parse_ui},
+    {"--view", true, parse_view},
+    {"--camera", true, parse_camera},
+    {"--counter-log", true, parse_counter_log},
+    {"--benchmark", true, parse_benchmark},
+    {"--scenario", true, parse_scenario},
+    {"--preset", true, parse_preset},
+    {"--wind", true, parse_wind},
+    {"--disable", true, parse_disable},
+    {"--scene-format", true, parse_scene_format},
+    {"--smoke-resolution", true, parse_smoke_resolution},
+    {"--smoke-lod", true, parse_smoke_lod},
+    {"--faint-floor", true, parse_faint_floor},
+    {"--slot-policy", true, parse_slot_policy},
+    {"--effect-order", true, parse_effect_order},
+    {"--smoke-budget", true, parse_smoke_budget},
+    {"--profile-tick", true, parse_profile_tick},
+    {"--exit-after", true, parse_exit_after},
+    {"--capture-sequence", true, parse_capture_sequence},
+    {"--capture-from", true, parse_capture_from},
+    {"--capture-to", true, parse_capture_to},
+    {"--capture-tick", true, parse_capture_tick},
+    {"--capture", true, parse_capture},
+    {"--explosions", true, parse_explosions},
+    {"--renderer", true, parse_renderer},
+};
+
+const Flag* find_flag(std::string_view argument)
+{
+    const auto equals = argument.find('=');
+    const auto name = argument.substr(0, equals);
+    for (const auto& flag : flags)
+    {
+        if (flag.name == name && flag.takes_value == (equals != std::string_view::npos)) return &flag;
+    }
+    return nullptr;
+}
+}
+
 CommandLineResult parse_command_line(std::span<const char* const> arguments)
 {
     CommandLineResult result;
-    bool renderer_specified = false;
-    bool explosions_specified = false;
-    bool profile_specified = false;
-    bool smoke_specified = false;
-    bool scene_format_specified = false;
-    bool scenario_specified = false;
-    bool debug_views_specified = false;
-    bool preset_specified = false;
-    bool disable_specified = false;
-    bool wind_specified = false;
-    bool capture_specified = false;
-    bool view_specified = false;
-    bool budget_specified = false;
-    bool order_specified = false;
-    bool policy_specified = false;
-    bool window_specified = false;
-    std::optional<bool> realism;
-    bool linger_specified = false;
-    bool humidity_specified = false;
-    std::uint32_t disabled = 0;
-    const auto set_once = [&result](bool& flag, const char* name) {
-        if (flag)
+    ParseState state{result.options};
+    std::bitset<std::size(flags)> given;
+    const auto seen = [&given](std::string_view name) {
+        for (std::size_t index = 0; index < std::size(flags); ++index)
         {
-            result.error = std::string("Specify ") + name + " only once.";
-            return false;
+            if (flags[index].name == name) return given.test(index);
         }
-        flag = true;
-        return true;
+        return false;
     };
-
     for (const char* argument : arguments)
     {
         const std::string_view option(argument);
-        if (option == "--help")
+        const auto* flag = find_flag(option);
+        if (!flag)
         {
-            result.options.show_help = true;
+            result.error = "Unknown argument '" + std::string(option) + "'. Use --help for usage.";
+            return result;
         }
-        else if (option == "--gpu-timing")
+        const auto index = static_cast<std::size_t>(flag - std::begin(flags));
+        if (given.test(index) && flag->name != "--help")
         {
-            if (!set_once(result.options.gpu_timing, "--gpu-timing")) return result;
+            result.error = "Specify " + std::string(flag->name) + " only once.";
+            return result;
         }
-        else if (option == "--gpu-regions")
+        given.set(index);
+        const auto value = flag->takes_value ? option.substr(flag->name.size() + 1) : std::string_view();
+        if (auto error = flag->apply(value, state); !error.empty())
         {
-            if (!set_once(result.options.gpu_regions, "--gpu-regions")) return result;
-        }
-        else if (option == "--half-light")
-        {
-            if (!set_once(result.options.scalability.half_light, "--half-light")) return result;
-        }
-        else if (option == "--coverage")
-        {
-            if (!set_once(result.options.scalability.coverage, "--coverage")) return result;
-        }
-        else if (option == "--borderless")
-        {
-            if (!set_once(result.options.borderless, "--borderless")) return result;
-        }
-        else if (option.starts_with("--window="))
-        {
-            if (window_specified)
-            {
-                result.error = "Specify --window only once.";
-                return result;
-            }
-            window_specified = true;
-            const auto value = option.substr(std::string_view("--window=").size());
-            const auto separator = value.find('x');
-            const auto width = separator == std::string_view::npos ? std::nullopt :
-                parse_count(value.substr(0, separator), minimum_window.width, maximum_window.width);
-            const auto height = separator == std::string_view::npos ? std::nullopt :
-                parse_count(value.substr(separator + 1), minimum_window.height, maximum_window.height);
-            if (!width || !height)
-            {
-                result.error = "Expected --window=WxH in pixels, from 640x360 to 7680x4320.";
-                return result;
-            }
-            result.options.window = {*width, *height};
-        }
-        else if (option == "--effect-lines")
-        {
-            if (!set_once(result.options.effect_lines, "--effect-lines")) return result;
-        }
-        else if (option.starts_with("--debug-views="))
-        {
-            if (debug_views_specified)
-            {
-                result.error = "Specify --debug-views only once.";
-                return result;
-            }
-            debug_views_specified = true;
-            const auto list = option.substr(std::string_view("--debug-views=").size());
-            auto& views = result.options.debug_views;
-            std::size_t start = 0;
-            while (true)
-            {
-                const auto comma = list.find(',', start);
-                const auto name = list.substr(start, comma == std::string_view::npos ? std::string_view::npos : comma - start);
-                if (name == "bounds") views.effect_bounds = true;
-                else if (name == "boxes") views.collision_boxes = true;
-                else if (name == "regions") views.spawn_regions = true;
-                else if (name == "wind") views.wind_arrow = true;
-                else if (name == "all") views = {true, true, true, true};
-                else
-                {
-                    result.error = "Expected --debug-views=bounds, boxes, regions, wind or all, comma-separated.";
-                    return result;
-                }
-                if (comma == std::string_view::npos) break;
-                start = comma + 1;
-            }
-        }
-        else if (option == "--gpu-validation")
-        {
-            if (!set_once(result.options.gpu_validation, "--gpu-validation")) return result;
-        }
-        else if (option.starts_with("--adapter="))
-        {
-            if (!result.options.adapter.empty())
-            {
-                result.error = "Specify --adapter only once.";
-                return result;
-            }
-            result.options.adapter = option.substr(std::string_view("--adapter=").size());
-            if (result.options.adapter.empty())
-            {
-                result.error = "Expected --adapter=<part of the GPU name> or --adapter=warp.";
-                return result;
-            }
-        }
-        else if (option.starts_with("--realism="))
-        {
-            if (realism)
-            {
-                result.error = "Specify --realism only once.";
-                return result;
-            }
-            const auto value = option.substr(std::string_view("--realism=").size());
-            if (value != "on" && value != "off")
-            {
-                result.error = "Expected --realism=on or off.";
-                return result;
-            }
-            realism = value == "on";
-        }
-        else if (option.starts_with("--linger="))
-        {
-            if (linger_specified)
-            {
-                result.error = "Specify --linger only once.";
-                return result;
-            }
-            linger_specified = true;
-            const auto seconds = parse_count(option.substr(std::string_view("--linger=").size()), 10, 300);
-            if (!seconds)
-            {
-                result.error = "Expected --linger=S, seconds from 10 to 300.";
-                return result;
-            }
-            result.options.linger_seconds = *seconds;
-        }
-        else if (option.starts_with("--humidity="))
-        {
-            if (humidity_specified)
-            {
-                result.error = "Specify --humidity only once.";
-                return result;
-            }
-            humidity_specified = true;
-            const auto percent = parse_count(option.substr(std::string_view("--humidity=").size()), 0, 100);
-            if (!percent)
-            {
-                result.error = "Expected --humidity=P, relative humidity in percent from 0 to 100.";
-                return result;
-            }
-            result.options.humidity_percent = *percent;
-        }
-        else if (option.starts_with("--ui="))
-        {
-            if (result.options.ui)
-            {
-                result.error = "Specify --ui only once.";
-                return result;
-            }
-            const auto value = option.substr(std::string_view("--ui=").size());
-            if (value != "on" && value != "off")
-            {
-                result.error = "Expected --ui=on or off.";
-                return result;
-            }
-            result.options.ui = value == "on";
-        }
-        else if (option.starts_with("--view="))
-        {
-            if (view_specified)
-            {
-                result.error = "Specify --view only once.";
-                return result;
-            }
-            view_specified = true;
-            const auto value = option.substr(std::string_view("--view=").size());
-            if (value == "overview") result.options.view = RangeView::overview;
-            else if (value == "ground") result.options.view = RangeView::ground;
-            else if (value == "hill") result.options.view = RangeView::hill;
-            else if (value == "aerial") result.options.view = RangeView::aerial;
-            else if (value == "range") result.options.view = RangeView::range;
-            else if (value == "yard") result.options.view = RangeView::yard;
-            else if (value == "far") result.options.view = RangeView::far;
-            else
-            {
-                result.error = "Expected --view=overview, ground, hill, aerial, range, yard or far.";
-                return result;
-            }
-        }
-        else if (option.starts_with("--camera="))
-        {
-            if (result.options.camera)
-            {
-                result.error = "Specify --camera only once.";
-                return result;
-            }
-            std::array<float, 6> pose{};
-            const bool parsed = parse_numbers(option.substr(std::string_view("--camera=").size()), pose);
-            const float x = pose[3] - pose[0];
-            const float y = pose[4] - pose[1];
-            const float z = pose[5] - pose[2];
-            if (!parsed || x * x + y * y + z * z < 1e-4f)
-            {
-                result.error = "Expected --camera=EX,EY,EZ,TX,TY,TZ: an eye and a different target in metres.";
-                return result;
-            }
-            result.options.camera = pose;
-        }
-        else if (option.starts_with("--counter-log="))
-        {
-            if (!result.options.counter_log.empty())
-            {
-                result.error = "Specify --counter-log only once.";
-                return result;
-            }
-            result.options.counter_log = option.substr(std::string_view("--counter-log=").size());
-            if (result.options.counter_log.empty())
-            {
-                result.error = "Expected --counter-log=<file.csv>.";
-                return result;
-            }
-        }
-        else if (option.starts_with("--benchmark="))
-        {
-            if (!result.options.benchmark.empty())
-            {
-                result.error = "Specify --benchmark only once.";
-                return result;
-            }
-            const auto value = option.substr(std::string_view("--benchmark=").size());
-            if (!benchmark_workload(value))
-            {
-                result.error = "Expected --benchmark=" + or_list(benchmark_names) + ".";
-                return result;
-            }
-            result.options.benchmark = std::string(value);
-        }
-        else if (option.starts_with("--scenario="))
-        {
-            if (scenario_specified)
-            {
-                result.error = "Specify --scenario only once.";
-                return result;
-            }
-            scenario_specified = true;
-            result.options.scenario = option.substr(std::string_view("--scenario=").size());
-            if (!is_scenario_name(result.options.scenario))
-            {
-                result.error = "Expected --scenario=" + or_list(scenario_names) + ".";
-                return result;
-            }
-        }
-        else if (option.starts_with("--preset="))
-        {
-            if (preset_specified)
-            {
-                result.error = "Specify --preset only once.";
-                return result;
-            }
-            preset_specified = true;
-            const auto preset = preset_from_name(option.substr(std::string_view("--preset=").size()));
-            if (!preset)
-            {
-                result.error = "Expected --preset=" + or_list(preset_names) + ".";
-                return result;
-            }
-            result.options.preset = *preset;
-        }
-        else if (option.starts_with("--wind="))
-        {
-            if (wind_specified)
-            {
-                result.error = "Specify --wind only once.";
-                return result;
-            }
-            wind_specified = true;
-            float parsed[3]{};
-            const bool valid = parse_numbers(option.substr(std::string_view("--wind=").size()), parsed);
-            const auto wind = valid ? validated({parsed[0], parsed[1], parsed[2]}) : std::nullopt;
-            if (!wind)
-            {
-                result.error = "Expected --wind=SPEED,DIRECTION,GUSTINESS (0-40 m/s, degrees, 0-1).";
-                return result;
-            }
-            result.options.wind = *wind;
-        }
-        else if (option.starts_with("--disable="))
-        {
-            if (disable_specified)
-            {
-                result.error = "Specify --disable only once.";
-                return result;
-            }
-            disable_specified = true;
-            const auto list = option.substr(std::string_view("--disable=").size());
-            for (std::size_t start = 0;;)
-            {
-                const auto comma = list.find(',', start);
-                const auto name = list.substr(start, comma == std::string_view::npos ? std::string_view::npos : comma - start);
-                const auto bit = disable_bit(name);
-                if (!bit)
-                {
-                    result.error = "Expected --disable=<comma-separated " + or_list(disable_names) + ">.";
-                    return result;
-                }
-                disabled |= 1u << *bit;
-                if (comma == std::string_view::npos) break;
-                start = comma + 1;
-            }
-        }
-        else if (option.starts_with("--scene-format="))
-        {
-            if (scene_format_specified)
-            {
-                result.error = "Specify --scene-format only once.";
-                return result;
-            }
-            scene_format_specified = true;
-            const auto value = option.substr(std::string_view("--scene-format=").size());
-            if (value == "rgba16f") result.options.scene_format = SceneFormat::rgba16f;
-            else if (value == "r11g11b10f") result.options.scene_format = SceneFormat::r11g11b10f;
-            else if (value == "rgba8") result.options.scene_format = SceneFormat::rgba8;
-            else
-            {
-                result.error = "Expected --scene-format=rgba16f, r11g11b10f or rgba8.";
-                return result;
-            }
-        }
-        else if (option.starts_with("--smoke-resolution="))
-        {
-            if (smoke_specified)
-            {
-                result.error = "Specify --smoke-resolution only once.";
-                return result;
-            }
-            smoke_specified = true;
-            const auto value = option.substr(std::string_view("--smoke-resolution=").size());
-            auto& resolution = result.options.scalability.smoke_resolution;
-            if (value == "half") resolution = SmokeResolution::half;
-            else if (value == "auto") resolution = SmokeResolution::automatic;
-            else if (value != "full")
-            {
-                result.error = "Expected --smoke-resolution=full, half or auto.";
-                return result;
-            }
-        }
-        else if (option.starts_with("--smoke-lod=") || option.starts_with("--faint-floor="))
-        {
-            const bool lod = option.starts_with("--smoke-lod=");
-            float& setting = lod ? result.options.scalability.smoke_lod : result.options.scalability.faint_floor;
-            if (setting != 0)
-            {
-                result.error = lod ? "Specify --smoke-lod only once." : "Specify --faint-floor only once.";
-                return result;
-            }
-            float value[1]{};
-            const auto text = option.substr(option.find('=') + 1);
-            if (!parse_numbers(text, value) || value[0] <= 0 || (!lod && value[0] >= 1) || (lod && value[0] > 4096))
-            {
-                result.error = lod ? "Expected --smoke-lod=P, a radius in pixels above 0 and at most 4096." : "Expected --faint-floor=F, an opacity between 0 and 1.";
-                return result;
-            }
-            setting = value[0];
-        }
-        else if (option.starts_with("--slot-policy="))
-        {
-            if (policy_specified)
-            {
-                result.error = "Specify --slot-policy only once.";
-                return result;
-            }
-            policy_specified = true;
-            const auto value = option.substr(std::string_view("--slot-policy=").size());
-            if (value == "evict-oldest") result.options.scalability.slot_policy = SlotPolicy::evict_oldest;
-            else if (value == "graduate-oldest") result.options.scalability.slot_policy = SlotPolicy::graduate_oldest;
-            else if (value != "drop-new")
-            {
-                result.error = "Expected --slot-policy=drop-new, evict-oldest or graduate-oldest.";
-                return result;
-            }
-        }
-        else if (option.starts_with("--effect-order="))
-        {
-            if (order_specified)
-            {
-                result.error = "Specify --effect-order only once.";
-                return result;
-            }
-            order_specified = true;
-            const auto value = option.substr(std::string_view("--effect-order=").size());
-            auto& order = result.options.scalability.effect_order;
-            if (value == "none") order = EffectOrder::none;
-            else if (value == "cloud") order = EffectOrder::cloud;
-            else if (value != "origin")
-            {
-                result.error = "Expected --effect-order=origin, none or cloud.";
-                return result;
-            }
-        }
-        else if (option.starts_with("--smoke-budget="))
-        {
-            if (budget_specified)
-            {
-                result.error = "Specify --smoke-budget only once.";
-                return result;
-            }
-            budget_specified = true;
-            const auto value = option.substr(std::string_view("--smoke-budget=").size());
-            const bool count = value.starts_with("count:");
-            float limit[1]{};
-            const auto number = value.substr(value.find(':') == std::string_view::npos ? value.size() : value.find(':') + 1);
-            if ((!count && !value.starts_with("coverage:")) || !parse_numbers(number, limit) || limit[0] <= 0)
-            {
-                result.error = "Expected --smoke-budget=coverage:SCREENS or count:PARTICLES, a positive number.";
-                return result;
-            }
-            result.options.scalability.smoke_budget = {count, limit[0]};
-        }
-        else if (option.starts_with("--profile-tick="))
-        {
-            if (profile_specified)
-            {
-                result.error = "Specify --profile-tick only once.";
-                return result;
-            }
-            profile_specified = true;
-            result.options.profile_tick = parse_count(option.substr(std::string_view("--profile-tick=").size()), 0, 100'000);
-            if (!result.options.profile_tick)
-            {
-                result.error = "Expected --profile-tick=N with an integer from 0 to 480 (1 up to the scenario's duration with --scenario).";
-                return result;
-            }
-        }
-        else if (option.starts_with("--exit-after="))
-        {
-            if (result.options.exit_after)
-            {
-                result.error = "Specify --exit-after only once.";
-                return result;
-            }
-            result.options.exit_after = parse_count(option.substr(std::string_view("--exit-after=").size()), 1, 10'000'000);
-            if (!result.options.exit_after)
-            {
-                result.error = "Expected --exit-after=N with an integer from 1 to 10000000.";
-                return result;
-            }
-        }
-        else if (option.starts_with("--capture-sequence="))
-        {
-            if (!result.options.capture_sequence.empty())
-            {
-                result.error = "Specify --capture-sequence only once.";
-                return result;
-            }
-            result.options.capture_sequence = option.substr(std::string_view("--capture-sequence=").size());
-            if (result.options.capture_sequence.empty())
-            {
-                result.error = "Expected --capture-sequence=<folder>.";
-                return result;
-            }
-        }
-        else if (option.starts_with("--capture-from=") || option.starts_with("--capture-to="))
-        {
-            const bool from = option.starts_with("--capture-from=");
-            auto& setting = from ? result.options.capture_from : result.options.capture_to;
-            if (setting)
-            {
-                result.error = from ? "Specify --capture-from only once." : "Specify --capture-to only once.";
-                return result;
-            }
-            setting = parse_count(option.substr(option.find('=') + 1), 1, 100'000);
-            if (!setting)
-            {
-                result.error = from ? "Expected --capture-from=T with an integer from 1 to 100000." :
-                    "Expected --capture-to=T with an integer from 1 to 100000.";
-                return result;
-            }
-        }
-        else if (option.starts_with("--capture-tick="))
-        {
-            if (result.options.capture_tick)
-            {
-                result.error = "Specify --capture-tick only once.";
-                return result;
-            }
-            result.options.capture_tick = parse_count(option.substr(std::string_view("--capture-tick=").size()), 1, 100'000);
-            if (!result.options.capture_tick)
-            {
-                result.error = "Expected --capture-tick=N with an integer from 1 to 100000.";
-                return result;
-            }
-        }
-        else if (option.starts_with("--capture="))
-        {
-            if (capture_specified)
-            {
-                result.error = "Specify --capture only once.";
-                return result;
-            }
-            capture_specified = true;
-            result.options.capture_path = option.substr(std::string_view("--capture=").size());
-            if (result.options.capture_path.empty())
-            {
-                result.error = "Expected --capture=<file.png>.";
-                return result;
-            }
-        }
-        else if (option.starts_with("--explosions="))
-        {
-            if (explosions_specified)
-            {
-                result.error = "Specify --explosions only once.";
-                return result;
-            }
-            explosions_specified = true;
-            const auto explosions = parse_count(option.substr(std::string_view("--explosions=").size()), 1, maximum_explosions);
-            if (!explosions || !is_explosion_scenario(*explosions))
-            {
-                result.error = "Expected --explosions=1, 10, 50, or 100.";
-                return result;
-            }
-            result.options.explosions = *explosions;
-        }
-        else if (option.starts_with("--renderer="))
-        {
-            if (renderer_specified)
-            {
-                result.error = "Specify --renderer only once.";
-                return result;
-            }
-            renderer_specified = true;
-
-            const auto value = option.substr(std::string_view("--renderer=").size());
-            if (value == "d3d12")
-            {
-                result.options.renderer = Renderer::d3d12;
-            }
-            else if (value == "vulkan")
-            {
-                result.options.renderer = Renderer::vulkan;
-            }
-            else
-            {
-                result.error = "Invalid renderer '" + std::string(value) +
-                    "'. Expected --renderer=d3d12 or --renderer=vulkan.";
-                return result;
-            }
-        }
-        else
-        {
-            result.error = "Unknown argument '" + std::string(option) +
-                "'. Use --help for usage.";
+            result.error = std::move(error);
             return result;
         }
     }
+    const auto& realism = state.realism;
+    const auto disabled = state.disabled;
+    bool scenario_specified = seen("--scenario");
+    const bool explosions_specified = seen("--explosions");
+    const bool preset_specified = seen("--preset");
+    const bool view_specified = seen("--view");
+    const bool profile_specified = seen("--profile-tick");
+    const bool debug_views_specified = seen("--debug-views");
+    const bool window_specified = seen("--window");
+    const bool wind_specified = seen("--wind");
+    const bool linger_specified = seen("--linger");
+    const bool humidity_specified = seen("--humidity");
+    const bool policy_specified = seen("--slot-policy");
+    const bool capture_specified = seen("--capture");
+    const bool budget_specified = seen("--smoke-budget");
 
     std::uint32_t model = realism.value_or(true) ? realism_layout::realism_full_mask : particle_layout::full_mask;
     if (const auto workload = benchmark_workload(result.options.benchmark))
