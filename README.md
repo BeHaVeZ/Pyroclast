@@ -8,9 +8,10 @@
 smoke risen into one pall, lit on top and dark beneath, carried downwind and fading into the haze. D3D12 in-app
 capture, the realism model.*
 
-**Status:** milestones M11-M27 complete. Windows x64, Direct3D 12 and Vulkan. The default is the realism model
-(lingering smoke without pops, smoke physics, visible blast waves, and since M26 a helicopter whose rotor wash moves the
-smoke and raises dust); `--realism=off` runs the earlier model, which the seven M20 benchmarks keep.
+**Status:** milestones M11-M28 complete. Windows x64, Direct3D 12 and Vulkan. The default is the realism model
+(lingering smoke without pops, smoke physics, visible blast waves, since M26 a helicopter whose rotor wash moves the
+smoke and raises dust, and since M28 a jet whose wake's vortices tear tunnels through it); `--realism=off` runs the
+earlier model, which the seven M20 benchmarks keep.
 
 **Technology:** C++20, CMake 4.2, SDL 3.4.18, Direct3D 12, Vulkan 1.3, HLSL compiled by DXC to DXIL and SPIR-V,
 Dear ImGui 1.92.9b, GPU compute.
@@ -49,7 +50,9 @@ The realism phase (M22-M25) adds the second half of the question: smoke that lin
 into columns, as artillery smoke does, without ever popping out of the scene when the particle budget runs out. M26
 adds a source of moving air: a helicopter whose rotor downwash pushes that smoke around and blows dust up from the
 ground beneath it. M27 is a look pass after two Blastcore references: the star of smoke tendrils an impact throws out
-behind its clods, a size mix of clods, and a downwash that visibly tears the smoke it hits.
+behind its clods, a size mix of clods, and a downwash that visibly tears the smoke it hits. M28 adds a fast source of
+moving air: a jet whose wingtip vortices, airframe and exhaust push the smoke out and back in as it passes, with its
+heat haze, afterburner, vapor cone, condensation trails and the dust a low pass kicks up.
 
 The rendering side is held to one rule: build exactly enough rendering infrastructure to support and study scalable
 explosion and smoke simulation well, not a renderer that could theoretically support anything.
@@ -119,6 +122,13 @@ The helicopter (M26), in the `heli-hover` script over the lingering barrage:
 | ![The helicopter descending through the pall](media/screenshots/heli-descent-3700.png)<br>Tick 3,700 (62 s): after 12 s hovering 70 m over the pall, the helicopter comes down through it at 3 m/s. The pall is pressed down and spread, its base turned into a sheet of brownout dust. D3D12, Debug. | ![The same frame without the rotor](media/screenshots/heli-no-rotor-3700.png)<br>The same frame with `--disable=rotor` (no air and no dust; the helicopter still flies): the pall keeps the barrage's shape and the ground stays clear. D3D12, Debug. |
 | ![The low hover in its brownout](media/screenshots/heli-low-hover-4800.png)<br>Tick 4,800: the low hover, the hub 8 m up, inside its own brownout, behind the range's crates and barrier. D3D12, Debug. | ![The climb-out](media/screenshots/heli-departure-5000.png)<br>Tick 5,000: climbing out east, the dust still rolling where it hovered. D3D12, Debug. |
 
+The jet (M28), in the `jet-vapor` and `jet-pass` scripts over the lingering barrage:
+
+| | |
+|---|---|
+| ![The jet at Mach 0.85 with its vapor cone](media/screenshots/jet-vapor-cone-2372.png)<br>`jet-vapor`, tick 2,372: the jet at 290 m/s (Mach 0.85), 40 m up in 95% humid air, wrapped in its vapor cone, its exhaust's smoke streaming behind it. D3D12, Debug. | ![The pull-up with afterburner and wingtip trails](media/screenshots/jet-pull-up-2440.png)<br>Tick 2,440: climbing out of the pall in a 5.5 g pull, the induced drag taking the engine into reheat; the vortex cores' cooling draws condensation trails from the wingtips. D3D12, Debug. |
+| ![A tunnel through the pall](media/screenshots/jet-tunnel-2640.png)<br>`jet-pass`, tick 2,640, looking down the jet's track 4 s after it flew through the pall at 30 m and 160 m/s: its wake has torn a tunnel through the smoke, with sky at its end. D3D12, Debug. | ![The low pass parts the dust](media/screenshots/jet-low-pass-4200.png)<br>Tick 4,200, 10 s after the second pass at 15 m: its vortex pair reached the ground, spread, and split the barrage's dust sheet along the track, raising dust of its own. D3D12, Debug. |
+
 The earlier model (`--realism=off`), as M21 captured it:
 
 | | |
@@ -138,6 +148,7 @@ The earlier model (`--realism=off`), as M21 captured it:
 | Showcase | Aim and fire with the crosshair; counts 1, 10, 50 and 100 (the aimed explosion plus a Vogel disc of radius 16.3, 36.6 or 51.6 m around it); an 80-impact barrage across the view; a continuous bombardment; walk or fly; seven camera bookmarks; 0.25x slow motion; debug views (effect bounds, collision boxes, spawn regions, wind arrow). |
 | Realism model (default) | The default since M25 (`--realism=off` for the earlier model). Smoke lingers: when an explosion's energetic phase ends, every eighth dust, smoke and plume particle survives into a residual pool of 65,536 particles and takes over its neighbours' share of the smoke, then lives on for about `--linger` seconds (75 by default, varying by explosion) after the explosion. It rises towards a stabilization height that grows with the charge (about 45 m for artillery) and spreads there, so a cloud becomes a column; the wind strengthens and veers with height, so columns lean and drift; every explosion varies a little in height, spread, darkness and life; dust stays low, falls out and settles; and distant smoke fades into the same haze as the ground. The look (M25): a flash and fireball with a real charge's timing, lighting nearby smoke as a sphere; soil jets and soot-dark young smoke that turns to a ground-tied grey; columns that shade themselves and one another, lit on top and dark beneath; thin smoke that scatters sunlight; billowed puffs. Nothing pops: smoke leaves only by fading, a full pool fades its oldest smoke out over at least 2 s, and with every effect slot busy an older explosion graduates early so the new one starts a moment later instead of being dropped. Deterministic on both APIs. Every explosion's blast wave shows: a ring of refraction races over the ground and through the air, a dust skirt is kicked up where it passes, heavy charges in humid air (`--humidity`, 80% by default) flash a brief condensation dome, lingering smoke jolts outwards as the front crosses it and back as the air returns, and in interactive runs the camera shakes when it arrives. |
 | Helicopter (M26) | A 10 t helicopter (H in the showcase, or three scripts) whose rotor's air, from momentum theory, ground effect and a skewed wake reaching the ground as a wall jet, moves every lingering particle within reach and (M27) tears the puffs it overlaps, so a hover opens a hole in a pall and a pass leaves a cleared band; in a low hover it raises a low sheet of brownout dust by a saltation law, none from 3 rotor diameters up. A flat-shaded proxy with blurred rotor discs and a soft ground shadow. |
+| Jet (M28) | A 12 t light fighter (J in the showcase, or two scripts), procedural and smooth-shaded, flying passes at whole ticks. Its wake (the wingtip vortices as Biot-Savart segments that sink, spread near the ground and decay; the airframe's push; the exhaust) moves every lingering particle and tears tunnels through a pall. Its reheat follows the drag balance, its vapor cone the Mach number and humidity, its wingtip trails the vortex cores' cooling; a heat haze in the present pass, a ground shadow, an exhaust trail that shows the wake's roll-up, and dust where the wake's ground outwash beats saltation, counted exactly by a CPU twin. |
 | Scalability options | Coverage counters, an automatic smoke resolution with a coverage budget, half-resolution light, projected-size smoke thinning, a faint-smoke floor, effect-order keys and a slot policy. All off by default. |
 | Benchmark mode | 12 named workloads (`--benchmark`; 5 of them for the realism model at 1920x1080, 2 with the helicopter), each after 120 warm-up frames, with a JSON record, a per-frame CSV, an interleaved session driver and a report with charts. |
 | Tooling | A Dear ImGui overlay that shows only values the application measures or owns; `--gpu-regions`; in-app capture (`--capture`, `--capture-sequence`); `ImageDiff`; `tools/captures.py`, `tools/ab.py`, `tools/bench`, `tools/counter_log.py`, `tools/lifecycle.ps1`. |
@@ -432,6 +443,45 @@ near it, and in a low hover it blows dust up from the ground (brownout). Press *
   - A pass through the pall at 40 m leaves a cleared band behind it, seen from above; from the side it is still subtle.
 - **Unchanged without it.** A run without a helicopter draws through M25's shaders, and every earlier image is
   byte-identical.
+
+### The jet (M28)
+
+A jet is a fast, narrow source of moving air: a 10 m wing at 160-290 m/s instead of an 8 m rotor at walking pace. Press
+**J** in the showcase (a pass over the crosshair, across the view), or run `jet-pass` and `jet-vapor`.
+
+- **The wake.**
+  - The wing's lift leaves a horseshoe vortex: a bound vortex along the span and two trailing vortices from the tips,
+    spaced (pi / 4) of the span apart, of circulation Gamma = n W / (rho V b0) (76.5 m^2/s at 160 m/s and 1 g).
+  - The trail is kept as knots every 6 ticks. Each knot's pair evolves on the CPU in double precision as point vortices
+    with their ground images: far up it sinks at Gamma / (2 pi b0), near the ground it spreads and stalls. It drifts
+    with the wind at its height, its core grows and its circulation decays after 8 s. The integration is memoised, so a
+    knot's state does not depend on how ticks split into frames.
+  - On the GPU, every lingering particle feels the wake as regularised Biot-Savart segments between joined knots (and
+    their images near the ground), the bound vortex at the live wing, the airframe as a moving sphere (the push out and
+    back in) and the exhaust blowing back along the track. Smoke couples to it as to the rotor's air.
+  - What reads is not the displacement: the air inside the sinking pair is the smoke the wing flew through, carried down
+    with it. What reads is the bite (M27's term): shear stretches smoke into filaments finer than a puff. The jet's cores
+    are ten times narrower than a rotor's wake, so the same shear comes at about a quarter of the speed. A pass through a
+    pall punches a tunnel that heals as the circulation decays; a low pass's pair reaches the ground and parts the dust
+    along its track.
+- **What it looks like, by its state.**
+  - The afterburner follows the thrust the drag balance needs (zero-lift drag, induced drag, acceleration): a level
+    pass at 290 m/s shows a trace of reheat, a 5.5 g pull full reheat, with shock diamonds in its flame.
+  - The vapor cone appears from Mach 0.80 in humid air, a bell from the cockpit back past the wing, sharp at its back.
+  - The wingtip trails appear where a vortex core's swirl cools the air past saturation (v^2 / cp, 6% relative humidity
+    per kelvin): nothing at 1 g and 80%, full in a hard pull at 95%.
+  - A heat haze bends the background behind the nozzle by the exhaust's cooling temperature, in the present pass.
+  - A ground shadow traced against the fuselage, wings and tailplanes.
+- **Its own records.** One effect slot: 1,280 records of the exhaust's faint smoke, born along the nozzle's path, which
+  roll into the wake and show its curls; and 1,280 of dust, born where the wake's ground outwash beats a saltation
+  threshold. They cycle through stateless 5-12 s lives, so a CPU twin counts exactly what the GPU draws.
+- **Flights.** Authored at whole ticks: straight passes and constant-speed arcs (level turns and pull-ups) that ease in
+  and out.
+  - `jet-pass`: a pass down the pall's length at 30 m and 160 m/s, then one back at 15 m.
+  - `jet-vapor`: a pass at Mach 0.85, 40 m up, then a 5.5 g pull-up; humid air (95% unless `--humidity` says otherwise).
+- **Unchanged without it.** The jet compiles into the aircraft variants that M26 introduced: a run without a helicopter
+  or a jet draws through M25's shaders and present pass. The frame constants grew to 32 KB for its wake (checked
+  against Vulkan's uniform range at startup).
 
 ## D3D12 and Vulkan
 
@@ -762,6 +812,14 @@ Earlier decisions, measured the same way:
 - Coverage is an estimate: it ignores early-Z, the soft fade and the disc's falloff.
 - D3D12's CPU frame tails and its local-memory growth are unexplained.
 - Region timestamps are not fenced on D3D12 and serialize the GPU on Vulkan.
+- The jet's wake is a pair of line vortices: no Crow instability, no vortex bursting, no secondary vorticity at the
+  ground (the pair stalls rather than rebounds). Its pair descends level whatever the bank, and frames of several steps
+  (interactive catch-up) use the last step's wake for each step. Side on through a 60 m pall, a 10 m span reads subtly;
+  the tunnel reads best along the track or from above. The heat haze is screen-space (smoke in front of the plume
+  shimmers too), and the vapor cone and trails are drawn before the smoke, which covers them where it is in front.
+- The jet's design values (its mass, drag, thrust range, the saltation threshold, the haze gain, the condensation
+  thresholds, the bite's speeds) are estimates or chosen by look, labelled in `jet_layout.hlsli`. Its cost at 1080p is
+  not measured yet.
 
 ## Future work
 
@@ -780,8 +838,9 @@ Each item was analysed or measured and not built; each has the condition that wo
 | Benchmark harness additions: camera motion, a drain phase, a GPU idle-gap classifier, PresentMon telemetry | A measurement needs them (M20 left them out) |
 | The blast waves' sound | The audio milestone the realism phase deferred |
 | Ground shadows from smoke | A look check asks for them (record 13 measured the headroom) |
-| A jet's exhaust and wake | The owner's go-ahead after the helicopter (the dust machinery and the wall jet carry over) |
-| A helicopter's trailing vortices and wake memory | A faster pass than 10 m/s through smoke, or the jet |
+| A helicopter's trailing vortices and wake memory | A faster pass than 10 m/s through smoke |
+| The jet's vortex instability (Crow) and ground rebound, a banked wake | A look check of long-lived wakes or turning passes asks for them |
+| A jet benchmark at 1080p | The deferred measurement batch (the jet's cost is not measured yet) |
 | A larger residual pool (a two-level scan) | Linger shortened by sustained fire matters, or four survivors in eight are wanted (record 12) |
 
 ## Build
@@ -850,6 +909,7 @@ timestamps. Minimizing pauses the simulation; resizing keeps its state.
 | **B** / **V** | An 80-impact barrage of the selected preset walking across the view through the crosshair / a continuous bombardment of the selected preset around the crosshair (on or off) |
 | **T**, **P**, **N** | 0.25x slow motion; pause or resume; one 1/60 s step while paused |
 | **H** | The helicopter (realism model): to a hover 12 m over the last click (or the crosshair); again to move it there, or near where it hovers to send it away |
+| **J** | The jet (realism model): a pass at 160 m/s, 40 m over the last click (or the crosshair), across the view, 5 s later; again to queue another after it |
 | **Space** / **R** | Restart the startup group (with the realism model: add it to the scene) / clear every effect and its lingering smoke (both stop the barrage and bombardment) |
 | **W A S D**, **Q E**, **Shift** | Move; down and up while flying; four times faster |
 | Right mouse button, wheel | Look around; change the speed of the current mode |
@@ -880,6 +940,8 @@ $exe = ".\out\build\windows-x64\Release\Pyroclast.exe"
 & $exe --benchmark=linger-barrage                                  # the realism model at 1920x1080, borderless
 & $exe --scenario=heli-landing                                     # a helicopter lands in its own brownout
 & $exe --scenario=heli-hover --preset=artillery-he --disable=brownout     # the rotor's air on the pall, no dust
+& $exe --scenario=jet-pass --preset=artillery-he                   # a jet tears tunnels through the pall
+& $exe --scenario=jet-vapor --preset=artillery-he                  # Mach 0.85, its vapor cone, a pull-up in reheat
 & $exe --realism=off --scenario=bombardment --slot-policy=evict-oldest   # the earlier model and its pop
 ```
 
@@ -909,7 +971,7 @@ validated even when `--help` is present. Checks that need the scenario's length 
 | `--camera=EX,EY,EZ,TX,TY,TZ` | Start at this eye, looking at this target (metres), instead of `--view`. |
 | `--effect-lines` | Start with each effect's origin, normal and reach, and the props' collision boxes, drawn as lines. |
 | `--debug-views=LIST` | Start with bounds, boxes, regions, wind or all on. Not with `--effect-lines` or `--scenario`. |
-| `--scenario=NAME` | A scripted run, one tick per frame, then a JSON summary: single, grid-10, grid-50, grid-100, barrage, presets, range, bombardment or accumulation; for the realism model linger-barrage (240 impacts, four a second, run for 90 s), linger-saturation (1,200 impacts, 30 a second), or the helicopter over the barrage: heli-hover (a hover above the pall, a descent through it to a low hover), heli-pass (a slow pass through it) or heli-landing (a landing in its own brownout). |
+| `--scenario=NAME` | A scripted run, one tick per frame, then a JSON summary: single, grid-10, grid-50, grid-100, barrage, presets, range, bombardment or accumulation; for the realism model linger-barrage (240 impacts, four a second, run for 90 s), linger-saturation (1,200 impacts, 30 a second), or the helicopter over the barrage: heli-hover (a hover above the pall, a descent through it to a low hover), heli-pass (a slow pass through it) or heli-landing (a landing in its own brownout), or the jet over the barrage: jet-pass (down the pall at 30 m, back at 15 m) or jet-vapor (a pass at Mach 0.85 and a pull-up, in 95% humid air unless `--humidity` is given). |
 | `--benchmark=NAME` | A named scenario, preset and pose after 120 warm-up frames: single, simultaneous-10, simultaneous-50, simultaneous-100, sustained-barrage, smoke-field or accumulation; the realism model's linger-barrage (from the overview), linger-far (from the far view), linger-ground (from the ground), heli-hover (heli-hover from the overview) and heli-ground (heli-hover from the ground), at 1920x1080. The first seven keep the earlier model. Prints a JSON record. |
 | `--profile-tick=N` | Freeze at tick 0-480 (with `--scenario`: 1 up to its duration), with timestamps on and VSync off, and sample the frozen state. |
 | `--counter-log=FILE` | With `--scenario` (or `--benchmark`) or `--profile-tick`: one CSV row per frame, written at exit. |
@@ -1011,4 +1073,5 @@ powershell -File tools/lifecycle.ps1 -Configuration Debug -Renderer vulkan -Smok
 | M24 | The realism model's visible blast waves: the front from Kinney-Graham, refraction in the present pass, the dust skirt, the Wilson dome, the push on lingering smoke, the camera shake; `--humidity`. |
 | M25 | A look pass (soot and soil colours, a real fireball's timing, lights as spheres, self-shadowed columns and palls, scattering thin smoke, billows, an ejecta crown, a crisper wave and dome); the push made to return; the 1080p budget met with every option off, and the realism model made the default; `linger-ground`; this README's realism sections and images. |
 | M26 | The helicopter: its rotor's air on the smoke, brownout dust, a proxy model, three scripts, the H key and the overlay's button, two benchmarks; the images above. |
+| M28 | The jet: its wake's vortices (Biot-Savart segments with ground images, sinking, spreading and decaying, memoised per knot), the airframe's push and the exhaust on the smoke; the jet's own bite thresholds; a procedural fighter; heat haze, reheat from the drag balance, the vapor cone, wingtip condensation, a shadow; its slot's exhaust trail and dust with a CPU twin; two scripts, the J key; frame constants of 32 KB; the images above. |
 | M27 | A look pass after Blastcore references: the star of smoke tendrils behind an impact's thrown clods, a size mix of clods, the rotor's bite (a hole in the pall under a hover, a band behind a pass) and a subtler brownout; the images above. |
