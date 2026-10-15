@@ -2,7 +2,7 @@
 
 #include "../core/math.hpp"
 #include "../graphics/graphics_device.hpp"
-#include "../simulation/particle_system.hpp"
+#include "../render/particle_system.hpp"
 #include "../simulation/pilot_control.hpp"
 #include "../simulation/wind.hpp"
 

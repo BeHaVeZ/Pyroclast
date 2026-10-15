@@ -6,7 +6,7 @@
 #include "showcase.hpp"
 #include "test_range.hpp"
 #include "../simulation/explosion_system.hpp"
-#include "../simulation/particle_system.hpp"
+#include "../render/particle_system.hpp"
 #include "../simulation/simulation_clock.hpp"
 #include "../simulation/wind.hpp"
 #include "../tools/debug_ui.hpp"

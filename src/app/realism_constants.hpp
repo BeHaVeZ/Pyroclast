@@ -4,7 +4,7 @@
 #include "frame_constants.hpp"
 #include "scalability.hpp"
 #include "../simulation/explosion_system.hpp"
-#include "../simulation/particle_system.hpp"
+#include "../render/particle_system.hpp"
 
 namespace pyroclast
 {

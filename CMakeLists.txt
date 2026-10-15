@@ -47,7 +47,7 @@ target_compile_definitions(imgui PUBLIC IMGUI_DISABLE_OBSOLETE_FUNCTIONS NOMINMA
 target_compile_features(imgui PUBLIC cxx_std_20)
 target_link_libraries(imgui PUBLIC SDL3::SDL3-static Vulkan::Vulkan d3d12 dxgi d3dcompiler)
 
-# Layers, each linking only the ones below it: core -> simulation -> app, and rhi -> backends.
+# Layers, each linking only the ones below it: core -> simulation and rhi -> render -> app, and rhi -> backends.
 add_library(pyroclast_core STATIC src/core/math.cpp)
 target_include_directories(pyroclast_core PUBLIC src)
 
@@ -59,7 +59,6 @@ add_library(pyroclast_rhi STATIC
 target_link_libraries(pyroclast_rhi PUBLIC pyroclast_core pyroclast_shader_list)
 
 add_library(pyroclast_simulation STATIC
-    src/simulation/particle_system.cpp
     src/simulation/simulation_clock.cpp
     src/simulation/explosion_system.cpp
     src/simulation/residual_pool.cpp
@@ -76,7 +75,10 @@ add_library(pyroclast_simulation STATIC
     src/simulation/environment.cpp
     src/simulation/range_props.cpp
 )
-target_link_libraries(pyroclast_simulation PUBLIC pyroclast_rhi PRIVATE SDL3::SDL3-static)
+target_link_libraries(pyroclast_simulation PUBLIC pyroclast_core PRIVATE SDL3::SDL3-static)
+
+add_library(pyroclast_render STATIC src/render/particle_system.cpp)
+target_link_libraries(pyroclast_render PUBLIC pyroclast_simulation pyroclast_rhi PRIVATE SDL3::SDL3-static)
 
 add_library(pyroclast_backends STATIC
     src/graphics/graphics_device.cpp
@@ -131,7 +133,7 @@ add_library(pyroclast_app STATIC
     src/app/showcase.cpp
     src/tools/debug_ui.cpp
 )
-target_link_libraries(pyroclast_app PUBLIC pyroclast_simulation SDL3::SDL3-static PRIVATE imgui)
+target_link_libraries(pyroclast_app PUBLIC pyroclast_render SDL3::SDL3-static PRIVATE imgui)
 
 add_executable(Pyroclast src/app/main.cpp)
 target_compile_definitions(Pyroclast PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
@@ -144,7 +146,7 @@ add_executable(ImageDiff tools/image_diff/image_diff.cpp tools/image_diff/image_
 target_link_libraries(ImageDiff PRIVATE SDL3::SDL3-static)
 
 include(CTest)
-set(project_targets Pyroclast ImageDiff pyroclast_core pyroclast_rhi pyroclast_simulation pyroclast_backends pyroclast_app)
+set(project_targets Pyroclast ImageDiff pyroclast_core pyroclast_rhi pyroclast_simulation pyroclast_render pyroclast_backends pyroclast_app)
 if(BUILD_TESTING)
     function(pyroclast_test name test source)
         add_executable(${name} tests/${source}.cpp)

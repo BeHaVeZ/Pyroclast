@@ -3,7 +3,7 @@
 #include "frame_statistics.hpp"
 #include "../graphics/draw_validation.hpp"
 #include "../graphics/graphics_device.hpp"
-#include "../simulation/particle_system.hpp"
+#include "../render/particle_system.hpp"
 
 #include <array>
 #include <cstddef>

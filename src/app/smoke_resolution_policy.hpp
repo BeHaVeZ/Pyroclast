@@ -1,7 +1,7 @@
 #pragma once
 
 #include "scalability.hpp"
-#include "../simulation/particle_system.hpp"
+#include "../render/particle_system.hpp"
 
 #include <cstdint>
 #include <optional>

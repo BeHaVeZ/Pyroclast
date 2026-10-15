@@ -11,7 +11,7 @@
 #include "test_range.hpp"
 #include "../simulation/blast_front.hpp"
 #include "../simulation/explosion_system.hpp"
-#include "../simulation/particle_system.hpp"
+#include "../render/particle_system.hpp"
 #include "../simulation/wind.hpp"
 #include "../graphics/draw_validation.hpp"
 
