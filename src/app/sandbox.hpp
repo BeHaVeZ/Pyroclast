@@ -2,6 +2,7 @@
 
 #include "camera_controls.hpp"
 #include "explosion_renderer.hpp"
+#include "pilot.hpp"
 #include "showcase.hpp"
 #include "test_range.hpp"
 #include "../simulation/explosion_system.hpp"
@@ -38,6 +39,7 @@ struct Sandbox
     Jetcraft jetcraft;
     std::optional<float3> last_click;
     std::uint32_t flights = 0;
+    Pilot pilot;
     std::optional<ParticleCounters> counters;
     std::uint64_t counter_sample = 0;
 
@@ -49,6 +51,12 @@ struct Sandbox
     void spawn(const Ray& ray, std::string_view source);
     void send_helicopter();
     void send_jet();
+    void pilot_helicopter();
+    void pilot_jet();
+    void release_pilot();
+    void toggle_chase();
+    void return_pilot();
+    void fly_pilot(const CameraInput& input, double elapsed);
     void release_due();
     void update_aim(bool needed);
     void build_marks();

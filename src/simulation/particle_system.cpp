@@ -82,12 +82,21 @@ namespace
 constexpr double fixed_step = 1.0 / 60.0;
 }
 
+std::uint32_t ParticleSystem::upcoming_steps(double elapsed_seconds) const
+{
+    if (paused_) return std::min(pending_steps_, 1u);
+    if (fixed_ticks_) return 1;
+    const double cap = particle_layout::maximum_simulation_steps * fixed_step;
+    return static_cast<std::uint32_t>(std::floor(std::min(accumulator_ + elapsed_seconds * time_scale_, cap) / fixed_step));
+}
+
 ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_effects, std::uint32_t offscreen_divisor,
     ParticleListing listing, const FrameUnits* units)
 {
     assert(particles_ && environment_ && graphics_ && offscreen_graphics_ && debris_graphics_ && compute_ && scan_ && scatter_);
     assert(std::isfinite(elapsed_seconds) && elapsed_seconds >= 0);
     assert(active_effects <= effect_slots);
+    const auto steps = upcoming_steps(elapsed_seconds);
     if (!paused_ && !fixed_ticks_)
     {
         const double wanted = accumulator_ + elapsed_seconds * time_scale_;
@@ -95,8 +104,6 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_e
         if (wanted > cap) ++capped_frames_;
         accumulator_ = std::min(wanted, cap);
     }
-    const auto steps = paused_ ? std::min(pending_steps_, 1u) : fixed_ticks_ ? 1u :
-        static_cast<std::uint32_t>(std::floor(accumulator_ / fixed_step));
     Bindings simulation{};
     simulation.read[0] = environment_;
     simulation.read[1] = classes_.get();

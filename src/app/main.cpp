@@ -599,7 +599,8 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
             }
             if (event.type == SDL_EVENT_MOUSE_WHEEL && event.wheel.windowID == window_id)
             {
-                sandbox.camera.scale_speed(event.wheel.y);
+                if (sandbox.pilot.controlling() && sandbox.pilot.chase().attached()) sandbox.pilot.chase().zoom(event.wheel.y);
+                else sandbox.camera.scale_speed(event.wheel.y);
             }
             if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.windowID == window_id &&
                 event.button.button == SDL_BUTTON_LEFT && flight.looking)
@@ -661,9 +662,16 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     static_cast<double>(SDL_GetPerformanceFrequency());
                 previous_time = start;
                 const auto input = flight.input(!unattended && (!ui || !ui->wants_keyboard()));
-                if (sandbox.camera.update(input, static_cast<float>(elapsed), sandbox.range.environment(), sandbox.props_shown()))
+                if (!sandbox.pilot.controlling())
                 {
-                    baseline.disable();
+                    if (sandbox.camera.update(input, static_cast<float>(elapsed), sandbox.range.environment(), sandbox.props_shown()))
+                    {
+                        baseline.disable();
+                    }
+                }
+                else if (!sandbox.pilot.chase().attached())
+                {
+                    sandbox.camera.update({.look = input.look}, static_cast<float>(elapsed), sandbox.range.environment(), sandbox.props_shown());
                 }
                 const auto showcase_start = SDL_GetPerformanceCounter();
                 sandbox.update_aim((ui && ui->visible()) || sandbox.views.spawn_regions || sandbox.views.wind_arrow);
@@ -687,7 +695,11 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                 }
                 const auto release_start = SDL_GetPerformanceCounter();
                 if (scenario && (!frozen || demo.has_pending_steps()) && !scenario->warming()) scenario->submit_due(sandbox);
-                else if (!unattended) sandbox.release_due();
+                else if (!unattended)
+                {
+                    sandbox.release_due();
+                    sandbox.fly_pilot(input, elapsed);
+                }
                 sandbox.build_marks();
                 showcase_ticks += SDL_GetPerformanceCounter() - release_start;
                 showcase_ms = 1000.0 * static_cast<double>(showcase_ticks) / static_cast<double>(SDL_GetPerformanceFrequency());

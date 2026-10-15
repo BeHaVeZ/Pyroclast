@@ -142,6 +142,12 @@ bool CameraRig::toggle_walk(const Environment& environment, bool props)
     return true;
 }
 
+void CameraRig::set_pose(const Camera& pose)
+{
+    camera_ = pose;
+    mode_ = CameraMode::fly;
+}
+
 bool CameraRig::recall(std::size_t index)
 {
     if (index >= bookmark_count) return false;

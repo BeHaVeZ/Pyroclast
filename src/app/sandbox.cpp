@@ -47,6 +47,7 @@ void Sandbox::clear()
     particles.discard_pending();
     rotorcraft.clear();
     jetcraft.clear();
+    pilot.reset();
     SDL_Log("Particle pool cleared.");
 }
 
@@ -76,17 +77,17 @@ void Sandbox::send_jet()
         SDL_Log("Nothing to fly over.");
         return;
     }
+    const auto tick = particles.tick();
+    const bool replacing = jetcraft.flight() && listed_pass(*jetcraft.flight(), tick);
+    pilot.drop_jet();
+    const std::uint32_t listed = jetcraft.end_passes(tick, 120);
     const float3 forward = camera.camera().forward();
     const double3 across = normalize(double3{-forward.z, 0, forward.x});
-    std::uint32_t crossing = particles.tick() + 300;
-    if (const auto& flight = jetcraft.flight(); flight && !flight->passes.empty())
-    {
-        crossing = std::max(crossing, flight->passes.back().unlist_tick + 1200);
-    }
-    jetcraft.add_pass(straight_pass("sandbox", double3{target->x, target->y + 40.0, target->z}, across, jet::pass_speed, crossing, 10), jet_seed + flights);
+    const std::uint32_t crossing = listed + 300;
+    jetcraft.add_pass(straight_pass("sandbox", double3{target->x, target->y + 40.0, target->z}, across, jet::pass_speed, crossing, 5), jet_seed + flights);
     ++flights;
-    SDL_Log("Jet: a pass over (%.1f, %.1f, %.1f) at tick %u.", static_cast<double>(target->x), static_cast<double>(target->y),
-        static_cast<double>(target->z), crossing);
+    SDL_Log("Jet: a pass over (%.1f, %.1f, %.1f) at tick %u%s.", static_cast<double>(target->x), static_cast<double>(target->y),
+        static_cast<double>(target->z), crossing, replacing ? " (the jet flying dissolves)" : "");
 }
 
 void Sandbox::send_helicopter()
@@ -94,6 +95,11 @@ void Sandbox::send_helicopter()
     if (!realism_enabled(layer_mask))
     {
         SDL_Log("The helicopter needs the realism model.");
+        return;
+    }
+    if (pilot.helicopter() == HelicopterPiloting::piloted)
+    {
+        SDL_Log("Helicopter: under your control (Ctrl+H releases it).");
         return;
     }
     std::optional<float3> target = last_click;
@@ -165,6 +171,209 @@ void Sandbox::send_helicopter()
     SDL_Log("Helicopter: to (%.1f, %.1f, %.1f).", static_cast<double>(target->x), static_cast<double>(target->y), static_cast<double>(target->z));
 }
 
+namespace
+{
+float3 pilot_target(const Sandbox& sandbox, float ahead)
+{
+    const auto view = sandbox.camera.camera();
+    if (const auto hit = sandbox.range.environment().raycast(crosshair_ray(view), std::numeric_limits<float>::infinity(), sandbox.props_shown()))
+    {
+        return hit->point;
+    }
+    const float heading = view_heading(view);
+    const float x = view.position.x + ahead * std::cos(heading);
+    const float z = view.position.z + ahead * std::sin(heading);
+    return {x, sandbox.range.environment().terrain().height(x, z), z};
+}
+
+PilotScene pilot_scene(const Sandbox& sandbox)
+{
+    PilotScene scene;
+    if (sandbox.last_click)
+    {
+        scene.x = sandbox.last_click->x;
+        scene.z = sandbox.last_click->z;
+    }
+    scene.surface = surface_below(sandbox.range.environment(), sandbox.props_shown(), scene.x, scene.z);
+    return scene;
+}
+
+JetOrbit jet_orbit(const Sandbox& sandbox)
+{
+    JetOrbit orbit;
+    const auto scene = pilot_scene(sandbox);
+    orbit.centre_x = scene.x;
+    orbit.centre_z = scene.z;
+    const double surface = scene.surface;
+    orbit.height = surface + pilot::orbit_least_height;
+    if (const auto& flight = sandbox.jetcraft.flight(); flight && !flight->passes.empty())
+    {
+        orbit.height = std::clamp(flight_state(flight->passes.back(), sandbox.particles.tick()).position.y, surface + pilot::orbit_least_height,
+            surface + pilot::orbit_greatest_height);
+    }
+    return orbit;
+}
+}
+
+void Sandbox::pilot_helicopter()
+{
+    if (pilot.helicopter() == HelicopterPiloting::piloted)
+    {
+        release_pilot();
+        return;
+    }
+    if (!realism_enabled(layer_mask))
+    {
+        SDL_Log("The helicopter needs the realism model.");
+        return;
+    }
+    const auto tick = particles.tick();
+    const auto& helicopter = rotorcraft.helicopter();
+    const bool listed = helicopter && tick >= helicopter->plan.list_tick && tick < helicopter->plan.unlist_tick;
+    FlightKnot knot;
+    if (listed)
+    {
+        FlightPlan plan = helicopter->plan;
+        if (plan.touchdown_tick != never && tick >= plan.touchdown_tick)
+        {
+            SDL_Log("Pilot: the helicopter has landed (R clears it).");
+            return;
+        }
+        if (plan.unlist_tick != never && tick + 120 >= plan.unlist_tick)
+        {
+            SDL_Log("Pilot: the helicopter is leaving.");
+            return;
+        }
+        plan.unlist_tick = never;
+        plan.touchdown_tick = never;
+        plan.spin_down_tick = never;
+        continue_plan(plan, tick, {});
+        knot = plan.knots.back();
+        rotorcraft.replan(std::move(plan));
+    }
+    else
+    {
+        const float3 target = pilot_target(*this, 40);
+        const auto& environment = range.environment();
+        knot.tick = tick;
+        knot.position = to_double3(target);
+        knot.position.y = std::max(target.y + 1.5 * rotor::radius,
+            surface_below(environment, props_shown(), target.x, target.z) + rotor::hub_above_skids + pilot::skid_clearance);
+        knot.heading = view_heading(camera.camera());
+        FlightPlan plan;
+        plan.name = "pilot";
+        plan.list_tick = tick;
+        plan.knots.push_back(knot);
+        if (helicopter) rotorcraft.replan(std::move(plan));
+        else rotorcraft.fly(std::move(plan), helicopter_seed + flights);
+        ++flights;
+    }
+    pilot.pilot_helicopter(knot, camera.camera(), jet_orbit(*this));
+    SDL_Log("Pilot: helicopter at (%.1f, %.1f, %.1f).", knot.position.x, knot.position.y, knot.position.z);
+}
+
+void Sandbox::pilot_jet()
+{
+    if (pilot.jet() == JetPiloting::piloted)
+    {
+        release_pilot();
+        return;
+    }
+    if (!realism_enabled(layer_mask))
+    {
+        SDL_Log("The jet needs the realism model.");
+        return;
+    }
+    const auto tick = particles.tick();
+    JetControl control;
+    if (jetcraft.take_over(tick))
+    {
+        control = jet_control(jetcraft.flight()->passes.back().knots.back());
+    }
+    else
+    {
+        const float3 target = pilot_target(*this, 300);
+        const double heading = view_heading(camera.camera());
+        const double3 along{std::cos(heading), 0, std::sin(heading)};
+        auto& knot = control.knot;
+        knot.tick = tick;
+        knot.position = to_double3(target) - along * 300.0;
+        knot.position.y = std::max(target.y + 40.0, surface_below(range.environment(), props_shown(), knot.position.x, knot.position.z) + 40);
+        knot.velocity = along * pilot.settings().jet.cruise_speed;
+        control.speed_target = pilot.settings().jet.cruise_speed;
+        knot.heading = heading;
+        JetPass pass;
+        pass.name = "pilot";
+        pass.list_tick = tick;
+        pass.knots.push_back(knot);
+        jetcraft.add_pass(std::move(pass), jet_seed + flights);
+        ++flights;
+    }
+    pilot.pilot_jet(control);
+    const auto& position = control.knot.position;
+    SDL_Log("Pilot: jet at (%.1f, %.1f, %.1f).", position.x, position.y, position.z);
+}
+
+void Sandbox::release_pilot()
+{
+    if (!pilot.controlling())
+    {
+        SDL_Log("Pilot: nothing to release.");
+        return;
+    }
+    const auto orbit = jet_orbit(*this);
+    if (pilot.jet() == JetPiloting::piloted)
+    {
+        SDL_Log("Pilot: released; the jet circles over (%.1f, %.1f) at %.0f m.", orbit.centre_x, orbit.centre_z, orbit.height);
+    }
+    else SDL_Log("Pilot: released; the helicopter settles into a hover.");
+    pilot.release(orbit);
+}
+
+void Sandbox::toggle_chase()
+{
+    if (!pilot.controlling()) return;
+    pilot.chase().set_attached(!pilot.chase().attached());
+    SDL_Log("Pilot: chase camera %s.", pilot.chase().attached() ? "on" : "off");
+}
+
+void Sandbox::return_pilot()
+{
+    if (!pilot.fly_home())
+    {
+        SDL_Log("Pilot: nothing to return.");
+        return;
+    }
+    const auto scene = pilot_scene(*this);
+    SDL_Log("Pilot: returning to the scene (%.1f, %.1f).", scene.x, scene.z);
+}
+
+void Sandbox::fly_pilot(const CameraInput& input, double elapsed)
+{
+    if (pilot.helicopter() == HelicopterPiloting::none && pilot.jet() == JetPiloting::none) return;
+    const bool chasing = pilot.controlling() && pilot.chase().attached();
+    if (chasing) pilot.chase().orbit(input.look);
+    const float heading = chasing ? pilot.chase().heading() : view_heading(camera.camera());
+    const auto tick = particles.tick();
+    if (pilot.advance(tick, input, heading, pilot_scene(*this), rotorcraft, jetcraft, range.environment(), props_shown()))
+    {
+        SDL_Log("Pilot: back over the scene.");
+    }
+    if (!chasing) return;
+    const auto drawn = tick + particles.upcoming_steps(elapsed);
+    const auto& terrain = range.environment().terrain();
+    if (pilot.helicopter() == HelicopterPiloting::piloted)
+    {
+        const auto state = flight_state(rotorcraft.helicopter()->plan, drawn);
+        camera.set_pose(pilot.chase().place(camera.camera(), to_float3(state.position), std::nullopt, terrain));
+    }
+    else
+    {
+        const auto state = flight_state(jetcraft.flight()->passes.back(), drawn);
+        camera.set_pose(pilot.chase().place(camera.camera(), to_float3(state.position), to_float3(state.velocity), terrain));
+    }
+}
+
 void Sandbox::report_drops(const SlotPressure::Report& report, bool before_clear) const
 {
     char ticks[48];
@@ -223,7 +432,8 @@ void Sandbox::fill_snapshot(DiagnosticsSnapshot& snapshot) const
         const auto& effect = effects.slots()[slot];
         if (effect.kind == EffectKind::explosion) ++load.active_by_preset[static_cast<std::uint32_t>(effect.preset)];
     }
-    load.rotor_slots = static_cast<std::uint32_t>(effects.active().size() - effects.explosions());
+    load.rotor_slots = (effects.rotor_slot() ? 1u : 0u) + (effects.rotor_disc_slot() ? 1u : 0u);
+    load.jet_slots = effects.jet_slot() ? 1u : 0u;
     load.simulated_records = load.active_effects * ParticleSystem::slab_records;
     load.pool_capacity = ParticleSystem::capacity;
     if (load.realism)
@@ -243,7 +453,8 @@ void Sandbox::fill_snapshot(DiagnosticsSnapshot& snapshot) const
         const auto& plan = helicopter->plan;
         const auto& frame = renderer.rotor_frame();
         DiagnosticsSnapshot::Load::Helicopter shown;
-        shown.state = tick < plan.list_tick ? "not yet in" : tick >= plan.unlist_tick ? "gone" :
+        shown.state = pilot.helicopter() == HelicopterPiloting::piloted ? "piloted" : pilot.helicopter() == HelicopterPiloting::settling ? "settling" :
+            tick < plan.list_tick ? "not yet in" : tick >= plan.unlist_tick ? "gone" :
             plan.touchdown_tick != never && tick >= plan.touchdown_tick ? "landed" : plan.unlist_tick != never ? "departing" :
             tick < plan.knots.back().tick ? "flying" : "hovering";
         shown.hub_height = static_cast<float>(frame.hub_height_cm) / 100.0f;
@@ -251,6 +462,18 @@ void Sandbox::fill_snapshot(DiagnosticsSnapshot& snapshot) const
         shown.dust = frame.census.alive;
         shown.waiting = effects.rotor_requested();
         load.helicopter = shown;
+    }
+    if (pilot.jet() != JetPiloting::none) load.jet = pilot.jet() == JetPiloting::piloted ? "piloted" : "circling";
+    else if (const auto& flight = jetcraft.flight(); flight && listed_pass(*flight, tick)) load.jet = "passing";
+    for (std::uint32_t index = 0; index < pilot_setting_count; ++index)
+    {
+        load.pilot_settings[index] = static_cast<float>(pilot_setting(pilot.settings(), static_cast<PilotSetting>(index)));
+    }
+    if (const auto readout = pilot.readout(tick))
+    {
+        load.pilot = DiagnosticsSnapshot::Load::Pilot{readout->aircraft, static_cast<float>(readout->speed), static_cast<float>(readout->height),
+            static_cast<float>(readout->load), static_cast<float>(readout->bank), static_cast<float>(readout->mach), readout->chase,
+            static_cast<float>(readout->scene_distance), static_cast<float>(readout->scene_bearing), readout->returning};
     }
     load.lights = renderer.lights();
     load.coverage = scalability.coverage || scalability.smoke_resolution == SmokeResolution::automatic;
@@ -405,6 +628,7 @@ void apply(UiCommand command, Sandbox& sandbox)
     case Kind::recall_bookmark:
         if (sandbox.camera.recall(command.value))
         {
+            if (sandbox.pilot.controlling()) sandbox.pilot.chase().set_attached(false);
             const auto& bookmark = sandbox.camera.bookmarks()[command.value];
             SDL_Log("Camera bookmark %u (%.*s) recalled: %s.", command.value + 1,
                 static_cast<int>(bookmark.stored ? 6 : bookmark.name.size()), bookmark.stored ? "stored" : bookmark.name.data(),
@@ -439,6 +663,18 @@ void apply(UiCommand command, Sandbox& sandbox)
         break;
     case Kind::send_helicopter: sandbox.send_helicopter(); break;
     case Kind::send_jet: sandbox.send_jet(); break;
+    case Kind::pilot_helicopter: sandbox.pilot_helicopter(); break;
+    case Kind::pilot_jet: sandbox.pilot_jet(); break;
+    case Kind::release_pilot: sandbox.release_pilot(); break;
+    case Kind::toggle_chase: sandbox.toggle_chase(); break;
+    case Kind::return_pilot: sandbox.return_pilot(); break;
+    case Kind::set_pilot_setting:
+        set_pilot_setting(sandbox.pilot.settings(), static_cast<PilotSetting>(command.value), command.scalar);
+        break;
+    case Kind::reset_pilot_settings:
+        sandbox.pilot.settings() = {};
+        SDL_Log("Pilot settings reset.");
+        break;
     case Kind::barrage:
         sandbox.showcase.start_barrage(sandbox.range.environment(), sandbox.props_shown(), sandbox.camera.camera(), sandbox.particles.tick());
         break;

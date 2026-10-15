@@ -240,6 +240,36 @@ FlightState flight_state(const FlightPlan& plan, std::uint32_t tick)
     return state;
 }
 
+void continue_plan(FlightPlan& plan, std::uint32_t tick, std::span<const FlightKnot> knots)
+{
+    assert(!plan.knots.empty());
+    const auto state = flight_state(plan, tick);
+    std::erase_if(plan.knots, [tick](const FlightKnot& knot) { return knot.tick > tick; });
+    if (plan.knots.back().tick < tick)
+    {
+        FlightKnot knot;
+        knot.tick = tick;
+        knot.position = state.position;
+        knot.velocity = state.velocity;
+        knot.acceleration = state.acceleration;
+        knot.heading = state.heading;
+        plan.knots.push_back(knot);
+    }
+    for (const auto& knot : knots)
+    {
+        assert(knot.tick > plan.knots.back().tick);
+        plan.knots.push_back(knot);
+    }
+    if (tick > plan_memory_ticks)
+    {
+        const std::uint32_t oldest = tick - plan_memory_ticks;
+        const auto first = std::upper_bound(plan.knots.begin(), plan.knots.end(), oldest, [](std::uint32_t value, const FlightKnot& knot) {
+            return value < knot.tick;
+        });
+        if (first - plan.knots.begin() > 1) plan.knots.erase(plan.knots.begin(), first - 1);
+    }
+}
+
 double spin_share(const FlightPlan& plan, std::uint32_t tick)
 {
     if (plan.spin_down_tick == never || tick <= plan.spin_down_tick) return 1;
@@ -652,6 +682,12 @@ void Rotorcraft::replan(FlightPlan plan)
     assert(helicopter_);
     helicopter_->plan = std::move(plan);
     request_pending_ = true;
+}
+
+void Rotorcraft::steer(std::uint32_t tick, std::span<const FlightKnot> knots)
+{
+    assert(helicopter_);
+    continue_plan(helicopter_->plan, tick, knots);
 }
 
 void Rotorcraft::clear()

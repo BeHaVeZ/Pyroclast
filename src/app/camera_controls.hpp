@@ -62,6 +62,7 @@ public:
     void scale_speed(float notches);
     void set_speed(float speed);
     bool toggle_walk(const Environment& environment, bool props);
+    void set_pose(const Camera& pose);
     bool recall(std::size_t index);
     bool store(std::size_t index);
 

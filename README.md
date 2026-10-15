@@ -149,6 +149,7 @@ The earlier model (`--realism=off`), as M21 captured it:
 | Realism model (default) | The default since M25 (`--realism=off` for the earlier model). Smoke lingers: when an explosion's energetic phase ends, every eighth dust, smoke and plume particle survives into a residual pool of 65,536 particles and takes over its neighbours' share of the smoke, then lives on for about `--linger` seconds (75 by default, varying by explosion) after the explosion. It rises towards a stabilization height that grows with the charge (about 45 m for artillery) and spreads there, so a cloud becomes a column; the wind strengthens and veers with height, so columns lean and drift; every explosion varies a little in height, spread, darkness and life; dust stays low, falls out and settles; and distant smoke fades into the same haze as the ground. The look (M25): a flash and fireball with a real charge's timing, lighting nearby smoke as a sphere; soil jets and soot-dark young smoke that turns to a ground-tied grey; columns that shade themselves and one another, lit on top and dark beneath; thin smoke that scatters sunlight; billowed puffs. Nothing pops: smoke leaves only by fading, a full pool fades its oldest smoke out over at least 2 s, and with every effect slot busy an older explosion graduates early so the new one starts a moment later instead of being dropped. Deterministic on both APIs. Every explosion's blast wave shows: a ring of refraction races over the ground and through the air, a dust skirt is kicked up where it passes, heavy charges in humid air (`--humidity`, 80% by default) flash a brief condensation dome, lingering smoke jolts outwards as the front crosses it and back as the air returns, and in interactive runs the camera shakes when it arrives. |
 | Helicopter (M26) | A 10 t helicopter (H in the showcase, or three scripts) whose rotor's air, from momentum theory, ground effect and a skewed wake reaching the ground as a wall jet, moves every lingering particle within reach and (M27) tears the puffs it overlaps, so a hover opens a hole in a pall and a pass leaves a cleared band; in a low hover it raises a low sheet of brownout dust by a saltation law, none from 3 rotor diameters up. A flat-shaded proxy with blurred rotor discs and a soft ground shadow. |
 | Jet (M28) | A 12 t light fighter (J in the showcase, or two scripts), procedural and smooth-shaded, flying passes at whole ticks. Its wake (the wingtip vortices as Biot-Savart segments that sink, spread near the ground and decay; the airframe's push; the exhaust) moves every lingering particle and tears tunnels through a pall. Its reheat follows the drag balance, its vapor cone the Mach number and humidity, its wingtip trails the vortex cores' cooling; a heat haze in the present pass, a ground shadow, and dust where the wake's ground outwash beats saltation, counted exactly by a CPU twin. |
+| Piloting (M29) | Either aircraft flown from the keys (Ctrl+H, Ctrl+J) by assisted control laws, the camera chasing it; written into its plan one tick at a time, so the rotor's air, the wake, the dust and its CPU twin work as for a script. Both stay near the scene (the last click), and Home flies them back. Released, the helicopter hovers and the jet circles over the scene. |
 | Scalability options | Coverage counters, an automatic smoke resolution with a coverage budget, half-resolution light, projected-size smoke thinning, a faint-smoke floor, effect-order keys and a slot policy. All off by default. |
 | Benchmark mode | 12 named workloads (`--benchmark`; 5 of them for the realism model at 1920x1080, 2 with the helicopter), each after 120 warm-up frames, with a JSON record, a per-frame CSV, an interleaved session driver and a report with charts. |
 | Tooling | A Dear ImGui overlay that shows only values the application measures or owns; `--gpu-regions`; in-app capture (`--capture`, `--capture-sequence`); `ImageDiff`; `tools/captures.py`, `tools/ab.py`, `tools/bench`, `tools/counter_log.py`, `tools/lifecycle.ps1`. |
@@ -483,6 +484,44 @@ A jet is a fast, narrow source of moving air: a 10 m wing at 160-290 m/s instead
   or a jet draws through M25's shaders and present pass. The frame constants grew to 32 KB for its wake (checked
   against Vulkan's uniform range at startup).
 
+### Piloting (M29)
+
+Either aircraft can be flown from the keyboard, to look at the smoke along any line through it: hover into a pall, sweep
+the downwash over dust, run the jet's wake through a column and watch it heal. **Ctrl+H** takes the helicopter (the one
+flying, or a new one hovering over the crosshair), **Ctrl+J** the jet (the pass flying, or a new one at 100 m/s); the
+camera then chases it. It is an inspection tool, not a flight model: there is no damage and no crashing. Both fly around
+the **scene**: the last click, else the range's centre. They stay near it, and **Home** flies the piloted aircraft back.
+
+- **The plan as a tape.** Each frame, before it renders, the control law writes the aircraft's plan one knot per tick
+  from the last committed tick, one tick past the most a frame can step. A tick the frame did not commit (fewer steps, a
+  skipped or paused frame) is rewritten by the next frame; a committed tick never changes. Everything downstream (the
+  rotor's air, the wake's knots, the dust and its CPU twin, the poses) reads the plan as it reads a scripted flight, so
+  no shader changed, and a run without piloting is unchanged.
+- **The helicopter (assisted).** W A S D ask for a velocity relative to the camera (25 m/s, 45 with Shift); Q and E sink
+  and climb at 6 m/s (10 with Shift). The law reaches 90% of the speed in about 3 s, accelerating at up to 8 m/s^2 with
+  the acceleration eased in, so the rotor tilts smoothly. The nose follows the track once it moves, at up to 90 degrees a
+  second. Released, it brakes to a hover. It settles onto the ground or a prop's top rather than crashing. It stays
+  within about 300 m of the scene: towards the edge it slows so that it stops there.
+- **The jet (assisted).** It cruises at 100 m/s. A and D bank it up to 82 degrees in a level turn (7 g; half a circle in
+  under 5 s). W pushes the nose down to -1.5 g (a 40-degree dive within 3 s; the airframe stays upright, the nose below
+  the flight path) and S pulls it up (to 9 g). Let go and the wings roll level and the climb or dive eases out. Q and E set
+  the speed (60-290 m/s); Shift asks for full speed. It climbs and dives within 45 degrees and stays under 300 m. It
+  pulls up by itself before the ground: a held dive levels off 15 m up. Past 400 m from the scene (judged 3 s ahead) the
+  assist takes over in a full level turn at the cruise speed until the nose points back at the scene. With no keys held
+  it turns back within about 360 m; fighting it at full speed, the turn is several hundred metres across. The reheat,
+  vapor cone and trails respond as in the scripts, because they follow the same state. The trails leave the wingtips
+  even in a hard bank: the wake's knots are laid along the banked span. Released (**Esc**, or Ctrl+J again), it circles 350 m around the scene at 110 m/s, 30-120 m
+  over the ground, so its wake keeps cutting the smoke. **R** clears it.
+- **Home.** The helicopter flies to a hover 20 m over the scene. The jet flies a pass through it at the cruise speed, 60 m
+  up.
+  Any movement key takes the controls back. The overlay shows how far away the scene is and which way.
+- **The camera.** It chases from behind; the right mouse button orbits it and the wheel moves it nearer or farther. Tab,
+  or a camera bookmark, leaves the camera where it is and keeps the keys on the aircraft.
+- **Settings.** The overlay's Showcase window has a "Pilot settings" section, closed until opened. The helicopter's
+  sliders set its speeds, climb rate, acceleration, turn rate and boundary; the jet's set its cruise and top speeds, bank,
+  highest load, pull, roll rate and boundary. "Defaults" restores them. They last for the session and apply from the
+  next tick.
+
 ## D3D12 and Vulkan
 
 | Topic | D3D12 | Vulkan |
@@ -772,7 +811,11 @@ Earlier decisions, measured the same way:
   most smoke, and Debug Vulkan's by up to 3 levels between runs in a few brownout frames (Release is exact; unexplained).
   WARP needed one change: its shader compiler crashed on the dissolve's dither table.
 - **Lifecycle.** `tools/lifecycle.ps1` drives the interactive path under validation: the controls, the showcase keys,
-  30 resizes, minimize and restore, and a minimized start.
+  piloting both aircraft (M29), 30 resizes, minimize and restore, and a minimized start.
+- **Piloting.** A unit test drives the control laws with random keys (limits, the floor, the scene's boundary, Home, the
+  release's hover and orbit)
+  and checks the tape: over random frame splits and skipped frames, every committed tick stays the law's output for the
+  keys of the frame that committed it, and the jet's memoised wake equals one computed afresh.
 - **Release repeatability.** Optimized D3D12 output is not always bit-identical between runs on this driver, so the
   exact gates use Debug builds.
 
@@ -813,13 +856,18 @@ Earlier decisions, measured the same way:
 - D3D12's CPU frame tails and its local-memory growth are unexplained.
 - Region timestamps are not fenced on D3D12 and serialize the GPU on Vulkan.
 - The jet's wake is a pair of line vortices: no Crow instability, no vortex bursting, no secondary vorticity at the
-  ground (the pair stalls rather than rebounds). Its pair descends level whatever the bank, and frames of several steps
+  ground (the pair stalls rather than rebounds). Its pair is born along the banked span but sinks vertically, a push's
+  wake keeps the sense of rotation of a pull's, and frames of several steps
   (interactive catch-up) use the last step's wake for each step. Side on through a 60 m pall, a 10 m span reads subtly;
   the tunnel reads best along the track or from above. The heat haze is screen-space (smoke in front of the plume
   shimmers too), and the vapor cone and trails are drawn before the smoke, which covers them where it is in front.
 - The jet's design values (its mass, drag, thrust range, the saltation threshold, the haze gain, the condensation
   thresholds, the bite's speeds) are estimates or chosen by look, labelled in `jet_layout.hlsli`. Its cost at 1080p is
   not measured yet.
+- Piloting uses assisted control laws, not flight models: the helicopter cannot land or spin down while piloted, the jet
+  cannot stall, roll inverted or loop, and neither collides with props (each is held over the surface below it). The
+  frame holds a jet's newest 160 wake knots (16 s); for a jet that stays over the range, the oldest 20 of them fade out
+  instead of vanishing. Piloting is interactive only: no script or capture records a piloted flight.
 
 ## Future work
 
@@ -909,7 +957,11 @@ timestamps. Minimizing pauses the simulation; resizing keeps its state.
 | **B** / **V** | An 80-impact barrage of the selected preset walking across the view through the crosshair / a continuous bombardment of the selected preset around the crosshair (on or off) |
 | **T**, **P**, **N** | 0.25x slow motion; pause or resume; one 1/60 s step while paused |
 | **H** | The helicopter (realism model): to a hover 12 m over the last click (or the crosshair); again to move it there, or near where it hovers to send it away |
-| **J** | The jet (realism model): a pass at 160 m/s, 40 m over the last click (or the crosshair), across the view, 5 s later; again to queue another after it |
+| **J** | The jet (realism model): a pass at 160 m/s, 40 m over the last click (or the crosshair), across the view, 5 s later; again to replace it (the jet flying, piloted or circling, flies on and dissolves over 2 s, and the new pass crosses 5 s after that) |
+| **Ctrl+H** / **Ctrl+J** | Fly the helicopter / the jet (realism model): the one flying, or a new one at the crosshair; again (or **Esc**) to release it. The helicopter then hovers; the jet circles over the scene (the last click) until cleared. |
+| While flying: **Home** | Fly back to the scene (any movement key takes over again) |
+| While flying: **W A S D**, **Q E**, **Shift** | Helicopter: move relative to the camera, down and up, faster. Jet: **A D** bank, **W** nose down, **S** nose up, **Q E** slower and faster, **Shift** full speed |
+| While flying: right mouse button, wheel, **Tab** | Orbit the chase camera, move it nearer or farther; **Tab** leaves the camera where it is (or chases again) |
 | **Space** / **R** | Restart the startup group (with the realism model: add it to the scene) / clear every effect and its lingering smoke (both stop the barrage and bombardment) |
 | **W A S D**, **Q E**, **Shift** | Move; down and up while flying; four times faster |
 | Right mouse button, wheel | Look around; change the speed of the current mode |
@@ -1075,3 +1127,4 @@ powershell -File tools/lifecycle.ps1 -Configuration Debug -Renderer vulkan -Smok
 | M26 | The helicopter: its rotor's air on the smoke, brownout dust, a proxy model, three scripts, the H key and the overlay's button, two benchmarks; the images above. |
 | M28 | The jet: its wake's vortices (Biot-Savart segments with ground images, sinking, spreading and decaying, memoised per knot), the airframe's push and the exhaust on the smoke; the jet's own bite thresholds; a procedural fighter; heat haze, reheat from the drag balance, the vapor cone, wingtip condensation, a shadow; its slot's dust with a CPU twin; two scripts, the J key; frame constants of 32 KB; the images above. |
 | M27 | A look pass after Blastcore references: the star of smoke tendrils behind an impact's thrown clods, a size mix of clods, the rotor's bite (a hole in the pall under a hover, a band behind a pass) and a subtler brownout; the images above. |
+| M29 | Piloting: assisted control laws for the helicopter and the jet, written into their plans tick by tick from the keys, a chase camera, a hover and an orbit on release, a boundary around the scene and a Home key, the wake's oldest knots tapered for a jet that stays over the range. |

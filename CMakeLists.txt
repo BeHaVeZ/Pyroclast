@@ -68,6 +68,8 @@ add_executable(Pyroclast
     src/app/jet_renderer.cpp
     src/app/key_bindings.cpp
     src/app/camera_controls.cpp
+    src/app/chase_camera.cpp
+    src/app/pilot.cpp
     src/app/showcase.cpp
     src/core/math.cpp
     src/tools/debug_ui.cpp
@@ -76,6 +78,7 @@ add_executable(Pyroclast
     src/simulation/residual_pool.cpp
     src/simulation/rotorcraft.cpp
     src/simulation/jet.cpp
+    src/simulation/pilot_control.cpp
     src/simulation/explosion_scenarios.cpp
     src/simulation/impact_patterns.cpp
     src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp
@@ -131,7 +134,7 @@ if(BUILD_TESTING)
         src/simulation/effect_lights.cpp src/simulation/wind.cpp src/simulation/terrain.cpp src/simulation/environment.cpp src/simulation/range_props.cpp
         src/core/math.cpp src/app/explosion_renderer.cpp src/app/realism_constants.cpp src/app/rotor_constants.cpp src/simulation/rotorcraft.cpp src/simulation/jet.cpp
         src/app/helicopter_mesh.cpp src/app/helicopter_renderer.cpp src/app/jet_constants.cpp src/app/jet_mesh.cpp src/app/jet_renderer.cpp
-        src/app/smoke_resolution_policy.cpp src/app/camera.cpp src/app/camera_controls.cpp src/app/sandbox.cpp
+        src/app/smoke_resolution_policy.cpp src/app/camera.cpp src/app/camera_controls.cpp src/app/chase_camera.cpp src/app/pilot.cpp src/simulation/pilot_control.cpp src/app/sandbox.cpp
         src/app/showcase.cpp src/app/key_bindings.cpp src/app/test_range.cpp src/app/prop_mesh.cpp src/graphics/draw_validation.cpp)
     target_include_directories(ParticleControlTests PRIVATE src)
     target_link_libraries(ParticleControlTests PRIVATE SDL3::SDL3-static pyroclast_shader_list)
@@ -202,6 +205,12 @@ if(BUILD_TESTING)
     target_include_directories(JetTests PRIVATE src)
     add_test(NAME jet COMMAND JetTests)
     list(APPEND project_targets JetTests)
+    add_executable(PilotTests tests/pilot_tests.cpp src/simulation/pilot_control.cpp src/simulation/jet.cpp src/simulation/rotorcraft.cpp
+        src/simulation/terrain.cpp src/simulation/wind.cpp src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp
+        src/simulation/effect_lights.cpp src/core/math.cpp)
+    target_include_directories(PilotTests PRIVATE src)
+    add_test(NAME pilot COMMAND PilotTests)
+    list(APPEND project_targets PilotTests)
     add_executable(ImageCompareTests tests/image_compare_tests.cpp tools/image_diff/image_compare.cpp)
     target_include_directories(ImageCompareTests PRIVATE tools)
     add_test(NAME image_compare COMMAND ImageCompareTests)

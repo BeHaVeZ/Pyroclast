@@ -3,6 +3,7 @@
 #include "../graphics/particle_layout.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 
 namespace pyroclast
@@ -116,10 +117,11 @@ JetPose jet_pose(const JetFlight& flight, std::uint32_t tick, const Terrain& ter
     const double3 needed = state.acceleration + double3{0, jet::gravity, 0};
     double3 lift = needed - forward * dot(needed, forward);
     if (length(lift) < 1e-6) lift = double3{0, 1, 0} - forward * forward.y;
-    pose.load = length(lift) / jet::gravity;
-    const double3 up = normalize(lift);
+    const double sense = dot(lift, double3{0, 1, 0} - forward * forward.y) < 0 ? -1.0 : 1.0;
+    pose.load = sense * length(lift) / jet::gravity;
+    const double3 up = normalize(lift) * sense;
     const double speed_ratio = jet::pass_speed / std::max(pose.airspeed, 60.0);
-    const double attack = std::min(jet::attack_per_g * pose.load * speed_ratio * speed_ratio, 12 * jet::pi / 180);
+    const double attack = std::clamp(jet::attack_per_g * pose.load * speed_ratio * speed_ratio, -12 * jet::pi / 180, 12 * jet::pi / 180);
     pose.forward = forward * std::cos(attack) + up * std::sin(attack);
     pose.up = up * std::cos(attack) - forward * std::sin(attack);
     pose.right = cross(pose.forward, pose.up);
@@ -149,9 +151,9 @@ std::optional<KnotBirth> knot_birth(const JetFlight& flight, std::uint32_t tick,
     birth.pass = static_cast<std::uint32_t>(listed_pass(flight, tick) - flight.passes.data());
     birth.centre = pose.centre;
     birth.forward = horizontal(pose.velocity);
-    birth.right = {-birth.forward.z, 0, birth.forward.x};
+    birth.right = pose.right;
     birth.ground = terrain.height(static_cast<float>(pose.centre.x), static_cast<float>(pose.centre.z));
-    birth.gamma = pose.load * jet::mass * jet::gravity / (jet::density * pose.airspeed * jet::spacing) * pose.fade;
+    birth.gamma = std::abs(pose.load) * jet::mass * jet::gravity / (jet::density * pose.airspeed * jet::spacing) * pose.fade;
     birth.exhaust = pose.thrust / pose.airspeed * pose.fade;
     return birth;
 }
@@ -243,6 +245,14 @@ KnotState JetHistory::state(const KnotBirth& birth, std::uint32_t age_ticks, con
     return state;
 }
 
+void JetHistory::forget_after(std::uint32_t tick)
+{
+    for (auto& entry : entries_)
+    {
+        if (entry.tick != never && entry.tick > tick) entry = {};
+    }
+}
+
 void JetHistory::clear()
 {
     entries_.fill({});
@@ -288,7 +298,9 @@ JetWake jet_wake(const JetFlight& flight, std::uint32_t tick, const Terrain& ter
         if (!in_range(state.centre)) continue;
         auto& record = wake.knots[wake.count];
         const double image = 1 - smoothstep(jet::image_near, jet::image_far, state.height);
-        record.words[0] = {static_cast<float>(state.left.x), static_cast<float>(state.left.y), static_cast<float>(state.left.z), static_cast<float>(state.gamma)};
+        const double taper = std::min(1.0, static_cast<double>(jet_layout::jet_knot_limit - wake.count) / jet::taper_knots);
+        record.words[0] = {static_cast<float>(state.left.x), static_cast<float>(state.left.y), static_cast<float>(state.left.z),
+            static_cast<float>(state.gamma * taper)};
         record.words[1] = {static_cast<float>(state.right.x), static_cast<float>(state.right.y), static_cast<float>(state.right.z), static_cast<float>(state.core)};
         record.words[2] = {static_cast<float>(birth->ground), static_cast<float>(image), static_cast<float>(state.exhaust_speed),
             static_cast<float>(state.exhaust_radius)};
@@ -319,7 +331,7 @@ JetHead jet_head(const JetPose& pose)
     const double3 span_axis = pose.right * (0.5 * jet::spacing);
     const double3 left = pose.centre - span_axis;
     const double3 right = pose.centre + span_axis;
-    const double gamma = pose.load * jet::mass * jet::gravity / (jet::density * pose.airspeed * jet::spacing) * pose.fade;
+    const double gamma = std::abs(pose.load) * jet::mass * jet::gravity / (jet::density * pose.airspeed * jet::spacing) * pose.fade;
     head.words[0] = {static_cast<float>(left.x), static_cast<float>(left.y), static_cast<float>(left.z), static_cast<float>(gamma)};
     head.words[1] = {static_cast<float>(right.x), static_cast<float>(right.y), static_cast<float>(right.z), static_cast<float>(jet::core_radius)};
     head.words[2] = {static_cast<float>(pose.centre.x), static_cast<float>(pose.centre.y), static_cast<float>(pose.centre.z), 0};
@@ -518,6 +530,56 @@ void Jetcraft::add_pass(JetPass pass, std::uint32_t seed)
     }
     flight_->passes.push_back(std::move(pass));
     request_pending_ = true;
+}
+
+bool Jetcraft::take_over(std::uint32_t tick)
+{
+    if (!flight_) return false;
+    auto& passes = flight_->passes;
+    const auto listed = std::find_if(passes.begin(), passes.end(), [tick](const JetPass& pass) { return tick >= pass.list_tick && tick < pass.unlist_tick; });
+    if (listed == passes.end())
+    {
+        std::erase_if(passes, [tick](const JetPass& pass) { return pass.list_tick > tick; });
+        return false;
+    }
+    passes.erase(listed + 1, passes.end());
+    auto& pass = passes.back();
+    continue_plan(pass, tick, {});
+    pass.unlist_tick = never;
+    history_.forget_after(tick);
+    request_pending_ = true;
+    return true;
+}
+
+std::uint32_t Jetcraft::end_passes(std::uint32_t tick, std::uint32_t fade_ticks)
+{
+    if (!flight_) return tick;
+    auto& passes = flight_->passes;
+    std::erase_if(passes, [tick](const JetPass& pass) { return pass.list_tick > tick; });
+    std::uint32_t free = tick;
+    for (auto& pass : passes)
+    {
+        if (tick < pass.list_tick || tick >= pass.unlist_tick) continue;
+        if (pass.unlist_tick > tick + fade_ticks)
+        {
+            continue_plan(pass, tick, {});
+            FlightBuilder builder(pass);
+            builder.cruise(fade_ticks);
+            pass = builder.build();
+            pass.unlist_tick = tick + fade_ticks;
+            history_.forget_after(tick);
+        }
+        free = std::max(free, pass.unlist_tick);
+    }
+    request_pending_ = true;
+    return free;
+}
+
+void Jetcraft::steer(std::uint32_t tick, std::span<const FlightKnot> knots)
+{
+    assert(flight_ && !flight_->passes.empty());
+    continue_plan(flight_->passes.back(), tick, knots);
+    history_.forget_after(tick);
 }
 
 void Jetcraft::clear()

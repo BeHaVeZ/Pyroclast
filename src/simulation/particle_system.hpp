@@ -101,6 +101,7 @@ public:
     std::uint32_t tick() const { return tick_; }
     ParticleWork plan(double elapsed_seconds, std::uint32_t active_effects, std::uint32_t offscreen_divisor = 0,
         ParticleListing listing = {}, const FrameUnits* units = nullptr);
+    std::uint32_t upcoming_steps(double elapsed_seconds) const;
     static std::optional<ParticleCounters> counters(const ReadbackData& data);
     void commit(const ParticleWork& work);
     void set_fixed_ticks(bool fixed) { fixed_ticks_ = fixed; }

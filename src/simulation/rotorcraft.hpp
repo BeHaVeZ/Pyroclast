@@ -8,6 +8,7 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -88,6 +89,8 @@ struct FlightPlan
     std::uint32_t spin_down_tick = never;
 };
 FlightState flight_state(const FlightPlan& plan, std::uint32_t tick);
+inline constexpr std::uint32_t plan_memory_ticks = 2520;
+void continue_plan(FlightPlan& plan, std::uint32_t tick, std::span<const FlightKnot> knots);
 double collective_share(const FlightPlan& plan, std::uint32_t tick);
 double spin_share(const FlightPlan& plan, std::uint32_t tick);
 double rotor_phase(const FlightPlan& plan, std::uint32_t tick, double speed);
@@ -217,6 +220,7 @@ public:
     bool variants() const { return variants_; }
     void fly(FlightPlan plan, std::uint32_t seed);
     void replan(FlightPlan plan);
+    void steer(std::uint32_t tick, std::span<const FlightKnot> knots);
     void clear();
     RotorHistory& history() { return history_; }
     const RotorHistory& history() const { return history_; }

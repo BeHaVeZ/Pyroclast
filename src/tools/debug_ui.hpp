@@ -3,6 +3,7 @@
 #include "../core/math.hpp"
 #include "../graphics/graphics_device.hpp"
 #include "../simulation/particle_system.hpp"
+#include "../simulation/pilot_control.hpp"
 #include "../simulation/wind.hpp"
 
 #include <array>
@@ -87,6 +88,7 @@ struct DiagnosticsSnapshot
         std::uint32_t linger_scale = 0;
         std::uint32_t linger_seconds = 0;
         std::uint32_t rotor_slots = 0;
+        std::uint32_t jet_slots = 0;
         struct Helicopter
         {
             std::string_view state;
@@ -96,6 +98,22 @@ struct DiagnosticsSnapshot
             bool waiting = false;
         };
         std::optional<Helicopter> helicopter;
+        std::string_view jet;
+        struct Pilot
+        {
+            std::string_view aircraft;
+            float speed = 0;
+            float height = 0;
+            float load = 0;
+            float bank = 0;
+            float mach = 0;
+            bool chase = true;
+            float scene_distance = 0;
+            float scene_bearing = 0;
+            bool returning = false;
+        };
+        std::optional<Pilot> pilot;
+        std::array<float, pilot_setting_count> pilot_settings{};
     };
     struct Aim
     {
@@ -188,6 +206,13 @@ struct UiCommand
         set_slot_policy,
         send_helicopter,
         send_jet,
+        pilot_helicopter,
+        pilot_jet,
+        release_pilot,
+        toggle_chase,
+        return_pilot,
+        set_pilot_setting,
+        reset_pilot_settings,
     };
     Kind kind;
     std::uint32_t value = 0;

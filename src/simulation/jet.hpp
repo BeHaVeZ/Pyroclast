@@ -33,6 +33,7 @@ inline constexpr double mixing = 9;
 inline constexpr double exhaust_time = 1.5;
 inline constexpr std::uint32_t integration_ticks = 6;
 inline constexpr double range_box = 500;
+inline constexpr std::uint32_t taper_knots = 20;
 inline constexpr double pass_speed = 160;
 inline constexpr double fast_speed = 290;
 inline constexpr double attack_per_g = 3 * pi / 180;
@@ -109,6 +110,7 @@ class JetHistory final
 public:
     static constexpr std::uint32_t length = 1024;
     KnotState state(const KnotBirth& birth, std::uint32_t age_ticks, const WindSettings& wind, bool gusts, std::uint32_t mask);
+    void forget_after(std::uint32_t tick);
     void clear();
 
 private:
@@ -193,6 +195,9 @@ public:
     bool variants() const { return variants_; }
     void fly(JetFlight flight, std::uint32_t seed);
     void add_pass(JetPass pass, std::uint32_t seed);
+    bool take_over(std::uint32_t tick);
+    void steer(std::uint32_t tick, std::span<const FlightKnot> knots);
+    std::uint32_t end_passes(std::uint32_t tick, std::uint32_t fade_ticks);
     void clear();
     JetHistory& history() { return history_; }
     JetEmissionHistory& emissions() { return emissions_; }

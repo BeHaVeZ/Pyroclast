@@ -1,7 +1,7 @@
 # Drives one Pyroclast window through the interactive lifecycle and checks native validation:
 # pause/clear/trigger/single steps, a click on the terrain or a prop, effect lines, the showcase's keys (preset,
 # count, fire at the crosshair, slot saturation, barrage, bombardment, the helicopter's H twice, slow motion, walk, two
-# bookmarks), 30 odd-size resizes,
+# bookmarks, piloting the helicopter and the jet), 30 odd-size resizes,
 # three minimize/restore cycles, a running trigger, a normal close, and separately a start in a minimized
 # window that is later restored. -Realism runs the realism model (M22; the application's default since M25), where Space
 # adds the group to the scene; without it the run passes --realism=off and checks the legacy model.
@@ -59,6 +59,24 @@ $arguments = "--renderer=$Renderer --explosions=$Explosions --smoke-resolution=$
 function Send-Key([IntPtr]$window, [int]$key, [int]$scan) {
     [void][LifecycleWindow]::PostMessage($window, 0x100, [IntPtr]$key, [IntPtr](($scan -shl 16) -bor 1))
     Start-Sleep -Milliseconds 20
+    [void][LifecycleWindow]::PostMessage($window, 0x101, [IntPtr]$key, [IntPtr]((-1073741824) -bor ($scan -shl 16) -bor 1))
+    Start-Sleep -Milliseconds 20
+}
+
+# Ctrl+key: SDL takes the modifier from the Ctrl key's own events.
+function Send-CtrlKey([IntPtr]$window, [int]$key, [int]$scan) {
+    [void][LifecycleWindow]::PostMessage($window, 0x100, [IntPtr]0x11, [IntPtr]((0x1D -shl 16) -bor 1))
+    Start-Sleep -Milliseconds 20
+    Send-Key $window $key $scan
+    [void][LifecycleWindow]::PostMessage($window, 0x101, [IntPtr]0x11, [IntPtr]((-1073741824) -bor (0x1D -shl 16) -bor 1))
+    Start-Sleep -Milliseconds 20
+}
+
+# Holds a key (SDL's keyboard state) over `steps` single steps (N), so a paused run simulates them with it held.
+function Hold-Key([IntPtr]$window, [int]$key, [int]$scan, [int]$steps) {
+    [void][LifecycleWindow]::PostMessage($window, 0x100, [IntPtr]$key, [IntPtr](($scan -shl 16) -bor 1))
+    Start-Sleep -Milliseconds 20
+    for ($step = 0; $step -lt $steps; ++$step) { Send-Key $window 78 0x31 }
     [void][LifecycleWindow]::PostMessage($window, 0x101, [IntPtr]$key, [IntPtr]((-1073741824) -bor ($scan -shl 16) -bor 1))
     Start-Sleep -Milliseconds 20
 }
@@ -158,6 +176,20 @@ function Run-Interactive {
         Send-Key $window 0x47 0x22    # G: fly
         Send-Key $window 0x72 0x3D    # F3: bookmark 2, the ground view
         Send-Key $window 0x7A 0x57    # F11: bookmark 7, the far view
+        # Piloting (M29): the helicopter H sent, taken (realism) or refused (legacy), flown forward and released; the jet,
+        # its chase camera off and on, banked, sent home and released to circle; J replacing it.
+        Send-CtrlKey $window 0x48 0x23   # Ctrl+H: take the helicopter
+        Hold-Key $window 0x57 0x11 10    # W held over 10 steps
+        Send-Key $window 0x1B 0x01       # Esc: release (it settles)
+        Send-CtrlKey $window 0x4A 0x24   # Ctrl+J: a piloted jet
+        Send-Key $window 0x09 0x0F       # Tab: chase camera off
+        Send-Key $window 0x09 0x0F       # Tab: chase camera on
+        Hold-Key $window 0x44 0x20 10    # D held over 10 steps: bank right
+        Send-Key $window 0x24 0x147      # Home (an extended key; 0x47 alone is keypad 7): back to the scene
+        for ($tick = 0; $tick -lt 10; ++$tick) { Send-Key $window 78 0x31 }
+        Send-Key $window 0x1B 0x01       # Esc: release (it circles)
+        Send-Key $window 0x4A 0x24       # J: a new pass; the circling jet dissolves
+        for ($tick = 0; $tick -lt 10; ++$tick) { Send-Key $window 78 0x31 }
         Send-Key $window 0x56 0x2F    # V: stop the bombardment
         Send-Key $window 82 0x13      # R: clear, stopping the barrage and removing the helicopter
         Start-Sleep -Milliseconds 300
@@ -192,7 +224,13 @@ function Run-Interactive {
             'Barrage stopped after', 'spawn regions on', 'wind arrow on') {
             if (-not $text.Contains($expected)) { throw "The application never logged '$expected'; input or resizes did not arrive." }
         }
-        $helicopter = if ($Realism) { @('Helicopter: inbound to (', 'Helicopter: on its way.') } else { @('The helicopter needs the realism model.') }
+        $helicopter = if ($Realism) {
+            @('Helicopter: inbound to (', 'Helicopter: on its way.', 'Pilot: helicopter at (', 'Pilot: released; the helicopter settles into a hover.',
+                'Pilot: jet at (', 'Pilot: chase camera off.', 'Pilot: chase camera on.', 'Pilot: returning to the scene (',
+                'Pilot: released; the jet circles over (',
+                'the jet flying dissolves')
+        } else { @('The helicopter needs the realism model.', 'The jet needs the realism model.', 'Pilot: nothing to release.',
+                'Pilot: nothing to return.') }
         foreach ($expected in $helicopter) {
             if (-not $text.Contains($expected)) { throw "The application never logged '$expected'; input or resizes did not arrive." }
         }

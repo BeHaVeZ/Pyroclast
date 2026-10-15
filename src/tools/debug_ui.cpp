@@ -130,12 +130,18 @@ void engine_window(const DiagnosticsSnapshot& snapshot)
 
     if (ImGui::CollapsingHeader("Load", ImGuiTreeNodeFlags_DefaultOpen))
     {
-        const std::uint32_t busy = load.active_effects + load.rotor_slots;
+        const std::uint32_t busy = load.active_effects + load.rotor_slots + load.jet_slots;
         const float used = load.effect_slots != 0 ? static_cast<float>(busy) / static_cast<float>(load.effect_slots) : 0.0f;
         const ImVec4 colour = busy >= load.effect_slots ? ImVec4(0.85f, 0.2f, 0.2f, 1) :
             used >= 0.75f ? ImVec4(0.9f, 0.65f, 0.15f, 1) : ImVec4(0.3f, 0.7f, 0.3f, 1);
-        char slots[80];
-        if (load.rotor_slots != 0) std::snprintf(slots, sizeof(slots), "%u of %u effect slots (%u the helicopter's)", busy, load.effect_slots, load.rotor_slots);
+        char slots[96];
+        if (load.rotor_slots != 0 && load.jet_slots != 0)
+        {
+            std::snprintf(slots, sizeof(slots), "%u of %u effect slots (%u the helicopter's, %u the jet's)", busy, load.effect_slots, load.rotor_slots,
+                load.jet_slots);
+        }
+        else if (load.rotor_slots != 0) std::snprintf(slots, sizeof(slots), "%u of %u effect slots (%u the helicopter's)", busy, load.effect_slots, load.rotor_slots);
+        else if (load.jet_slots != 0) std::snprintf(slots, sizeof(slots), "%u of %u effect slots (%u the jet's)", busy, load.effect_slots, load.jet_slots);
         else std::snprintf(slots, sizeof(slots), "%u of %u effect slots", busy, load.effect_slots);
         ImGui::PushStyleColor(ImGuiCol_PlotHistogram, colour);
         ImGui::ProgressBar(used, ImVec2(panel_width - 16, 0), slots);
@@ -321,6 +327,69 @@ void showcase_window(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>
         ImGui::Text("%.*s, hub %.1f m up", length(helicopter->state), helicopter->state.data(), static_cast<double>(helicopter->hub_height));
     }
     else ImGui::TextDisabled("hovers over the last click or the crosshair");
+    ImGui::BeginDisabled(!snapshot.load.realism);
+    if (ImGui::Button("Fly helicopter (Ctrl+H)")) commands.push_back({UiCommand::Kind::pilot_helicopter});
+    ImGui::SameLine();
+    if (ImGui::Button("Fly jet (Ctrl+J)")) commands.push_back({UiCommand::Kind::pilot_jet});
+    ImGui::EndDisabled();
+    const auto& pilot = snapshot.load.pilot;
+    if (pilot)
+    {
+        ImGui::SameLine();
+        if (ImGui::Button("Release (Esc)")) commands.push_back({UiCommand::Kind::release_pilot});
+        ImGui::SameLine();
+        if (ImGui::Button(pilot->chase ? "Free view (Tab)" : "Chase (Tab)")) commands.push_back({UiCommand::Kind::toggle_chase});
+        ImGui::SameLine();
+        if (ImGui::Button("Return (Home)")) commands.push_back({UiCommand::Kind::return_pilot});
+    }
+    else if (!snapshot.load.jet.empty())
+    {
+        ImGui::SameLine();
+        ImGui::Text("jet %.*s", length(snapshot.load.jet), snapshot.load.jet.data());
+    }
+    if (pilot && pilot->aircraft == "jet")
+    {
+        ImGui::Text("Jet: %.0f m/s (Mach %.2f), %.0f m up, %.1f g, bank %.0f deg", static_cast<double>(pilot->speed), static_cast<double>(pilot->mach),
+            static_cast<double>(pilot->height), static_cast<double>(pilot->load), static_cast<double>(pilot->bank));
+        ImGui::TextDisabled("A/D bank, W/S nose down/up, Q/E slower/faster, Shift full speed, Home back to the scene");
+    }
+    else if (pilot)
+    {
+        ImGui::Text("Helicopter: %.1f m/s, skids %.1f m up", static_cast<double>(pilot->speed), static_cast<double>(pilot->height));
+        ImGui::TextDisabled("WASD move (relative to the view), Q/E down/up, Shift fast, Home back to the scene");
+    }
+    if (pilot)
+    {
+        const double distance = pilot->scene_distance;
+        const double bearing = pilot->scene_bearing;
+        if (std::abs(bearing) < 10) ImGui::Text("Scene %.0f m ahead", distance);
+        else if (std::abs(bearing) > 170) ImGui::Text("Scene %.0f m behind", distance);
+        else ImGui::Text("Scene %.0f m, %.0f deg to the %s", distance, std::abs(bearing), bearing > 0 ? "right" : "left");
+        if (pilot->returning)
+        {
+            ImGui::SameLine();
+            ImGui::TextDisabled("(returning)");
+        }
+    }
+    if (ImGui::CollapsingHeader("Pilot settings"))
+    {
+        for (std::uint32_t index = 0; index < pilot_setting_count; ++index)
+        {
+            const auto setting = static_cast<PilotSetting>(index);
+            if (index == 0) ImGui::SeparatorText("Helicopter");
+            if (setting == first_jet_setting) ImGui::SeparatorText("Jet");
+            const auto& info = pilot_setting_info(setting);
+            float value = snapshot.load.pilot_settings[index];
+            const std::string label = std::string(info.label) + "##pilot" + std::to_string(index);
+            ImGui::SetNextItemWidth(160);
+            if (ImGui::SliderFloat(label.c_str(), &value, static_cast<float>(info.minimum), static_cast<float>(info.maximum), info.format.data(),
+                    ImGuiSliderFlags_AlwaysClamp))
+            {
+                commands.push_back({UiCommand::Kind::set_pilot_setting, index, {}, value});
+            }
+        }
+        if (ImGui::Button("Defaults##pilot")) commands.push_back({UiCommand::Kind::reset_pilot_settings});
+    }
     if (showcase.preset_ticks != 0)
     {
         ImGui::TextDisabled("Expected ~%u of %u slots; %.1f impacts/s sustainable", showcase.preset_ticks / showcase.bombardment_interval,
