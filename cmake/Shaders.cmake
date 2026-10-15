@@ -147,7 +147,7 @@ foreach(shader IN LISTS PYROCLAST_SHADERS)
             COMMAND_EXPAND_LISTS
             VERBATIM
         )
-        target_sources(Pyroclast PRIVATE "${shader_header}" "${shader_binary}")
+        target_sources(pyroclast_backends PRIVATE "${shader_header}" "${shader_binary}")
     endforeach()
 endforeach()
 
@@ -159,6 +159,5 @@ file(CONFIGURE OUTPUT "${shader_generated_dir}/vulkan_shaders.inl" CONTENT "${vu
 # The Shader enum comes from shader_list.inl, so everything that names a Shader needs this directory.
 add_library(pyroclast_shader_list INTERFACE)
 target_include_directories(pyroclast_shader_list INTERFACE "${shader_generated_dir}")
-target_link_libraries(Pyroclast PRIVATE pyroclast_shader_list)
 # Backend sources include "<backend>/<name>.hpp"; the directory selects the configuration.
-target_include_directories(Pyroclast PRIVATE "${shader_generated_dir}/$<CONFIG>")
+target_include_directories(pyroclast_backends PRIVATE "${shader_generated_dir}/$<CONFIG>")

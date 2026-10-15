@@ -47,32 +47,17 @@ target_compile_definitions(imgui PUBLIC IMGUI_DISABLE_OBSOLETE_FUNCTIONS NOMINMA
 target_compile_features(imgui PUBLIC cxx_std_20)
 target_link_libraries(imgui PUBLIC SDL3::SDL3-static Vulkan::Vulkan d3d12 dxgi d3dcompiler)
 
-add_executable(Pyroclast
-    src/app/main.cpp
-    src/app/frame_baseline.cpp
-    src/app/frame_statistics.cpp
-    src/app/counter_log.cpp
-    src/app/smoke_resolution_policy.cpp
-    src/app/command_line.cpp
-    src/app/explosion_renderer.cpp
-    src/app/camera.cpp
-    src/app/test_range.cpp
-    src/app/prop_mesh.cpp
-    src/app/sandbox.cpp
-    src/app/realism_constants.cpp
-    src/app/rotor_constants.cpp
-    src/app/helicopter_mesh.cpp
-    src/app/helicopter_renderer.cpp
-    src/app/jet_constants.cpp
-    src/app/jet_mesh.cpp
-    src/app/jet_renderer.cpp
-    src/app/key_bindings.cpp
-    src/app/camera_controls.cpp
-    src/app/chase_camera.cpp
-    src/app/pilot.cpp
-    src/app/showcase.cpp
-    src/core/math.cpp
-    src/tools/debug_ui.cpp
+# Layers, each linking only the ones below it: core -> simulation -> app, and rhi -> backends.
+add_library(pyroclast_core STATIC src/core/math.cpp)
+target_include_directories(pyroclast_core PUBLIC src)
+
+add_library(pyroclast_rhi STATIC
+    src/graphics/adapter_name.cpp
+    src/graphics/draw_validation.cpp
+)
+target_link_libraries(pyroclast_rhi PUBLIC pyroclast_core pyroclast_shader_list)
+
+add_library(pyroclast_simulation STATIC
     src/simulation/particle_system.cpp
     src/simulation/explosion_system.cpp
     src/simulation/residual_pool.cpp
@@ -81,15 +66,18 @@ add_executable(Pyroclast
     src/simulation/pilot_control.cpp
     src/simulation/explosion_scenarios.cpp
     src/simulation/impact_patterns.cpp
-    src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp
+    src/simulation/explosion_presets.cpp
+    src/simulation/blast_front.cpp
     src/simulation/effect_lights.cpp
     src/simulation/wind.cpp
     src/simulation/terrain.cpp
     src/simulation/environment.cpp
     src/simulation/range_props.cpp
+)
+target_link_libraries(pyroclast_simulation PUBLIC pyroclast_rhi PRIVATE SDL3::SDL3-static)
+
+add_library(pyroclast_backends STATIC
     src/graphics/graphics_device.cpp
-    src/graphics/adapter_name.cpp
-    src/graphics/draw_validation.cpp
     src/graphics/d3d12/d3d12_shaders.cpp
     src/graphics/d3d12/d3d12_initialize.cpp
     src/graphics/d3d12/d3d12_renderer.cpp
@@ -112,8 +100,39 @@ add_executable(Pyroclast
     src/graphics/vulkan/vulkan_bindings.cpp
     src/graphics/vulkan/vulkan_overlay.cpp
 )
+target_compile_definitions(pyroclast_backends PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+target_link_libraries(pyroclast_backends PUBLIC pyroclast_rhi PRIVATE SDL3::SDL3-static d3d12 dxgi Vulkan::Vulkan imgui)
+
+add_library(pyroclast_app STATIC
+    src/app/frame_baseline.cpp
+    src/app/frame_statistics.cpp
+    src/app/counter_log.cpp
+    src/app/smoke_resolution_policy.cpp
+    src/app/command_line.cpp
+    src/app/explosion_renderer.cpp
+    src/app/camera.cpp
+    src/app/test_range.cpp
+    src/app/prop_mesh.cpp
+    src/app/sandbox.cpp
+    src/app/realism_constants.cpp
+    src/app/rotor_constants.cpp
+    src/app/helicopter_mesh.cpp
+    src/app/helicopter_renderer.cpp
+    src/app/jet_constants.cpp
+    src/app/jet_mesh.cpp
+    src/app/jet_renderer.cpp
+    src/app/key_bindings.cpp
+    src/app/camera_controls.cpp
+    src/app/chase_camera.cpp
+    src/app/pilot.cpp
+    src/app/showcase.cpp
+    src/tools/debug_ui.cpp
+)
+target_link_libraries(pyroclast_app PUBLIC pyroclast_simulation SDL3::SDL3-static PRIVATE imgui)
+
+add_executable(Pyroclast src/app/main.cpp)
 target_compile_definitions(Pyroclast PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-target_link_libraries(Pyroclast PRIVATE SDL3::SDL3-static d3d12 dxgi Vulkan::Vulkan imgui)
+target_link_libraries(Pyroclast PRIVATE pyroclast_app pyroclast_backends imgui)
 
 include(cmake/Shaders.cmake)
 
@@ -122,95 +141,29 @@ add_executable(ImageDiff tools/image_diff/image_diff.cpp tools/image_diff/image_
 target_link_libraries(ImageDiff PRIVATE SDL3::SDL3-static)
 
 include(CTest)
-set(project_targets Pyroclast ImageDiff)
+set(project_targets Pyroclast ImageDiff pyroclast_core pyroclast_rhi pyroclast_simulation pyroclast_backends pyroclast_app)
 if(BUILD_TESTING)
-    add_executable(CommandLineTests tests/command_line_tests.cpp src/app/command_line.cpp src/graphics/adapter_name.cpp
-        src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp src/simulation/wind.cpp)
-    target_include_directories(CommandLineTests PRIVATE src)
-    add_test(NAME command_line COMMAND CommandLineTests)
-    list(APPEND project_targets CommandLineTests)
-    add_executable(ParticleControlTests tests/particle_control_tests.cpp src/simulation/particle_system.cpp
-        src/simulation/explosion_system.cpp src/simulation/residual_pool.cpp src/simulation/explosion_scenarios.cpp src/simulation/impact_patterns.cpp src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp
-        src/simulation/effect_lights.cpp src/simulation/wind.cpp src/simulation/terrain.cpp src/simulation/environment.cpp src/simulation/range_props.cpp
-        src/core/math.cpp src/app/explosion_renderer.cpp src/app/realism_constants.cpp src/app/rotor_constants.cpp src/simulation/rotorcraft.cpp src/simulation/jet.cpp
-        src/app/helicopter_mesh.cpp src/app/helicopter_renderer.cpp src/app/jet_constants.cpp src/app/jet_mesh.cpp src/app/jet_renderer.cpp
-        src/app/smoke_resolution_policy.cpp src/app/camera.cpp src/app/camera_controls.cpp src/app/chase_camera.cpp src/app/pilot.cpp src/simulation/pilot_control.cpp src/app/sandbox.cpp
-        src/app/showcase.cpp src/app/key_bindings.cpp src/app/test_range.cpp src/app/prop_mesh.cpp src/graphics/draw_validation.cpp)
-    target_include_directories(ParticleControlTests PRIVATE src)
-    target_link_libraries(ParticleControlTests PRIVATE SDL3::SDL3-static pyroclast_shader_list)
-    add_test(NAME particle_controls COMMAND ParticleControlTests)
-    list(APPEND project_targets ParticleControlTests)
-    add_executable(DrawValidationTests tests/draw_validation_tests.cpp src/graphics/draw_validation.cpp)
-    target_include_directories(DrawValidationTests PRIVATE src)
-    target_link_libraries(DrawValidationTests PRIVATE pyroclast_shader_list)
-    add_test(NAME draw_validation COMMAND DrawValidationTests)
-    list(APPEND project_targets DrawValidationTests)
-    add_executable(FrameStatisticsTests tests/frame_statistics_tests.cpp src/app/frame_statistics.cpp src/app/counter_log.cpp)
-    target_include_directories(FrameStatisticsTests PRIVATE src)
-    target_link_libraries(FrameStatisticsTests PRIVATE pyroclast_shader_list)
-    add_test(NAME frame_statistics COMMAND FrameStatisticsTests)
-    list(APPEND project_targets FrameStatisticsTests)
-    add_executable(MathTests tests/math_tests.cpp src/core/math.cpp)
-    target_include_directories(MathTests PRIVATE src)
-    add_test(NAME math COMMAND MathTests)
-    list(APPEND project_targets MathTests)
-    add_executable(TerrainTests tests/terrain_tests.cpp src/simulation/terrain.cpp src/core/math.cpp src/app/camera.cpp)
-    target_include_directories(TerrainTests PRIVATE src)
-    add_test(NAME terrain COMMAND TerrainTests)
-    list(APPEND project_targets TerrainTests)
-    add_executable(EnvironmentTests tests/environment_tests.cpp src/simulation/environment.cpp src/simulation/range_props.cpp
-        src/simulation/terrain.cpp src/simulation/explosion_scenarios.cpp src/simulation/impact_patterns.cpp src/simulation/explosion_system.cpp src/simulation/residual_pool.cpp
-        src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp src/simulation/rotorcraft.cpp src/simulation/jet.cpp src/simulation/wind.cpp src/simulation/effect_lights.cpp
-        src/app/prop_mesh.cpp src/core/math.cpp)
-    target_include_directories(EnvironmentTests PRIVATE src)
-    add_test(NAME environment COMMAND EnvironmentTests)
-    list(APPEND project_targets EnvironmentTests)
-    add_executable(ExplosionSystemTests tests/explosion_system_tests.cpp src/simulation/explosion_system.cpp src/simulation/residual_pool.cpp
-        src/simulation/explosion_scenarios.cpp src/simulation/impact_patterns.cpp src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp src/simulation/terrain.cpp
-        src/simulation/environment.cpp src/simulation/range_props.cpp src/simulation/rotorcraft.cpp src/simulation/jet.cpp src/simulation/wind.cpp src/simulation/effect_lights.cpp
-        src/core/math.cpp)
-    target_include_directories(ExplosionSystemTests PRIVATE src)
-    add_test(NAME explosion_system COMMAND ExplosionSystemTests)
-    list(APPEND project_targets ExplosionSystemTests)
-    add_executable(ExplosionPresetTests tests/explosion_preset_tests.cpp src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp
-        src/simulation/effect_lights.cpp src/simulation/wind.cpp src/simulation/explosion_system.cpp src/simulation/residual_pool.cpp src/simulation/terrain.cpp src/core/math.cpp)
-    target_include_directories(ExplosionPresetTests PRIVATE src)
-    add_test(NAME explosion_presets COMMAND ExplosionPresetTests)
-    list(APPEND project_targets ExplosionPresetTests)
-    add_executable(ShowcaseTests tests/showcase_tests.cpp src/simulation/impact_patterns.cpp src/simulation/explosion_scenarios.cpp src/simulation/rotorcraft.cpp src/simulation/jet.cpp
-        src/simulation/explosion_system.cpp src/simulation/residual_pool.cpp src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp src/simulation/environment.cpp
-        src/simulation/range_props.cpp src/simulation/terrain.cpp src/simulation/wind.cpp src/core/math.cpp src/app/key_bindings.cpp
-        src/app/camera.cpp src/app/camera_controls.cpp src/app/test_range.cpp src/app/prop_mesh.cpp src/app/showcase.cpp)
-    target_include_directories(ShowcaseTests PRIVATE src)
-    add_executable(ScalabilityTests tests/scalability_tests.cpp src/app/smoke_resolution_policy.cpp src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp)
-    target_include_directories(ScalabilityTests PRIVATE src)
-    target_link_libraries(ScalabilityTests PRIVATE pyroclast_shader_list)
-    add_test(NAME scalability COMMAND ScalabilityTests)
-    list(APPEND project_targets ScalabilityTests)
-    target_link_libraries(ShowcaseTests PRIVATE SDL3::SDL3-static pyroclast_shader_list)
-    add_test(NAME showcase COMMAND ShowcaseTests)
-    list(APPEND project_targets ShowcaseTests)
-    add_executable(ResidualPoolTests tests/residual_pool_tests.cpp src/simulation/residual_pool.cpp src/simulation/explosion_system.cpp
-        src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp src/simulation/wind.cpp src/core/math.cpp)
-    target_include_directories(ResidualPoolTests PRIVATE src)
-    add_test(NAME residual_pool COMMAND ResidualPoolTests)
-    list(APPEND project_targets ResidualPoolTests)
-    add_executable(RotorcraftTests tests/rotorcraft_tests.cpp src/simulation/rotorcraft.cpp src/simulation/jet.cpp src/simulation/terrain.cpp src/simulation/wind.cpp
-        src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp src/simulation/effect_lights.cpp src/core/math.cpp)
-    target_include_directories(RotorcraftTests PRIVATE src)
-    add_test(NAME rotorcraft COMMAND RotorcraftTests)
-    list(APPEND project_targets RotorcraftTests)
-    add_executable(JetTests tests/jet_tests.cpp src/simulation/jet.cpp src/simulation/rotorcraft.cpp src/simulation/terrain.cpp src/simulation/wind.cpp
-        src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp src/simulation/effect_lights.cpp src/core/math.cpp)
-    target_include_directories(JetTests PRIVATE src)
-    add_test(NAME jet COMMAND JetTests)
-    list(APPEND project_targets JetTests)
-    add_executable(PilotTests tests/pilot_tests.cpp src/simulation/pilot_control.cpp src/simulation/jet.cpp src/simulation/rotorcraft.cpp
-        src/simulation/terrain.cpp src/simulation/wind.cpp src/simulation/explosion_presets.cpp src/simulation/blast_front.cpp
-        src/simulation/effect_lights.cpp src/core/math.cpp)
-    target_include_directories(PilotTests PRIVATE src)
-    add_test(NAME pilot COMMAND PilotTests)
-    list(APPEND project_targets PilotTests)
+    function(pyroclast_test name test source)
+        add_executable(${name} tests/${source}.cpp)
+        target_link_libraries(${name} PRIVATE ${ARGN})
+        add_test(NAME ${test} COMMAND ${name})
+        set(project_targets ${project_targets} ${name} PARENT_SCOPE)
+    endfunction()
+    pyroclast_test(CommandLineTests command_line command_line_tests pyroclast_app)
+    pyroclast_test(ParticleControlTests particle_controls particle_control_tests pyroclast_app)
+    pyroclast_test(DrawValidationTests draw_validation draw_validation_tests pyroclast_rhi)
+    pyroclast_test(FrameStatisticsTests frame_statistics frame_statistics_tests pyroclast_app)
+    pyroclast_test(MathTests math math_tests pyroclast_core)
+    pyroclast_test(TerrainTests terrain terrain_tests pyroclast_app)
+    pyroclast_test(EnvironmentTests environment environment_tests pyroclast_app)
+    pyroclast_test(ExplosionSystemTests explosion_system explosion_system_tests pyroclast_simulation)
+    pyroclast_test(ExplosionPresetTests explosion_presets explosion_preset_tests pyroclast_simulation)
+    pyroclast_test(ShowcaseTests showcase showcase_tests pyroclast_app)
+    pyroclast_test(ScalabilityTests scalability scalability_tests pyroclast_app)
+    pyroclast_test(ResidualPoolTests residual_pool residual_pool_tests pyroclast_simulation)
+    pyroclast_test(RotorcraftTests rotorcraft rotorcraft_tests pyroclast_simulation)
+    pyroclast_test(JetTests jet jet_tests pyroclast_simulation)
+    pyroclast_test(PilotTests pilot pilot_tests pyroclast_simulation)
     add_executable(ImageCompareTests tests/image_compare_tests.cpp tools/image_diff/image_compare.cpp)
     target_include_directories(ImageCompareTests PRIVATE tools)
     add_test(NAME image_compare COMMAND ImageCompareTests)
