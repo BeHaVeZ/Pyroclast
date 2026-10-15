@@ -1,4 +1,5 @@
 #include "sandbox.hpp"
+#include "../simulation/simulation_clock.hpp"
 #include "../simulation/explosion_scenarios.hpp"
 #include "../simulation/impact_patterns.hpp"
 
@@ -425,7 +426,7 @@ void Sandbox::fill_snapshot(DiagnosticsSnapshot& snapshot) const
     load.clusters = renderer.listed_clusters();
     load.forced_fades = effects.residual().forced_fades();
     load.linger_scale = effects.residual().last_scale();
-    load.linger_seconds = linger.linger_ticks / 60;
+    load.linger_seconds = linger.linger_ticks / ticks_per_second;
     load.queued = effects.pending();
     for (const auto slot : effects.active())
     {

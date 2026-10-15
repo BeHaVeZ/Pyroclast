@@ -1,4 +1,5 @@
 #include <SDL3/SDL.h>
+#include "../simulation/simulation_clock.hpp"
 #include <SDL3/SDL_main.h>
 
 #include "command_line.hpp"
@@ -648,7 +649,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
     sandbox->layer_mask = options.layer_mask;
     sandbox->wind = options.wind;
     sandbox->scalability = options.scalability;
-    sandbox->linger.linger_ticks = options.linger_seconds * 60;
+    sandbox->linger.linger_ticks = options.linger_seconds * pyroclast::ticks_per_second;
     sandbox->humidity = static_cast<float>(options.humidity_percent) / 100.0f;
     const auto preset = pyroclast::preset_name(options.preset);
     SDL_Log("Preset: %.*s; mask 0x%04x; wind %.1f m/s towards %.0f deg, gustiness %.2f.", static_cast<int>(preset.size()), preset.data(),
@@ -659,7 +660,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
     {
         const bool lingers = pyroclast::realism_enabled(options.layer_mask) &&
             ((options.layer_mask >> pyroclast::realism_layout::linger_mask_bit) & 1) != 0;
-        const auto linger = lingers ? options.linger_seconds * 60 : 0u;
+        const auto linger = lingers ? options.linger_seconds * pyroclast::ticks_per_second : 0u;
         auto script = pyroclast::make_scenario(options.scenario, sandbox->range.environment(), options.preset, linger);
         if (!script) return 1;
         if (options.profile_tick && *options.profile_tick > script->duration_ticks)

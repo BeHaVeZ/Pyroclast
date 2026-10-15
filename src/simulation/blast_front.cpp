@@ -1,4 +1,5 @@
 #include "blast_front.hpp"
+#include "simulation_clock.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -12,7 +13,6 @@ namespace
 constexpr double sound_speed = 340.0;
 constexpr double gamma_air = 1.4;
 constexpr double shock_factor = (gamma_air + 1) / (2 * gamma_air);
-constexpr double ticks_per_second = 60.0;
 constexpr double last_knot_metres = 600.0;
 constexpr double q16 = 65536.0;
 constexpr double q24 = 16777216.0;
@@ -178,7 +178,7 @@ float shake_angle(const ExplosionSystem& effects, std::span<const BlastParameter
         const auto& blast = classes[slot.effect_class];
         const float3 offset = camera - slot.origin;
         const float distance = std::sqrt(dot(offset, offset));
-        const float since = (static_cast<float>(tick - slot.start_tick) - blast_arrival_ticks(blast, distance)) / 60.0f;
+        const float since = (static_cast<float>(tick - slot.start_tick) - blast_arrival_ticks(blast, distance)) / ticks_per_second;
         if (since < 0 || since > window_seconds) continue;
         const float amplitude = std::min(per_overpressure * std::sqrt(blast_overpressure(blast, distance)), largest);
         const float sway = 0.7f * std::exp(-since / 0.35f) * std::sin(2 * std::numbers::pi_v<float> * 4.5f * since);

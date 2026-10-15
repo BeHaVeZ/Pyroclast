@@ -1,4 +1,5 @@
 #include "debug_ui.hpp"
+#include "../simulation/simulation_clock.hpp"
 
 #include <SDL3/SDL.h>
 #include <imgui.h>
@@ -120,7 +121,7 @@ void engine_window(const DiagnosticsSnapshot& snapshot)
     ImGui::SeparatorText("Clock");
     if (ImGui::BeginTable("clock", 2, ImGuiTableFlags_SizingStretchProp))
     {
-        row("Tick", "%u (%.1f s simulated)", clock.tick, static_cast<double>(clock.tick) / 60.0);
+        row("Tick", "%u (%.1f s simulated)", clock.tick, static_cast<double>(clock.tick) / ticks_per_second);
         row("State", "%s", clock.paused ? "paused" : clock.time_scale == 1 ? "running 1x" : "running 0.25x");
         row("Steps last frame", "%u", clock.steps);
         row("Simulation rate", "%.1f ticks/s (60 is real time)", static_cast<double>(clock.ticks_per_second));
@@ -278,7 +279,7 @@ void showcase_window(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>
     {
         const auto done = *showcase.barrage_progress;
         char progress[48];
-        std::snprintf(progress, sizeof(progress), "%u of 80, %.1f s left", done, (80 - std::min(done, 80u)) * 15 / 60.0);
+        std::snprintf(progress, sizeof(progress), "%u of 80, %.1f s left", done, (80 - std::min(done, 80u)) * 15 / static_cast<double>(ticks_per_second));
         ImGui::ProgressBar(static_cast<float>(done) / 80.0f, ImVec2(-1, 0), progress);
     }
     else ImGui::TextDisabled("80 impacts, 4 a second, across the view");
@@ -393,7 +394,7 @@ void showcase_window(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>
     if (showcase.preset_ticks != 0)
     {
         ImGui::TextDisabled("Expected ~%u of %u slots; %.1f impacts/s sustainable", showcase.preset_ticks / showcase.bombardment_interval,
-            snapshot.load.effect_slots, static_cast<double>(snapshot.load.effect_slots) * 60.0 / static_cast<double>(showcase.preset_ticks));
+            snapshot.load.effect_slots, static_cast<double>(snapshot.load.effect_slots) * ticks_per_second / static_cast<double>(showcase.preset_ticks));
     }
     if (ImGui::Button("Group (Space)")) commands.push_back({UiCommand::Kind::trigger});
     ImGui::SameLine();

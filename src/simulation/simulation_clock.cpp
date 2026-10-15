@@ -11,8 +11,7 @@ namespace pyroclast
 {
 namespace
 {
-constexpr double fixed_step = 1.0 / 60.0;
-constexpr double catch_up_cap = particle_layout::maximum_simulation_steps * fixed_step;
+constexpr double catch_up_cap = particle_layout::maximum_simulation_steps * tick_seconds;
 constexpr std::uint32_t maximum_queued_steps = 600;
 }
 
@@ -20,7 +19,7 @@ std::uint32_t SimulationClock::upcoming_steps(double elapsed_seconds) const
 {
     if (paused_) return std::min(pending_steps_, 1u);
     if (fixed_ticks_) return 1;
-    return static_cast<std::uint32_t>(std::floor(std::min(accumulator_ + elapsed_seconds * time_scale_, catch_up_cap) / fixed_step));
+    return static_cast<std::uint32_t>(std::floor(std::min(accumulator_ + elapsed_seconds * time_scale_, catch_up_cap) / tick_seconds));
 }
 
 std::uint32_t SimulationClock::advance(double elapsed_seconds)
@@ -40,7 +39,7 @@ void SimulationClock::commit(std::uint32_t steps)
 {
     tick_ += steps;
     if (paused_) pending_steps_ -= std::min(pending_steps_, steps);
-    else if (!fixed_ticks_) accumulator_ = std::max(0.0, accumulator_ - steps * fixed_step);
+    else if (!fixed_ticks_) accumulator_ = std::max(0.0, accumulator_ - steps * tick_seconds);
 }
 
 void SimulationClock::prepare_profile(std::uint32_t tick)

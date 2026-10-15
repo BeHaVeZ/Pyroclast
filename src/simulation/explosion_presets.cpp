@@ -1,4 +1,5 @@
 #include "explosion_presets.hpp"
+#include "simulation_clock.hpp"
 #include "blast_front.hpp"
 #include "../graphics/jet_layout.hpp"
 
@@ -367,7 +368,7 @@ float3 mix(float3 a, float3 b, float share)
 RealismParameters realism_parameters(ExplosionPreset preset, const Layers& layers)
 {
     RealismParameters realism;
-    realism.graduation_ticks = graduation_seconds(preset) * 60;
+    realism.graduation_ticks = graduation_seconds(preset) * ticks_per_second;
     realism.late_dilution = 0.3f;
     const float height = stabilization_height(preset);
     realism.rise = {height, 0.06f * height, 25, 0.05f};
@@ -675,7 +676,7 @@ std::uint32_t effect_ticks(ExplosionPreset preset, SurfaceType surface)
     {
         if (layer.count != 0) seconds = std::max(seconds, layer.delay_range + layer.lifetime_min + layer.lifetime_range);
     }
-    return static_cast<std::uint32_t>(std::ceil(seconds * 60.0f));
+    return static_cast<std::uint32_t>(std::ceil(seconds * ticks_per_second));
 }
 
 std::uint32_t realism_effect_ticks(ExplosionPreset preset, SurfaceType surface)
@@ -687,7 +688,7 @@ std::uint32_t realism_effect_ticks(ExplosionPreset preset, SurfaceType surface)
         const auto& layer = effect.layers[index];
         const bool lingers = index < effect.realism.layers.size() && effect.realism.layers[index].survivor_stride != 0;
         if (layer.count == 0 || lingers) continue;
-        ticks = std::max(ticks, static_cast<std::uint32_t>(std::ceil((layer.delay_range + layer.lifetime_min + layer.lifetime_range) * 60.0f)));
+        ticks = std::max(ticks, static_cast<std::uint32_t>(std::ceil((layer.delay_range + layer.lifetime_min + layer.lifetime_range) * ticks_per_second)));
     }
     return ticks;
 }
@@ -738,10 +739,10 @@ std::uint32_t realism_early_ticks(ExplosionPreset preset, SurfaceType surface)
         if (layer.count == 0) continue;
         const bool lingers = index < effect.realism.layers.size() && effect.realism.layers[index].survivor_stride != 0;
         float latest = layer.delay_range;
-        if (index == layer_index(EffectLayer::blast_smoke)) latest = std::max(latest, static_cast<float>(trail_parameters(preset).trail_ticks) / 60);
+        if (index == layer_index(EffectLayer::blast_smoke)) latest = std::max(latest, static_cast<float>(trail_parameters(preset).trail_ticks) / ticks_per_second);
         const float seconds = lingers ? latest + 1 / std::max(layer.fade_in_rate, 1e-3f) :
             layer.delay_range + layer.lifetime_min + layer.lifetime_range;
-        early = std::max(early, static_cast<std::uint32_t>(std::ceil(seconds * 60.0f)) + (lingers ? realism_layout::crossfade_ticks : 0u));
+        early = std::max(early, static_cast<std::uint32_t>(std::ceil(seconds * ticks_per_second)) + (lingers ? realism_layout::crossfade_ticks : 0u));
     }
     return early;
 }

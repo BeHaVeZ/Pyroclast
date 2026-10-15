@@ -1,4 +1,5 @@
 #include "wind.hpp"
+#include "simulation_clock.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -9,7 +10,7 @@ namespace pyroclast
 float3 wind_velocity(const WindSettings& settings, std::uint32_t tick, bool gusts)
 {
     constexpr float tau = 2 * std::numbers::pi_v<float>;
-    const float seconds = static_cast<float>(tick) / 60.0f;
+    const float seconds = static_cast<float>(tick) / ticks_per_second;
     float speed = settings.speed;
     float heading = std::remainder(settings.direction_degrees, 360.0f) * (std::numbers::pi_v<float> / 180.0f);
     if (gusts)
@@ -36,9 +37,9 @@ float3 WindDrift::at(std::uint32_t tick, const WindSettings& settings, bool gust
     for (std::uint32_t step = tick_; step < tick; ++step)
     {
         const auto wind = wind_velocity(settings, step, gusts);
-        x += wind.x / 60.0;
-        y += wind.y / 60.0;
-        z += wind.z / 60.0;
+        x += wind.x / static_cast<double>(ticks_per_second);
+        y += wind.y / static_cast<double>(ticks_per_second);
+        z += wind.z / static_cast<double>(ticks_per_second);
     }
     return {static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)};
 }
@@ -48,9 +49,9 @@ void WindDrift::advance(std::uint32_t tick, const WindSettings& settings, bool g
     for (; tick_ < tick; ++tick_)
     {
         const auto wind = wind_velocity(settings, tick_, gusts);
-        x_ += wind.x / 60.0;
-        y_ += wind.y / 60.0;
-        z_ += wind.z / 60.0;
+        x_ += wind.x / static_cast<double>(ticks_per_second);
+        y_ += wind.y / static_cast<double>(ticks_per_second);
+        z_ += wind.z / static_cast<double>(ticks_per_second);
     }
 }
 

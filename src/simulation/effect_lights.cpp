@@ -1,4 +1,5 @@
 #include "effect_lights.hpp"
+#include "simulation_clock.hpp"
 
 #include <algorithm>
 #include <array>
@@ -22,7 +23,7 @@ std::uint32_t select_lights(std::span<const EffectSlot> slots, std::span<const s
     {
         const auto& slot = slots[index];
         if (slot.kind != EffectKind::explosion) continue;
-        const float seconds = static_cast<float>(tick - slot.start_tick) / 60.0f;
+        const float seconds = static_cast<float>(tick - slot.start_tick) / ticks_per_second;
         const float intensity = light_intensity(curve_of(slot.preset), seconds);
         if (intensity > 0) candidates[count++] = {intensity, index};
     }

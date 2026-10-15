@@ -1,4 +1,5 @@
 #include "pilot_control.hpp"
+#include "simulation_clock.hpp"
 
 #include <algorithm>
 #include <array>
@@ -8,7 +9,6 @@ namespace pyroclast
 {
 namespace
 {
-constexpr double tick_seconds = 1.0 / 60.0;
 constexpr double degree = rotor::pi / 180;
 const double3 world_up{0, 1, 0};
 

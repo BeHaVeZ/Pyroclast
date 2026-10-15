@@ -1,6 +1,7 @@
 #pragma once
 
 #include "explosion_presets.hpp"
+#include "simulation_clock.hpp"
 #include "../core/math.hpp"
 #include "../graphics/realism_layout.hpp"
 
@@ -47,7 +48,7 @@ struct ResidualCluster
 
 struct LingerSettings
 {
-    std::uint32_t linger_ticks = 75 * 60;
+    std::uint32_t linger_ticks = 75 * ticks_per_second;
     bool variation = false;
 };
 

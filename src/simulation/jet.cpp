@@ -1,4 +1,5 @@
 #include "jet.hpp"
+#include "simulation_clock.hpp"
 #include "explosion_presets.hpp"
 #include "../graphics/particle_layout.hpp"
 
@@ -10,7 +11,6 @@ namespace pyroclast
 {
 namespace
 {
-constexpr double tick_seconds = 1.0 / 60.0;
 
 double smoothstep(double edge0, double edge1, double x)
 {
@@ -286,7 +286,7 @@ JetWake jet_wake(const JetFlight& flight, std::uint32_t tick, const Terrain& ter
 {
     JetWake wake;
     const std::uint32_t newest = tick - tick % jet_layout::jet_knot_ticks;
-    const auto oldest_age = static_cast<std::uint32_t>(jet::knot_life * 60);
+    const auto oldest_age = static_cast<std::uint32_t>(jet::knot_life * ticks_per_second);
     std::array<std::uint32_t, jet_layout::jet_knot_limit> ticks{};
     std::array<std::uint32_t, jet_layout::jet_knot_limit> passes{};
     for (std::uint32_t age = tick - newest; age <= oldest_age && age <= tick && wake.count < jet_layout::jet_knot_limit; age += jet_layout::jet_knot_ticks)
@@ -616,7 +616,7 @@ std::uint32_t Jetcraft::slot_end() const
 JetPass straight_pass(std::string name, double3 over, double3 heading, double speed, std::uint32_t centre_tick, double lead)
 {
     heading = horizontal(heading);
-    const auto lead_ticks = static_cast<std::uint32_t>(std::lround(lead * 60));
+    const auto lead_ticks = static_cast<std::uint32_t>(std::lround(lead * ticks_per_second));
     const std::uint32_t start = centre_tick > lead_ticks ? centre_tick - lead_ticks : 0;
     const double3 entry = over - heading * (speed * (centre_tick - start) * tick_seconds);
     FlightBuilder builder(std::move(name), start, entry, heading * speed);

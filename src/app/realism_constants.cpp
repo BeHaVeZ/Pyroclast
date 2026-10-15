@@ -1,4 +1,5 @@
 #include "realism_constants.hpp"
+#include "../simulation/simulation_clock.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -66,7 +67,7 @@ RealismUnits fill_realism_constants(FrameConstants& constants, const ExplosionSy
         auto centre = origin + (drift - drift_start);
         if (order == EffectOrder::cloud)
         {
-            const float seconds = static_cast<float>(key_tick - std::min(key_tick, start)) / 60.0f;
+            const float seconds = static_cast<float>(key_tick - std::min(key_tick, start)) / ticks_per_second;
             centre.y += cloud_rise(preset, seconds);
         }
         return dot(centre - camera.position, forward);

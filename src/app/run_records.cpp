@@ -1,4 +1,5 @@
 #include "run_records.hpp"
+#include "../simulation/simulation_clock.hpp"
 #include "frame_baseline.hpp"
 
 #include <cmath>
@@ -249,7 +250,7 @@ std::string RunRecords::json(const Sandbox& sandbox) const
     std::snprintf(lingering, sizeof(lingering),
         "\"realism\":{\"linger_seconds\":%u,\"humidity_percent\":%u,\"forced_fades\":%llu,\"deferred\":%llu,\"peak_clusters\":%u,"
         "\"peak_residual\":%u,\"ghosts\":%u}",
-        sandbox.linger.linger_ticks / 60, static_cast<unsigned>(std::lround(sandbox.humidity * 100)),
+        sandbox.linger.linger_ticks / ticks_per_second, static_cast<unsigned>(std::lround(sandbox.humidity * 100)),
         static_cast<unsigned long long>(sandbox.effects.residual().forced_fades()),
         static_cast<unsigned long long>(sandbox.effects.deferred()), peak_clusters_, peak_residual_, ghosts_);
     text += (text.empty() ? "" : ",") + std::string(lingering);

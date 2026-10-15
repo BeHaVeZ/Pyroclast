@@ -1,4 +1,5 @@
 #include "rotorcraft.hpp"
+#include "simulation_clock.hpp"
 
 #include "explosion_presets.hpp"
 #include "../graphics/particle_layout.hpp"
@@ -13,7 +14,6 @@ namespace pyroclast
 {
 namespace
 {
-constexpr double tick_seconds = 1.0 / 60.0;
 
 double saturate(double x)
 {
@@ -340,7 +340,7 @@ void FlightBuilder::change_velocity(double3 target, double limit)
     if (magnitude <= 0) return;
     const double3 direction = change * (1 / magnitude);
     const double ramp = rotor::jerk_ticks * tick_seconds;
-    const auto steady_ticks = static_cast<std::uint32_t>(std::max(0.0, std::ceil((magnitude / limit - ramp) * 60 - 1e-9)));
+    const auto steady_ticks = static_cast<std::uint32_t>(std::max(0.0, std::ceil((magnitude / limit - ramp) * ticks_per_second - 1e-9)));
     const double steady = steady_ticks * tick_seconds;
     const double acceleration = magnitude / (ramp + steady);
     const double3 a = direction * acceleration;
@@ -364,7 +364,7 @@ void FlightBuilder::arc(double3 towards, double radians, double acceleration)
     const double3 forward = state_.velocity * (1 / speed);
     const double3 across = normalize(towards - forward * dot(towards, forward));
     if (length(across) <= 0) return;
-    const auto ticks = std::max<std::uint32_t>(1, static_cast<std::uint32_t>(std::lround(radians * speed / acceleration * 60)));
+    const auto ticks = std::max<std::uint32_t>(1, static_cast<std::uint32_t>(std::lround(radians * speed / acceleration * ticks_per_second)));
     const double rate = radians / (ticks * tick_seconds);
     const double radius = speed / rate;
     const double3 start = state_.position;
@@ -390,7 +390,7 @@ void FlightBuilder::transit_to(double3 point)
     if (distance <= 0) return;
     const double seconds = std::ceil(std::max({6.0, std::sqrt(5.774 * distance / rotor::acceleration_limit), 1.875 * distance / rotor::cruise_speed}) - 1e-9);
     if (1.875 * std::hypot(way.x, way.z) / seconds > 5) turn_to(std::atan2(way.z, way.x));
-    append(static_cast<std::uint32_t>(seconds) * 60, point, {}, {});
+    append(static_cast<std::uint32_t>(seconds) * ticks_per_second, point, {}, {});
 }
 
 void FlightBuilder::turn_to(double heading)
@@ -398,7 +398,7 @@ void FlightBuilder::turn_to(double heading)
     const double change = wrap_angle(heading - state_.heading);
     if (std::abs(change) < 1e-6) return;
     FlightKnot knot = state_;
-    knot.tick = state_.tick + static_cast<std::uint32_t>(std::max(60.0, std::ceil(std::abs(change) / (rotor::pi / 6) * 60 - 1e-9)));
+    knot.tick = state_.tick + static_cast<std::uint32_t>(std::max<double>(ticks_per_second, std::ceil(std::abs(change) / (rotor::pi / 6) * ticks_per_second - 1e-9)));
     knot.velocity = {};
     knot.acceleration = {};
     knot.heading = state_.heading + change;
@@ -417,7 +417,7 @@ void FlightBuilder::vertical_to(double height, double rate)
     const double change = height - state_.position.y;
     const double distance = std::abs(change);
     if (distance <= 0) return;
-    const auto steady_ticks = static_cast<std::uint32_t>(std::max(0.0, std::ceil((distance / rate - 2) * 60 - 1e-9)));
+    const auto steady_ticks = static_cast<std::uint32_t>(std::max(0.0, std::ceil((distance / rate - 2) * ticks_per_second - 1e-9)));
     const double speed = distance / (2 + steady_ticks * tick_seconds);
     change_velocity({0, change > 0 ? speed : -speed, 0});
     cruise(steady_ticks);
@@ -434,12 +434,12 @@ void FlightBuilder::land(const Terrain& terrain, std::uint32_t idle_ticks)
     const double descent = state_.position.y - start - rotor::landing_rate;
     if (descent > 0)
     {
-        const auto steady_ticks = static_cast<std::uint32_t>(std::floor(descent / rotor::landing_rate * 60));
+        const auto steady_ticks = static_cast<std::uint32_t>(std::floor(descent / rotor::landing_rate * ticks_per_second));
         change_velocity({0, -rotor::landing_rate, 0});
         cruise(steady_ticks);
         const double left = state_.position.y - start;
         change_velocity({0, -rotor::touchdown_rate, 0});
-        cruise(static_cast<std::uint32_t>(std::lround(left / rotor::touchdown_rate * 60)));
+        cruise(static_cast<std::uint32_t>(std::lround(left / rotor::touchdown_rate * ticks_per_second)));
         change_velocity({});
     }
     else vertical_to(touchdown, rotor::landing_rate);

@@ -1,4 +1,5 @@
 #include "explosion_renderer.hpp"
+#include "../simulation/simulation_clock.hpp"
 #include "realism_constants.hpp"
 #include "jet_constants.hpp"
 #include "rotor_constants.hpp"
@@ -89,7 +90,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, const ParticleSys
         auto centre = slots[slot].origin;
         if (effect_order == EffectOrder::cloud)
         {
-            const float seconds = static_cast<float>(key_tick - std::min(key_tick, slots[slot].start_tick)) / 60.0f;
+            const float seconds = static_cast<float>(key_tick - std::min(key_tick, slots[slot].start_tick)) / ticks_per_second;
             centre.y += cloud_rise(slots[slot].preset, seconds);
         }
         const auto offset = centre - camera.position;
