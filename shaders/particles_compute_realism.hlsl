@@ -22,7 +22,7 @@ struct Lift
     float since;
     float graduation_seconds;
     float settling_scale;
-    bool jet;
+    float trail;
     float vortex_scale;
     float3 offset;
 #ifdef PYROCLAST_ROTOR
@@ -67,15 +67,17 @@ void lingering_step(inout float4 position, inout float4 velocity, float size, La
         air += float3(crossfade * lift.direction.x * spreading, lifting * (updraft - sink) - crossfade * lingering.settling * lift.settling_scale,
             crossfade * lift.direction.y * spreading);
     }
-    float ballistic = lift.jet ? saturate((1.2 - position.w) / 0.4) : 0;
+    float coherence = lift.trail;
+    air.y -= 0.4 * coherence;
     if (vortex_weight > 0 && flow.strength > 0 && mask_enabled(mask, vortex_mask_bit))
     {
-        air += vortex_flow(flow, effect_origin, position.xyz, seconds) * (vortex_weight * lift.vortex_scale * (1 - ballistic));
+        air += vortex_flow(flow, effect_origin, position.xyz, seconds) * (vortex_weight * lift.vortex_scale * (1 - coherence));
     }
     if (curl && crossfade < 1 && layer.turbulence > 0)
     {
-        air += curl_noise(position.xyz * 0.125 + lift.offset - float3(0, seconds * 0.2, 0)) * (layer.turbulence * exp(-0.3 * position.w) * (1 - crossfade));
-        air += curl_noise(position.xyz * 0.4 + lift.offset * 1.7 + float3(0, seconds * 0.5, 0)) * (0.6 * layer.turbulence * exp(-0.5 * position.w) * (1 - crossfade));
+        float young = (1 - crossfade) * (1 - 0.6 * coherence);
+        air += curl_noise(position.xyz * 0.125 + lift.offset - float3(0, seconds * 0.2, 0)) * (layer.turbulence * exp(-0.3 * position.w) * young);
+        air += curl_noise(position.xyz * 0.4 + lift.offset * 1.7 + float3(0, seconds * 0.5, 0)) * (0.6 * layer.turbulence * exp(-0.5 * position.w) * young);
     }
     if (curl && crossfade > 0 && lingering.residual_turbulence > 0)
     {
@@ -88,12 +90,11 @@ void lingering_step(inout float4 position, inout float4 velocity, float size, La
     if (deflect && any(near != 0)) air = deflect_air(environment, near, position.xyz, radius, air);
 #ifdef PYROCLAST_ROTOR
     float coupled = lerp(lerp(layer.drag, lingering.residual_drag, crossfade), rotor_coupling, crossfade * saturate(length(rotor) / rotor_coupling_speed));
-    velocity.xyz += (air - velocity.xyz) * (lerp(coupled, 0.3, ballistic) * dt);
+    velocity.xyz += (air - velocity.xyz) * (coupled * dt);
 #else
-    velocity.xyz += (air - velocity.xyz) * (lerp(lerp(layer.drag, lingering.residual_drag, crossfade), 0.3, ballistic) * dt);
+    velocity.xyz += (air - velocity.xyz) * (lerp(layer.drag, lingering.residual_drag, crossfade) * dt);
 #endif
-    velocity.y -= 9.81 * ballistic * dt;
-    if (layer.buoyancy > 0) velocity.y += layer.buoyancy * layer_temperature(layer, position.w) * (1 - ballistic) * dt;
+    if (layer.buoyancy > 0) velocity.y += layer.buoyancy * layer_temperature(layer, position.w) * (1 - 0.8 * coherence) * dt;
     float speed_squared = dot(velocity.xyz, velocity.xyz);
     if (speed_squared > lingering_speed_limit * lingering_speed_limit) velocity.xyz *= lingering_speed_limit * rsqrt(speed_squared);
     float3 start = position.xyz;
@@ -129,7 +130,11 @@ void lingering_step(inout float4 position, inout float4 velocity, float size, La
         float clearance = position.y - terrain;
         if (clearance < 2 * size) velocity.y += (2 * size - clearance) * 1.5 * dt;
     }
+#ifdef PYROCLAST_ROTOR
+    if (ring) position.y = min(position.y, support + size + 0.3 * position.w + rotor_ceiling_lift * smoothstep(rotor_coupling_speed, 4 * rotor_coupling_speed, length(rotor)));
+#else
     if (ring) position.y = min(position.y, support + size + 0.3 * position.w);
+#endif
 }
 
 bool simulate_lingering(uint slot, uint local, uint record, uint layer_index, Layer layer, RealismLayer lingering, EffectResidual link)
@@ -180,18 +185,21 @@ bool simulate_lingering(uint slot, uint local, uint record, uint layer_index, La
         RealismLook spawn_look = load_realism_look(classes, state.w);
         if (jet_record(spawn_look, layer_index, index))
         {
-            uint jets = 5 + realism_hash(state.x ^ 0x6a09e667u) % 5;
-            uint jet = (index >> 5) % jets;
-            uint jet_hash = realism_hash(state.x ^ (jet * 0x9e3779b9u + 0x3c6ef372u));
-            float azimuth = 6.2831853 * (float(jet) + 0.6 * float(jet_hash & 0xffff) / 65535) / float(jets);
-            float tilt = 0.17453 + 0.5236 * float(jet_hash >> 16) / 65535;
-            float3 along = float3(sin(tilt) * cos(azimuth), cos(tilt), sin(tilt) * sin(azimuth));
-            along = normalize(along + 0.07 * (particle_direction(id) * 0.5));
-            float3 jet_direction = around_normal(along, normal);
-            position.xyz = origin + jet_direction * 0.3;
+            TrailParameters trail = load_trail(classes, state.w);
+            uint jets = jet_count(state.x, trail);
+            uint block = index >> 5;
+            uint jet = block % jets;
+            uint knot = (block / jets) * 8 + (index & 7);
+            uint blocks = (layer.count + 31) / 32;
+            uint knots = 8 * ((blocks - jet + jets - 1) / jets);
+            uint delay = (knot * trail.trail_ticks) / knots + realism_hash(id ^ 0x3779b9e3u) % max(trail.trail_ticks / knots, 1u);
+            JetHead head = jet_head(state.x, jet, jets, origin, normal, trail);
+            position.xyz = jet_head_at(head, delay) + 0.15 * size * (particle_direction(id) * 0.5);
+            position.y = max(position.y, terrain_height(environment, position.xz) + size);
             if (props) position.xyz = prop_clip_spawn(environment, origin, position.xyz);
-            velocity.xyz = jet_direction * (spawn_look.jet_speed * (0.3 + 0.7 * particle_random(id, 2)));
-            size *= 0.5;
+            velocity.xyz = trail.knot_share * (head.velocity - float3(0, 9.81 * float(delay) / 60.0, 0));
+            size *= 0.8 + 0.6 * particle_random(id, 12);
+            position.w = (0.5 - float(delay)) / 60.0;
         }
         if (link.skirt && layer_index == layer_ground_dust && ((index >> 3) & 1) != 0)
         {
@@ -233,7 +241,9 @@ bool simulate_lingering(uint slot, uint local, uint record, uint layer_index, La
     lift.graduation_seconds = float(load_graduation_ticks(classes, state.w)) / 60;
     lift.settling_scale = ((index / max(lingering.survivor_stride, 1)) & 1) != 0 ? 2 : 1;
     RealismLook look = load_realism_look(classes, state.w);
-    lift.jet = jet_record(look, layer_index, index);
+    bool trail_record = jet_record(look, layer_index, index);
+    float hang_seconds = trail_record ? max(load_trail(classes, state.w).hang_seconds, 1e-3) : 1;
+    lift.trail = 0;
     lift.vortex_scale = look.vortex_scale;
     uint offset_hash = realism_hash(state.x ^ 0x510e527fu);
     lift.offset = float3(offset_hash & 1023u, (offset_hash >> 10) & 1023u, (offset_hash >> 20) & 1023u) * (100.0 / 1023.0);
@@ -256,6 +266,7 @@ bool simulate_lingering(uint slot, uint local, uint record, uint layer_index, La
             lift.direction = reach > 1e-3 ? outward / reach : float2(1, 0);
         }
         lift.since = graduated ? position.w - graduation_age : 0;
+        lift.trail = trail_record ? exp(-position.w / hang_seconds) * vortex_weight : 0;
 #ifdef PYROCLAST_ROTOR
         lift.rotor_step = step;
 #endif
@@ -330,7 +341,7 @@ bool simulate_residual(uint cluster_index, uint group_in_cluster, uint thread)
     lift.direction = stored.direction;
     lift.graduation_seconds = float(load_graduation_ticks(classes, effect_class)) / 60;
     lift.settling_scale = ((index - lingering.residual_offset) & 1) != 0 ? 2 : 1;
-    lift.jet = false;
+    lift.trail = 0;
     lift.vortex_scale = 1;
     lift.offset = 0;
     uint steps = min(parameters.steps, maximum_simulation_steps);

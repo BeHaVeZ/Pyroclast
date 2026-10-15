@@ -48,6 +48,10 @@ float3 around_normal(float3 direction, float3 normal)
     return tangent * direction.x + normal * direction.y + bitangent * direction.z;
 }
 
+#ifdef PYROCLAST_REALISM
+#include "realism_spawn.hlsli"
+#endif
+
 bool simulate(uint slot, uint local, uint record)
 {
     uint4 state = frame.effect_states[slot];
@@ -95,6 +99,9 @@ bool simulate(uint slot, uint local, uint record)
         position.w = 0;
         if (layer.delay_range > 0) position.w = -particle_random(id, 7) * layer.delay_range;
         spin = 0;
+#ifdef PYROCLAST_REALISM
+        realism_spawn(slot, state, layer_index, local - layer.first_group * simulation_group_size, id, origin, normal, layer, props, position, velocity, size);
+#endif
     }
     bool smoke = smoke_like(layer_index);
     bool debris = layer_index == layer_debris;

@@ -33,10 +33,20 @@ struct RealismFootprint
 };
 
 #ifdef PYROCLAST_ROTOR
-void rotor_stretch(inout RealismFootprint result)
+float3 rotor_draw_air(float3 position, float size)
 {
     RotorFlow flow = rotor_flow_at(frame.rotor_draw[0], frame.rotor_draw[1], frame.rotor_draw[2]);
-    float3 rotor = rotor_air(flow, result.footprint.position, flow.hub.y - flow.height);
+    if (!(flow.inflow > 0)) return 0;
+    float2 axis = flow.hub.xz + flow.skew * rotor_skew_offset(flow.hub.y - position.y);
+    float2 offset = position.xz - axis;
+    float r = length(offset);
+    float3 probe = position;
+    if (r > 1e-3) probe.xz -= offset / r * min(rotor_shred_reach * size, r);
+    return rotor_air(flow, probe, flow.hub.y - flow.height);
+}
+
+void rotor_stretch(inout RealismFootprint result, float3 rotor)
+{
     float speed = length(rotor);
     if (speed <= 0) return;
     float3 along = rotor + frame.wind.xyz;
@@ -50,7 +60,7 @@ void rotor_stretch(inout RealismFootprint result)
     float weight = saturate(speed / rotor_coupling_speed);
     float2 wind_axis = result.stretch_axis;
     float2 doubled = lerp((result.stretch - 1) * float2(wind_axis.x * wind_axis.x - wind_axis.y * wind_axis.y, 2 * wind_axis.x * wind_axis.y),
-        2 * saturate(speed / 20) * projected * float2(axis.x * axis.x - axis.y * axis.y, 2 * axis.x * axis.y), weight);
+        3 * saturate(speed / 15) * projected * float2(axis.x * axis.x - axis.y * axis.y, 2 * axis.x * axis.y), weight);
     float excess = length(doubled);
     result.stretch = 1 + excess;
     if (excess > 1e-4)
@@ -111,7 +121,9 @@ RealismFootprint realism_footprint(ByteAddressBuffer particles, ByteAddressBuffe
     float size = min(unbounded, lingering.size_cap);
     uint slab_index = result.residual ? 0 : record % explosion_particles - layer.first_group * simulation_group_size;
     bool skirt_record = !result.residual && link.skirt && result.layer_index == layer_ground_dust && ((slab_index >> 3) & 1) != 0;
-    float fade_in_rate = skirt_record ? max(layer.fade_in_rate, 40) : layer.fade_in_rate;
+    RealismLook look = load_realism_look(classes, result.effect_class);
+    bool trail_record = !result.residual && jet_record(look, result.layer_index, slab_index);
+    float fade_in_rate = skirt_record ? max(layer.fade_in_rate, 40) : trail_record ? max(layer.fade_in_rate, 12) : layer.fade_in_rate;
     float depth = lingering.optical_depth * saturate(age * fade_in_rate) * pow(saturate(reference / max(size, 1e-4)), lingering.dilution);
     float graduation_seconds = float(load_graduation_ticks(classes, result.effect_class)) / 60;
     if (result.layer_index == layer_ground_dust) depth *= lerp(0.3, 1, exp(-max(age - graduation_seconds, 0) / 20));
@@ -130,7 +142,6 @@ RealismFootprint realism_footprint(ByteAddressBuffer particles, ByteAddressBuffe
             result.stretch_axis = axis / projected;
         }
     }
-    RealismLook look = load_realism_look(classes, result.effect_class);
     bool sooty = look.young_seconds > 0 && result.layer_index != layer_ground_dust;
     if (sooty) depth *= 1 + look.boost * exp(-age / max(look.boost_seconds, 1e-3));
     float stride = float(max(lingering.survivor_stride, 1));
@@ -171,7 +182,13 @@ RealismFootprint realism_footprint(ByteAddressBuffer particles, ByteAddressBuffe
     {
         float young = 1 - max(saturate(age / max(graduation_seconds, 1e-3)), result.crossfade);
         size *= 1 + 0.6 * young;
-        depth *= 1 + 1.5 * young;
+        depth *= 1 + 2 * young;
+    }
+    TrailParameters trail = (TrailParameters)0;
+    if (trail_record)
+    {
+        trail = load_trail(classes, result.effect_class);
+        depth *= 1 + trail.knot_density * exp(-age / max(trail.hang_seconds, 1e-3)) * (1 - result.crossfade);
     }
     result.albedo = lerp(layer.first_color, layer.second_color, result.heat * result.heat);
     if (varied)
@@ -180,10 +197,7 @@ RealismFootprint realism_footprint(ByteAddressBuffer particles, ByteAddressBuffe
         if (sooty)
         {
             float3 soot = result.layer_index == layer_plume ? look.plume_soot : look.smoke_soot;
-            if (!result.residual && jet_record(look, result.layer_index, slab_index))
-            {
-                soot = 0.45 * load_layer(classes, result.effect_class, layer_ground_dust).first_color;
-            }
+            if (trail_record) soot = trail.knot_soot * load_layer(classes, result.effect_class, layer_ground_dust).first_color;
             result.albedo = lerp(soot, lingering_colour, result.residual ? 1 : max(saturate(age / look.young_seconds), result.crossfade));
         }
         else
@@ -199,6 +213,12 @@ RealismFootprint realism_footprint(ByteAddressBuffer particles, ByteAddressBuffe
         depth *= (1 + (stride - 1) * result.crossfade) / growth;
     }
     else depth *= 1 - result.crossfade;
+#ifdef PYROCLAST_ROTOR
+    float3 rotor = rotor_draw_air(position.xyz, size);
+    float shred = smoothstep(rotor_shred_start, rotor_shred_full, length(rotor));
+    size *= 1 - rotor_shred_size * shred;
+    depth *= 1 - rotor_shred_depth * shred;
+#endif
     result.softness = max(size, 0.1);
     Footprint footprint;
     footprint.position = position.xyz;
@@ -213,7 +233,7 @@ RealismFootprint realism_footprint(ByteAddressBuffer particles, ByteAddressBuffe
     footprint.opacity = (1 - exp(-depth)) * coverage;
     result.footprint = footprint;
 #ifdef PYROCLAST_ROTOR
-    rotor_stretch(result);
+    rotor_stretch(result, rotor);
 #endif
     return result;
 }

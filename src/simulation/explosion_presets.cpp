@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstring>
 
 namespace pyroclast
 {
@@ -418,9 +419,9 @@ RealismLook realism_look(ExplosionPreset preset, const Layers& layers)
     look.smoke_soot = mix({0.07f, 0.06f, 0.05f}, soil, 0.3f);
     look.plume_soot = mix({0.06f, 0.055f, 0.05f}, soil, 0.3f);
     look.young_seconds = 0.6f * static_cast<float>(graduation_seconds(preset));
-    look.boost = 2;
-    look.boost_seconds = 1.5f;
-    look.jet_speed = 18 * std::pow(charge_kilograms(preset) / 7, 1.0f / 6);
+    look.boost = 3;
+    look.boost_seconds = 2;
+    look.jet_speed = preset == ExplosionPreset::small_impact ? 0 : 18 * std::pow(charge_kilograms(preset) / 7, 1.0f / 6);
     look.vortex_scale = 0.5f;
     look.charge_scale = std::cbrt(charge_kilograms(preset));
     return look;
@@ -523,7 +524,61 @@ EffectClass make_effect_class(ExplosionPreset preset, SurfaceType surface)
     auto effect = layered_effect_class(preset, surface);
     effect.blast = blast_parameters(preset);
     effect.look = realism_look(preset, effect.layers);
+    const auto trail = trail_parameters(preset);
+    const auto clods = clod_parameters(preset);
+    std::memcpy(effect.layers[layer_index(EffectLayer::blast_smoke)].reserved_smoke.data(), &trail, sizeof trail);
+    std::memcpy(effect.layers[layer_index(EffectLayer::debris)].reserved_smoke.data(), &clods, sizeof clods);
     return effect;
+}
+
+TrailParameters trail_parameters(ExplosionPreset preset)
+{
+    TrailParameters trail;
+    const auto look = realism_look(preset, preset_layers(preset));
+    if (look.jet_speed <= 0) return trail;
+    switch (preset)
+    {
+    case ExplosionPreset::small_he: trail = {3, 2, 0, 0, 0, 120}; break;
+    case ExplosionPreset::artillery_he: trail = {5, 3, 0, 0, 0, 160}; break;
+    case ExplosionPreset::heavy: trail = {7, 3, 0, 0, 0, 220}; break;
+    case ExplosionPreset::dust_blast: trail = {4, 3, 0, 0, 0, 170}; break;
+    case ExplosionPreset::stress_test: trail = {6, 3, 0, 0, 0, 180}; break;
+    default: return trail;
+    }
+    trail.head_speed = 1.2f * look.jet_speed;
+    trail.tilt_min = 0.2617994f;
+    trail.tilt_range = 0.3490659f;
+    trail.knot_share = 0.15f;
+    trail.hang_seconds = 4;
+    trail.knot_soot = 0.3f;
+    trail.knot_density = 3;
+    return trail;
+}
+
+ClodParameters clod_parameters(ExplosionPreset)
+{
+    ClodParameters clods;
+    clods.size_exponent = 3;
+    clods.chunk_share = 1.0f / 16;
+    clods.chunk_boost = 2;
+    clods.life_floor = 0.6f;
+    clods.lead_size = 1.3f;
+    clods.lead_life = 1;
+    return clods;
+}
+
+TrailParameters trail_of(const LayerParameters& layer)
+{
+    TrailParameters trail;
+    std::memcpy(&trail, layer.reserved_smoke.data(), sizeof trail);
+    return trail;
+}
+
+ClodParameters clods_of(const LayerParameters& layer)
+{
+    ClodParameters clods;
+    std::memcpy(&clods, layer.reserved_smoke.data(), sizeof clods);
+    return clods;
 }
 
 std::vector<EffectClass> effect_classes()
@@ -562,10 +617,10 @@ EffectClass make_rotor_class()
     dust.heat = 0;
     dust.expansion = 0;
     dust.emission = 0;
-    dust.fade_in_rate = 6;
-    dust.strength = 0.2f;
-    dust.size_min = 1;
-    dust.size_range = 1;
+    dust.fade_in_rate = 8;
+    dust.strength = 0.12f;
+    dust.size_min = 0.4f;
+    dust.size_range = 0.6f;
     const auto& settled = dirt.realism.layers[particle_layout::layer_ground_dust];
     dust.first_color = {settled.albedo.x, settled.albedo.y, settled.albedo.z, dust.first_color.w};
     dust.second_color = dust.first_color;
@@ -574,7 +629,7 @@ EffectClass make_rotor_class()
     lingering.survivor_stride = 0;
     lingering.survivor_area = 1;
     lingering.diffusion_seconds = 4;
-    lingering.size_cap = 2.89f * 1.5f;
+    lingering.size_cap = 2.89f * 0.7f;
     lingering.optical_depth = -std::log(1 - dust.strength);
     lingering.end_share = 0.35f;
     lingering.settling = 0.5f;
@@ -662,7 +717,9 @@ std::uint32_t realism_early_ticks(ExplosionPreset preset, SurfaceType surface)
         const auto& layer = effect.layers[index];
         if (layer.count == 0) continue;
         const bool lingers = index < effect.realism.layers.size() && effect.realism.layers[index].survivor_stride != 0;
-        const float seconds = lingers ? layer.delay_range + 1 / std::max(layer.fade_in_rate, 1e-3f) :
+        float latest = layer.delay_range;
+        if (index == layer_index(EffectLayer::blast_smoke)) latest = std::max(latest, static_cast<float>(trail_parameters(preset).trail_ticks) / 60);
+        const float seconds = lingers ? latest + 1 / std::max(layer.fade_in_rate, 1e-3f) :
             layer.delay_range + layer.lifetime_min + layer.lifetime_range;
         early = std::max(early, static_cast<std::uint32_t>(std::ceil(seconds * 60.0f)) + (lingers ? realism_layout::crossfade_ticks : 0u));
     }

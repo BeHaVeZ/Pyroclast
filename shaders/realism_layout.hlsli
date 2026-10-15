@@ -65,6 +65,7 @@ static const uint class_realism_offset = 1440;
 
 static const uint class_blast_offset = 1680;
 static const uint class_look_offset = 2000;
+static const uint layer_realism_offset = 152;
 static const uint blast_knots = 16;
 static const uint maximum_blasts = 16;
 static const uint push_return_ticks = 15;

@@ -76,6 +76,6 @@ RealismFootprint rotor_footprint(ByteAddressBuffer particles, ByteAddressBuffer 
     float coverage = footprint.flat ? 1.5707963 * footprint.pixels * footprint.pixels : 1;
     footprint.opacity = (1 - exp(-depth)) * coverage;
     result.footprint = footprint;
-    rotor_stretch(result);
+    rotor_stretch(result, rotor_draw_air(position.xyz, 0));
     return result;
 }

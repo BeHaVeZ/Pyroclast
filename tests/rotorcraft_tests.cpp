@@ -210,6 +210,16 @@ int main()
         }
         check(falling, "the brownout weakens above 3 R");
         check(hover_step(terrain, 2 * R, reference).emission == rotor_layout::rotor_emission_one, "the reference hover emits 1,024");
+        bool lowering = hover_step(terrain, 3 * R, reference).emission > 600 && hover_step(terrain, 6 * R, reference).emission == 0 &&
+            hover_step(terrain, 70, reference).emission == 0;
+        std::uint32_t previous_emission = rotor_layout::rotor_emission_one + 1;
+        for (const double height : {3 * R, 3.5 * R, 4 * R, 4.5 * R, 5 * R, 5.5 * R, 6 * R})
+        {
+            const auto emission = hover_step(terrain, height, reference).emission;
+            lowering = lowering && emission < previous_emission;
+            previous_emission = emission;
+        }
+        check(lowering, "the brownout fades out between 1.5 and 3 rotor diameters up, and a 70 m hover raises none");
         check(hover_step(terrain, 2 * R, reference, all_bits & ~(1u << realism_layout::brownout_mask_bit)).emission == 0 &&
                 hover_step(terrain, 2 * R, reference, all_bits & ~(1u << realism_layout::rotor_mask_bit)).emission == 0 &&
                 hover_step(terrain, 2 * R, reference, all_bits & ~(1u << realism_layout::rotor_mask_bit)).inflow == 0,
@@ -268,16 +278,17 @@ int main()
         for (std::uint32_t local = rotor_layout::rotor_disc_records; local < particle_layout::explosion_particles; ++local)
         {
             const auto cycle = dust_cycle(77, local);
-            cycles = cycles && cycle.length >= 360 && cycle.length <= 1080 && cycle.phase < cycle.length;
+            cycles = cycles && cycle.length >= 240 && cycle.length <= 600 && cycle.phase < cycle.length;
         }
-        check(cycles, "dust cycles last 6-18 s");
+        check(cycles, "dust cycles last 4-10 s");
         RotorHistory history;
         RotorStep steady;
         steady.emission = 512;
         steady.radii_cm = {0, 100, 200, 400};
         for (std::uint32_t tick = 4001; tick <= 9000; ++tick) history.store(tick, steady, {});
         const auto census = dust_census(history, 77, 4000, never, 9000, {}, true);
-        check(std::abs(census.alive / (2558.0 * 0.5) - 1) < 0.05 && census.mean_outer == 4.0, "a steady emission keeps 2,558 e records alive");
+        std::printf("census at a steady emission of 512: %u alive of 2,558 (%.3f of e = 0.5)\n", census.alive, census.alive / (2558.0 * 0.5));
+        check(std::abs(census.alive / (2558.0 * 0.5) - 1) < 0.05 && std::abs(census.mean_outer - 4.0) < 1e-9, "a steady emission keeps 2,558 e records alive");
         check(dust_census(history, 77, 4000, never, 9000, {}, false).alive == 0 && dust_census(history, 77, 4000, 9000, 9000, {}, true).alive == 0,
             "no dust is counted with its layer off or at the slot's end");
     }

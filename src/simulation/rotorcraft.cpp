@@ -461,7 +461,8 @@ RotorStep rotor_step(const FlightPlan& plan, std::uint32_t tick, const Terrain& 
     step = make_step(state.position, air, share, height_at);
     const bool raising = ((mask >> realism_layout::brownout_mask_bit) & 1) != 0 && std::abs(step.ground.x) <= 240 && std::abs(step.ground.z) <= 240 &&
         step.peak_outwash > rotor::saltation_threshold && reference_emission > 0;
-    step.emission = raising ? static_cast<std::uint32_t>(std::lround(rotor_layout::rotor_emission_one * std::min(1.0, step.raw_emission / reference_emission))) : 0;
+    const double height_share = std::clamp((6 * rotor::radius - step.height) / (3 * rotor::radius), 0.0, 1.0);
+    step.emission = raising ? static_cast<std::uint32_t>(std::lround(rotor_layout::rotor_emission_one * std::min(1.0, step.raw_emission / reference_emission) * height_share)) : 0;
     if (step.emission == 0) step.radii_cm = {};
     return step;
 }

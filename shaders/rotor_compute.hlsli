@@ -82,8 +82,8 @@ bool simulate_rotor(uint slot, uint local)
             float edge = 0.5 * float(terrain_resolution - 1) * terrain_spacing;
             if (pad || abs(position.x) > edge || abs(position.z) > edge) flags |= rotor_flag_phantom;
             RotorFlow flow = rotor_flow_at(frame.rotor_hubs[step], frame.rotor_wakes[step], frame.rotor_jets[step]);
-            velocity.xyz = 0.6 * rotor_air(flow, position.xyz, position.y - size) +
-                float3(0, 1.5 + 1.5 * rotor_unit(rotor_cycle_hash(id, cycle, rotor_salt_kick)), 0);
+            velocity.xyz = 0.8 * rotor_air(flow, position.xyz, position.y - size) +
+                float3(0, 0.5 + 0.5 * rotor_unit(rotor_cycle_hash(id, cycle, rotor_salt_kick)), 0);
             velocity.w = lingering_lifetime;
             position.w = 0;
             continue;

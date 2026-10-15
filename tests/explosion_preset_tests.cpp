@@ -202,7 +202,8 @@ int main()
                     reservations = reservations && linger.survivor_stride == 8 && linger.residual_offset == records &&
                         linger.size_cap > 0 && std::abs(linger.optical_depth + std::log(1 - source.strength)) < 1e-6f;
                     records += (source.count + 7) / 8;
-                    const float latest_birth = source.delay_range + 1 / source.fade_in_rate;
+                    const auto trail = trail_of(layer(effect, EffectLayer::blast_smoke));
+                    const float latest_birth = std::max(source.delay_range, index == 1 ? static_cast<float>(trail.trail_ticks) / 60 : 0.0f) + 1 / source.fade_in_rate;
                     births = births && lingering.graduation_ticks > static_cast<std::uint32_t>(std::ceil(latest_birth * 60));
                     for (std::uint32_t stride = 0; stride < 3; ++stride) totals[stride] += (source.count + (4u << stride) - 1) / (4u << stride);
                 }
@@ -223,6 +224,23 @@ int main()
         }
         check(reservations, "lingering layers keep every eighth record; residual ranges of 32/96/176/208/136/184/192 records on dirt");
         check(births, "every survivor is born and faded in before its effect graduates");
+        bool star = true;
+        for (std::uint32_t preset = 0; preset < preset_count; ++preset)
+        {
+            const auto kind = static_cast<ExplosionPreset>(preset);
+            const auto effect = make_effect_class(kind, SurfaceType::dirt);
+            const auto trail = trail_of(layer(effect, EffectLayer::blast_smoke));
+            const auto clods = clods_of(layer(effect, EffectLayer::debris));
+            const auto expected = trail_parameters(kind);
+            star = star && std::memcmp(&trail, &expected, sizeof trail) == 0 && clods.size_exponent == 3 && clods.chunk_share > 0 && clods.lead_size > 1;
+            const bool jets = kind != ExplosionPreset::small_impact && kind != ExplosionPreset::fuel_fire;
+            star = star && (effect.look.jet_speed > 0) == jets && (trail.jets_min > 0) == jets;
+            if (!jets) continue;
+            star = star && trail.trail_ticks > 0 && trail.trail_ticks + 10 < effect.realism.graduation_ticks && trail.head_speed == 1.2f * effect.look.jet_speed &&
+                trail.jets_min + trail.jets_range - 1 <= 9 && layer(effect, EffectLayer::debris).gravity == 9.81f && layer(effect, EffectLayer::debris).drag == 0 &&
+                trail.hang_seconds > 0 && trail.knot_soot > 0 && trail.knot_share > 0;
+        }
+        check(star, "the star: every HE class but the small impact throws 3-9 jets whose knots are born within its trail ticks, led by clods at 9.81");
         check(notice, "graduation gives at least 124 ticks of notice, room for a 120-tick forced fade");
         check(counts, "a cluster's record count fits 9 bits for strides 4, 8 and 16");
         check(ticks, "a lingering slab frees after graduation and the crossfade");

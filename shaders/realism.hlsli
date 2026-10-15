@@ -164,6 +164,65 @@ RealismLook load_realism_look(ByteAddressBuffer classes, uint effect_class)
     return look;
 }
 
+struct TrailParameters
+{
+    uint jets_min;
+    uint jets_range;
+    float head_speed;
+    float tilt_min;
+    float tilt_range;
+    uint trail_ticks;
+    float knot_share;
+    float hang_seconds;
+    float knot_soot;
+    float knot_density;
+};
+
+TrailParameters load_trail(ByteAddressBuffer classes, uint effect_class)
+{
+    uint address = effect_class_address(effect_class) + class_layers_offset + layer_blast_smoke * layer_stride + layer_realism_offset;
+    uint4 first = classes.Load4(address);
+    uint4 second = classes.Load4(address + 16);
+    uint2 third = classes.Load2(address + 32);
+    TrailParameters trail;
+    trail.jets_min = first.x;
+    trail.jets_range = first.y;
+    trail.head_speed = asfloat(first.z);
+    trail.tilt_min = asfloat(first.w);
+    trail.tilt_range = asfloat(second.x);
+    trail.trail_ticks = second.y;
+    trail.knot_share = asfloat(second.z);
+    trail.hang_seconds = asfloat(second.w);
+    trail.knot_soot = asfloat(third.x);
+    trail.knot_density = asfloat(third.y);
+    return trail;
+}
+
+struct ClodParameters
+{
+    float size_exponent;
+    float chunk_share;
+    float chunk_boost;
+    float life_floor;
+    float lead_size;
+    float lead_life;
+};
+
+ClodParameters load_clods(ByteAddressBuffer classes, uint effect_class)
+{
+    uint address = effect_class_address(effect_class) + class_layers_offset + layer_debris * layer_stride + layer_realism_offset;
+    float4 first = asfloat(classes.Load4(address));
+    float2 second = asfloat(classes.Load2(address + 16));
+    ClodParameters clods;
+    clods.size_exponent = first.x;
+    clods.chunk_share = first.y;
+    clods.chunk_boost = first.z;
+    clods.life_floor = first.w;
+    clods.lead_size = second.x;
+    clods.lead_life = second.y;
+    return clods;
+}
+
 bool jet_record(RealismLook look, uint layer_index, uint slab_index)
 {
     return look.jet_speed > 0 && layer_index == layer_blast_smoke && ((slab_index >> 3) & 3) == 1;

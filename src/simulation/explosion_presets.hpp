@@ -71,7 +71,8 @@ static_assert(sizeof(LayerParameters) == particle_layout::layer_stride && offset
     offsetof(LayerParameters, lifetime_min) == 32 && offsetof(LayerParameters, delay_range) == 48 &&
     offsetof(LayerParameters, buoyancy) == 64 && offsetof(LayerParameters, growth) == 80 &&
     offsetof(LayerParameters, first_color) == 96 && offsetof(LayerParameters, second_color) == 112 &&
-    offsetof(LayerParameters, cooling) == 128 && offsetof(LayerParameters, emission) == 144);
+    offsetof(LayerParameters, cooling) == 128 && offsetof(LayerParameters, emission) == 144 &&
+    offsetof(LayerParameters, reserved_smoke) == realism_layout::layer_realism_offset);
 
 struct FlowParameters
 {
@@ -150,6 +151,36 @@ struct RealismLook
     float charge_scale = 0;
 };
 static_assert(sizeof(RealismLook) == 48);
+
+struct TrailParameters
+{
+    std::uint32_t jets_min = 0;
+    std::uint32_t jets_range = 1;
+    float head_speed = 0;
+    float tilt_min = 0;
+    float tilt_range = 0;
+    std::uint32_t trail_ticks = 0;
+    float knot_share = 0;
+    float hang_seconds = 1;
+    float knot_soot = 0;
+    float knot_density = 0;
+};
+static_assert(sizeof(TrailParameters) == 40);
+struct ClodParameters
+{
+    float size_exponent = 1;
+    float chunk_share = 0;
+    float chunk_boost = 0;
+    float life_floor = 1;
+    float lead_size = 1;
+    float lead_life = 1;
+    std::array<float, 4> reserved{};
+};
+static_assert(sizeof(ClodParameters) == 40);
+TrailParameters trail_parameters(ExplosionPreset preset);
+ClodParameters clod_parameters(ExplosionPreset preset);
+TrailParameters trail_of(const LayerParameters& layer);
+ClodParameters clods_of(const LayerParameters& layer);
 
 struct EventVariation
 {
