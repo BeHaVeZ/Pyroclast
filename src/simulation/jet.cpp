@@ -405,15 +405,6 @@ JetEmission jet_emission(const JetFlight& flight, std::uint32_t tick, const Terr
     JetHistory& history)
 {
     JetEmission emission;
-    const auto pose = jet_pose(flight, tick, terrain, wind, gusts, mask);
-    if (pose.listed && pose.fade > 0)
-    {
-        const double3 nozzle = pose.centre - normalize(pose.velocity) * jet::nozzle_aft;
-        if (std::abs(nozzle.x) <= jet::range_box && std::abs(nozzle.z) <= jet::range_box)
-        {
-            emission.exhaust = static_cast<std::uint32_t>(std::lround(jet_layout::jet_exhaust_emission * pose.fade));
-        }
-    }
     const auto wake = jet_wake(flight, tick, terrain, wind, gusts, mask, history);
     const double threshold = jet_layout::jet_saltation;
     double total = 0;
@@ -477,7 +468,6 @@ void JetEmissionHistory::store(std::uint32_t tick, const JetEmission& emission, 
 {
     auto& entry = entries_[tick % length];
     entry.tick = tick;
-    entry.exhaust = emission.exhaust;
     entry.dust = emission.dust;
     entry.point = point;
 }
@@ -488,27 +478,24 @@ void JetEmissionHistory::clear()
 }
 
 JetCensus jet_census(const JetEmissionHistory& history, std::uint32_t seed, std::uint32_t start_tick, std::uint32_t end_tick, std::uint32_t tick,
-    bool smoke_drawn, bool dust_drawn)
+    bool dust_drawn)
 {
     JetCensus census;
-    if (tick >= end_tick) return census;
+    if (tick >= end_tick || !dust_drawn) return census;
     double3 point;
     for (std::uint32_t local = 0; local < particle_layout::explosion_particles; ++local)
     {
-        const bool exhaust = local < jet_layout::jet_exhaust_records;
-        if (exhaust ? !smoke_drawn : !dust_drawn) continue;
         const auto cycle = jet_cycle(seed, local);
         const std::uint32_t first = start_tick + 1 + cycle.phase;
         if (tick < first) continue;
         const std::uint32_t index = (tick - first) / cycle.length;
         const std::uint32_t begun = first + index * cycle.length;
         const auto* entry = history.find(begun);
-        if (!entry || !jet_born(seed, local, index, exhaust ? entry->exhaust : entry->dust)) continue;
-        ++(exhaust ? census.exhaust : census.dust);
+        if (!entry || !jet_born(seed, local, index, entry->dust)) continue;
+        ++census.dust;
         point = point + to_double3(entry->point);
     }
-    const std::uint32_t alive = census.exhaust + census.dust;
-    if (alive != 0) census.mean_point = point * (1.0 / alive);
+    if (census.dust != 0) census.mean_point = point * (1.0 / census.dust);
     return census;
 }
 

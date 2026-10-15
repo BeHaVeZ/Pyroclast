@@ -199,8 +199,7 @@ int main()
         const auto flight = one_pass(60, 600);
         JetHistory history;
         const auto high = jet_emission(flight, 600, terrain, still, false, all_bits, history);
-        check(high.exhaust == jet_layout::jet_exhaust_emission && high.dust == 0, "a pass at 60 m trails exhaust and raises no dust");
-        check(jet_emission(flight, 300, terrain, still, false, all_bits, history).exhaust == 0, "no exhaust before the range");
+        check(high.dust == 0, "a pass at 60 m raises no dust");
         const auto low = one_pass(8, 600);
         JetHistory low_history;
         std::uint32_t most = 0;
@@ -217,12 +216,12 @@ int main()
         check(most > 100 && width > 2, "a pass at 8 m raises dust under its pair");
         JetEmissionHistory emissions;
         JetEmission steady;
-        steady.exhaust = jet_layout::jet_exhaust_emission;
+        steady.dust = 640;
         for (std::uint32_t tick = 0; tick <= 2000; ++tick) emissions.store(tick, steady, {0, 0, 0});
-        const auto census = jet_census(emissions, jet_seed_for_tests, 0, never, 2000, true, true);
-        const double expected = jet_layout::jet_exhaust_records * jet_layout::jet_exhaust_emission / 1024.0;
-        check(census.dust == 0 && std::abs(census.exhaust - expected) < 0.08 * expected, "the census counts the steady exhaust's records");
-        check(jet_census(emissions, jet_seed_for_tests, 0, never, 2000, false, true).exhaust == 0, "a hidden layer counts nothing");
+        const auto census = jet_census(emissions, jet_seed_for_tests, 0, never, 2000, true);
+        const double expected = particle_layout::explosion_particles * 640 / 1024.0;
+        check(std::abs(census.dust - expected) < 0.08 * expected, "the census counts the steady dust's records");
+        check(jet_census(emissions, jet_seed_for_tests, 0, never, 2000, false).dust == 0, "a hidden layer counts nothing");
     }
 
     if (failures == 0) std::printf("All jet tests passed.\n");

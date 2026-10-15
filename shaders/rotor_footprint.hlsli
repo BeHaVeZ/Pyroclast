@@ -11,7 +11,7 @@ RealismFootprint jet_footprint(ByteAddressBuffer particles, ByteAddressBuffer cl
     uint slot = record / explosion_particles;
     uint local = record % explosion_particles;
     uint4 state = frame.effect_states[slot];
-    uint layer_index = local < jet_exhaust_records ? layer_blast_smoke : layer_ground_dust;
+    uint layer_index = layer_ground_dust;
     result.realism = true;
     result.residual = true;
     result.slot = slot;

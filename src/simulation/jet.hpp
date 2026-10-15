@@ -149,7 +149,6 @@ double3 jet_air(const JetWake& wake, const JetHead& head, double3 point);
 
 struct JetEmission
 {
-    std::uint32_t exhaust = 0;
     std::uint32_t dust = 0;
     float2 dust_from;
     float2 dust_to;
@@ -168,7 +167,6 @@ public:
     struct Entry
     {
         std::uint32_t tick = never;
-        std::uint32_t exhaust = 0;
         std::uint32_t dust = 0;
         float3 point;
     };
@@ -182,12 +180,11 @@ private:
 
 struct JetCensus
 {
-    std::uint32_t exhaust = 0;
     std::uint32_t dust = 0;
     double3 mean_point;
 };
 JetCensus jet_census(const JetEmissionHistory& history, std::uint32_t seed, std::uint32_t start_tick, std::uint32_t end_tick, std::uint32_t tick,
-    bool smoke_drawn, bool dust_drawn);
+    bool dust_drawn);
 
 class Jetcraft final
 {

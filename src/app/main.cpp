@@ -461,11 +461,9 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
     std::pair<std::uint32_t, std::uint32_t> rotor_slot{pyroclast::never, pyroclast::never};
     std::uint32_t peak_knots = 0;
     std::pair<std::uint32_t, std::uint32_t> jet_slot{pyroclast::never, pyroclast::never};
-    std::uint32_t peak_exhaust = 0;
     std::uint32_t peak_jet_dust = 0;
     const auto scalability_json = [&coverage, &sandbox, automatic, realism, &peak_clusters, &peak_residual, &ghosts, &rotor_mismatches, &peak_dust,
-                                      &lowest_hub_cm, &rotor_slot, &peak_knots, &jet_slot,
-                                      &peak_exhaust, &peak_jet_dust]() {
+                                      &lowest_hub_cm, &rotor_slot, &peak_knots, &jet_slot, &peak_jet_dust]() {
         std::string text = coverage.json();
         if (automatic)
         {
@@ -526,8 +524,8 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
             {
                 char passes[256];
                 std::snprintf(passes, sizeof(passes),
-                    ",\"jet\":{\"flight\":\"%s\",\"passes\":%zu,\"peak_knots\":%u,\"jet_slot\":[%u,%u],\"peak_exhaust\":%u,\"peak_dust\":%u,\"mismatches\":%u}",
-                    jet->name.c_str(), jet->passes.size(), peak_knots, jet_slot.first, jet_slot.second, peak_exhaust, peak_jet_dust, rotor_mismatches);
+                    ",\"jet\":{\"flight\":\"%s\",\"passes\":%zu,\"peak_knots\":%u,\"jet_slot\":[%u,%u],\"peak_dust\":%u,\"mismatches\":%u}",
+                    jet->name.c_str(), jet->passes.size(), peak_knots, jet_slot.first, jet_slot.second, peak_jet_dust, rotor_mismatches);
                 text += passes;
             }
         }
@@ -745,7 +743,6 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     peak_dust = std::max(peak_dust, rotor.census.alive);
                     const auto& jet = sandbox.renderer.jet_frame();
                     peak_knots = std::max(peak_knots, jet.wake.count);
-                    peak_exhaust = std::max(peak_exhaust, jet.census.exhaust);
                     peak_jet_dust = std::max(peak_jet_dust, jet.census.dust);
                     if (jet.slot)
                     {
@@ -760,7 +757,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     if ((rotor.slot || jet.slot) && sandbox.effects.explosions() == 0 && sandbox.renderer.particles_drawn())
                     {
                         const std::uint32_t rotor_records = rotor.slot ? rotor.census.alive + (rotor.listed ? pyroclast::rotor_layout::rotor_disc_records : 0u) : 0u;
-                        const std::uint32_t jet_records = jet.slot ? jet.census.exhaust + jet.census.dust : 0u;
+                        const std::uint32_t jet_records = jet.slot ? jet.census.dust : 0u;
                         rotor_expected.push_back({demo.tick(), rotor_records + jet_records});
                     }
                 }

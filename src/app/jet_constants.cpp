@@ -21,7 +21,7 @@ JetFrame prepare_jet(Jetcraft& jetcraft, const ExplosionSystem& effects, const T
         frame.heads[step] = jet_head(pose);
         const auto& emission = frame.emissions[step] = jet_emission(*flight, at, terrain, wind, gusts, mask, jetcraft.history());
         float3 point = to_float3(pose.centre);
-        if (emission.exhaust == 0 && emission.dust != 0)
+        if (emission.dust != 0)
         {
             const float2 middle{0.5f * (emission.dust_from.x + emission.dust_to.x), 0.5f * (emission.dust_from.y + emission.dust_to.y)};
             point = {middle.x, terrain.height(middle.x, middle.y) + 2, middle.y};
@@ -42,10 +42,9 @@ JetFrame prepare_jet(Jetcraft& jetcraft, const ExplosionSystem& effects, const T
     if (frame.slot)
     {
         const auto& slot = effects.slots()[*frame.slot];
-        const bool smoke = ((mask >> particle_layout::layer_blast_smoke) & 1) != 0;
         const bool dust = ((mask >> particle_layout::layer_ground_dust) & 1) != 0;
-        frame.census = jet_census(jetcraft.emissions(), slot.seed, slot.start_tick, slot.start_tick + slot.lifetime_ticks, drawn_tick, smoke, dust);
-        if (frame.census.exhaust + frame.census.dust != 0) frame.key = to_float3(frame.census.mean_point);
+        frame.census = jet_census(jetcraft.emissions(), slot.seed, slot.start_tick, slot.start_tick + slot.lifetime_ticks, drawn_tick, dust);
+        if (frame.census.dust != 0) frame.key = to_float3(frame.census.mean_point);
     }
     return frame;
 }
@@ -73,7 +72,7 @@ void fill_jet_constants(FrameConstants& constants, const JetFrame& frame)
     for (std::uint32_t step = 0; step < frame.step_count; ++step)
     {
         const auto& emission = frame.emissions[step];
-        constants.jet_births[step] = {emission.exhaust, emission.dust, static_cast<std::uint32_t>(std::lround(emission.half_width * 100)), 0};
+        constants.jet_births[step] = {emission.dust, static_cast<std::uint32_t>(std::lround(emission.half_width * 100)), 0, 0};
         constants.jet_dust_lines[step] = {emission.dust_from.x, emission.dust_from.y, emission.dust_to.x, emission.dust_to.y};
     }
 }
