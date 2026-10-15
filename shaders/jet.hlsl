@@ -1,6 +1,7 @@
 #include "frame_constants.hlsli"
 #include "lights.hlsli"
 #include "terrain_layout.hlsli"
+#include "jet_noise.hlsli"
 
 ByteAddressBuffer vertices : register(t0);
 
@@ -84,4 +85,99 @@ float4 ps_jet(JetPixelInput input) : SV_Target
     uint bayer = ((mixed & 1u) << 3) | ((cell.y & 1u) << 2) | (mixed & 2u) | ((cell.y >> 1) & 1u);
     if (bayer >= jet.state.x) discard;
     return float4(color, 1);
+}
+
+float3 jet_world(float3 body)
+{
+    float4 p = float4(body, 1);
+    return float3(dot(jet.rows[0], p), dot(jet.rows[1], p), dot(jet.rows[2], p));
+}
+
+float3 jet_world_direction(float3 body)
+{
+    return float3(dot(jet.rows[0].xyz, body), dot(jet.rows[1].xyz, body), dot(jet.rows[2].xyz, body));
+}
+
+struct EffectInput
+{
+    float4 position : SV_Position;
+    float3 world : TEXCOORD0;
+    float3 normal : NORMAL;
+    float2 shape : TEXCOORD1;
+};
+
+EffectInput revolution_vertex(uint vertex, uint rings, uint around, float x0, float x1, float r0, float r1, float exponent)
+{
+    uint quad = vertex / 6;
+    uint corner = vertex % 6;
+    uint ring = min(quad / around, rings - 2) + ((0x34u >> corner) & 1);
+    uint column = (quad % around + ((0x16u >> corner) & 1)) % around;
+    float t = float(ring) / float(rings - 1);
+    float angle = 6.2831853 * float(column) / float(around);
+    float radius = lerp(r0, r1, pow(t, exponent));
+    float3 body = float3(lerp(x0, x1, t), radius * sin(angle), radius * cos(angle));
+    float slope = (r1 - r0) * exponent * pow(max(t, 1e-3), exponent - 1) / (x1 - x0);
+    float3 normal = normalize(float3(-slope, sin(angle), cos(angle)));
+    EffectInput output;
+    output.world = jet_world(body);
+    output.normal = jet_world_direction(normal);
+    output.position = mul(frame.view_projection, float4(output.world, 1));
+    output.shape = float2(t, angle);
+    return output;
+}
+
+static const uint flame_rings = 12;
+static const uint flame_around = 12;
+
+EffectInput vs_flame(uint vertex : SV_VertexID)
+{
+    float burner = asfloat(jet.state.z);
+    float reach = 2 + 4 * burner;
+    EffectInput output = revolution_vertex(vertex, flame_rings, flame_around, -7.33, -7.33 - reach, 0.40, 0.08, 1.0);
+    if (burner <= 0 || jet.state.x == 0) output.position = float4(0, 0, 0, 1);
+    return output;
+}
+
+float4 ps_flame(EffectInput input) : SV_Target
+{
+    float burner = asfloat(jet.state.z);
+    float3 view = normalize(frame.camera_position.xyz - input.world);
+    float facing = pow(abs(dot(normalize(input.normal), view)), 1.5);
+    float t = input.shape.x;
+    float reach = 2 + 4 * burner;
+    float metres = t * reach;
+    float diamond = 1 + 1.2 * pow(saturate(cos(6.2831853 * metres / 0.9)), 6) * exp(-metres / 3);
+    float flicker = 0.85 + 0.3 * jet_noise(float3(metres * 2, float(frame.clock.x) * 0.9, input.shape.y), 0x51ed270bu);
+    float3 hot = lerp(float3(6.0, 4.6, 2.6), float3(4.0, 1.4, 0.35), saturate(t * 2.2));
+    float3 color = lerp(hot, float3(0.25, 0.35, 1.2), saturate(t * 1.6 - 0.6));
+    float glow = burner * facing * diamond * flicker * (1 - smoothstep(0.75, 1, t));
+    float visibility = exp(-frame.fog.a * distance(input.world, frame.camera_position.xyz));
+    return float4(color * (glow * visibility), 0);
+}
+
+static const uint vapor_rings = 12;
+static const uint vapor_around = 28;
+
+EffectInput vs_vapor(uint vertex : SV_VertexID)
+{
+    EffectInput output = revolution_vertex(vertex, vapor_rings, vapor_around, 3.2, -3.6, 1.0, 5.2, 0.7);
+    if (asfloat(jet.state.w) <= 0 || jet.state.x == 0) output.position = float4(0, 0, 0, 1);
+    return output;
+}
+
+float4 ps_vapor(EffectInput input) : SV_Target
+{
+    float strength = asfloat(jet.state.w) * float(jet.state.x) / 16;
+    float3 ray = normalize(input.world - frame.camera_position.xyz);
+    float facing = abs(dot(normalize(input.normal), -ray));
+    float t = input.shape.x;
+    float limb = 0.75 + 0.25 * pow(1 - facing, 2);
+    float body = smoothstep(0.1, 0.6, t) * (1 - smoothstep(0.93, 1, t)) * (0.3 + 0.7 * t * t);
+    float3 around = float3(cos(input.shape.y), sin(input.shape.y), 0);
+    float mottle = 0.55 * jet_noise(float3(around.xy * 3, t * 6 + float(frame.clock.x) * 0.35), 0x3c6ef372u) +
+        0.45 * jet_noise(float3(around.xy * 8, t * 14 - float(frame.clock.x) * 0.5), 0x9e3779b9u);
+    float alpha = saturate(1.3 * strength * limb * body * lerp(0.3, 1.4, mottle));
+    float3 color = jet_cloud_color(ray);
+    float visibility = exp(-frame.fog.a * distance(input.world, frame.camera_position.xyz));
+    return float4(color * alpha * visibility + frame.fog.rgb * (alpha * (1 - visibility)), alpha);
 }

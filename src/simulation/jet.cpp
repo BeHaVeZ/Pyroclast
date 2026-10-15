@@ -125,7 +125,16 @@ JetPose jet_pose(const JetFlight& flight, std::uint32_t tick, const Terrain& ter
     const double weight = pose.load * jet::mass * jet::gravity;
     const double induced = dynamic > 1 ? weight * weight / (dynamic * jet::pi * jet::efficiency * jet::span * jet::span) : 0;
     pose.thrust = std::max(0.0, dynamic * jet::drag_area + induced + jet::mass * dot(state.acceleration, forward));
+    pose.mach = pose.airspeed / jet_layout::jet_sound_speed;
+    pose.afterburner = smoothstep(jet_layout::jet_dry_thrust, jet_layout::jet_wet_thrust, pose.thrust);
     return pose;
+}
+
+double vapor_strength(const JetPose& pose, double humidity)
+{
+    if (!pose.listed) return 0;
+    return smoothstep(jet_layout::jet_vapor_mach, jet_layout::jet_vapor_mach + 0.08, pose.mach) *
+        std::clamp((humidity - jet_layout::jet_vapor_humidity) / (1 - jet_layout::jet_vapor_humidity), 0.0, 1.0) * pose.fade;
 }
 
 std::optional<KnotBirth> knot_birth(const JetFlight& flight, std::uint32_t tick, const Terrain& terrain, const WindSettings& wind, bool gusts,

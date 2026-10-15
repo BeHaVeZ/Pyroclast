@@ -53,6 +53,7 @@ private:
     std::unique_ptr<RenderTarget> depth_;
     std::unique_ptr<GraphicsPipeline> present_;
     std::unique_ptr<GraphicsPipeline> present_waves_;
+    std::unique_ptr<GraphicsPipeline> present_aircraft_;
     std::unique_ptr<GraphicsPipeline> wilson_;
     std::vector<BlastParameters> blast_classes_;
     std::unique_ptr<GraphicsPipeline> lines_;

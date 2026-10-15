@@ -339,8 +339,6 @@ void FlightBuilder::arc(double3 towards, double radians, double acceleration)
     const double radius = speed / rate;
     const double3 start = state_.position;
     const auto pieces = std::max<std::uint32_t>(1, static_cast<std::uint32_t>(std::ceil(radians / (rotor::pi / 12) - 1e-9)));
-    plan_.knots.back().acceleration = across * (speed * rate);
-    state_.acceleration = plan_.knots.back().acceleration;
     std::uint32_t done = 0;
     for (std::uint32_t piece = 1; piece <= pieces; ++piece)
     {
@@ -349,7 +347,7 @@ void FlightBuilder::arc(double3 towards, double radians, double acceleration)
         const double angle = rate * at * tick_seconds;
         const double3 position = start + (forward * std::sin(angle) + across * (1 - std::cos(angle))) * radius;
         const double3 velocity = (forward * std::cos(angle) + across * std::sin(angle)) * speed;
-        const double3 centripetal = (across * std::cos(angle) - forward * std::sin(angle)) * (speed * rate);
+        const double3 centripetal = piece == pieces ? double3{} : (across * std::cos(angle) - forward * std::sin(angle)) * (speed * rate);
         append(at - done, position, velocity, centripetal);
         done = at;
     }

@@ -32,7 +32,7 @@ inline constexpr double image_near = 2 * spacing;
 inline constexpr double mixing = 9;
 inline constexpr double exhaust_time = 1.5;
 inline constexpr std::uint32_t integration_ticks = 6;
-inline constexpr double range_box = 300;
+inline constexpr double range_box = 500;
 inline constexpr double pass_speed = 160;
 inline constexpr double fast_speed = 290;
 inline constexpr double attack_per_g = 3 * pi / 180;
@@ -49,9 +49,12 @@ struct JetPose
     double load = 1;
     double airspeed = 0;
     double thrust = 0;
+    double mach = 0;
+    double afterburner = 0;
     double fade = 0;
     bool listed = false;
 };
+double vapor_strength(const JetPose& pose, double humidity);
 
 using JetPass = FlightPlan;
 

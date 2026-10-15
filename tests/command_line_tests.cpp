@@ -60,7 +60,7 @@ int main()
         {"invalid scene format", {"--scene-format=rgba32f"}, d3d12, false, "Expected --scene-format"},
         {"barrage scenario", {"--scenario=barrage"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {},
             pyroclast::SceneFormat::rgba16f, "barrage"},
-        {"invalid scenario", {"--scenario=storm"}, d3d12, false, "Expected --scenario=single, grid-10, grid-50, grid-100, barrage, presets, range, bombardment, accumulation, linger-barrage, linger-saturation, heli-hover, heli-pass, heli-landing or jet-pass"},
+        {"invalid scenario", {"--scenario=storm"}, d3d12, false, "Expected --scenario=single, grid-10, grid-50, grid-100, barrage, presets, range, bombardment, accumulation, linger-barrage, linger-saturation, heli-hover, heli-pass, heli-landing, jet-pass or jet-vapor"},
         {"presets scenario", {"--scenario=presets"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {}, {}, "presets"},
         {"preset", {"--preset=fuel-fire"}, d3d12, false, {}, false, 1, {}, false, {}, {}, false, {}, false, {}, {}, {}, {}, false,
             pyroclast::ExplosionPreset::fuel_fire},
@@ -476,6 +476,9 @@ int main()
             parsed({"--scenario=heli-hover"}).error.empty() && parsed({"--scenario=heli-landing", "--preset=heavy"}).error.empty() &&
             refused({"--realism=off", "--scenario=heli-pass"}, "flies the helicopter") &&
             parsed({"--scenario=jet-pass"}).error.empty() && refused({"--realism=off", "--scenario=jet-pass"}, "flies the jet") &&
+            parsed({"--scenario=jet-vapor"}).options.humidity_percent == 95 &&
+            parsed({"--scenario=jet-vapor", "--humidity=40"}).options.humidity_percent == 40 &&
+            parsed({"--scenario=jet-pass"}).options.humidity_percent == 80 &&
             pyroclast::benchmark_workload("heli-hover") && pyroclast::benchmark_workload("heli-hover")->scenario == "heli-hover" &&
             pyroclast::benchmark_workload("heli-ground") && pyroclast::benchmark_workload("heli-ground")->view == pyroclast::RangeView::ground;
         if (!accepted || !rules)

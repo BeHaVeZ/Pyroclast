@@ -116,6 +116,18 @@ JetFlight jet_flight(std::string_view name, const Environment& environment)
         for (double x = -300; x <= 300; x += 2) height = std::max(height, terrain.height(static_cast<float>(x), static_cast<float>(z)) + 8.0);
         return height;
     };
+    if (name == "jet-vapor")
+    {
+        const double height = level(0, 40);
+        const double speed = jet::fast_speed;
+        FlightBuilder builder(std::string(name), 1800, {-speed * 10, height, 0}, {speed, 0, 0});
+        builder.cruise(612);
+        builder.arc({0, 1, 0}, 50 * jet::pi / 180, 5.5 * jet::gravity);
+        builder.cruise(2400 + 480 - builder.tick());
+        builder.unlist_at(2400 + 480);
+        flight.passes.push_back(builder.build());
+        return flight;
+    }
     flight.passes.push_back(straight_pass("jet-pass", {0, level(0, 30), 0}, {1, 0, 0}, jet::pass_speed, 2400, 10));
     flight.passes.push_back(straight_pass("jet-pass", {0, level(0, 15), 0}, {-1, 0, 0}, jet::pass_speed, 3600, 10));
     return flight;

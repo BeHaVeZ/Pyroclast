@@ -78,6 +78,15 @@ set(PYROCLAST_SHADERS
     helicopter_shadow_pixel:helicopter_shadow:ps:ps_shadow
     jet_vertex:jet:vs:vs_jet
     jet_pixel:jet:ps:ps_jet
+    jet_flame_vertex:jet:vs:vs_flame
+    jet_flame_pixel:jet:ps:ps_flame
+    jet_vapor_vertex:jet:vs:vs_vapor
+    jet_vapor_pixel:jet:ps:ps_vapor
+    jet_trails_vertex:jet_trails:vs:vs_trails
+    jet_trails_pixel:jet_trails:ps:ps_trails
+    jet_shadow_vertex:jet_shadow:vs:vs_jet_shadow
+    jet_shadow_pixel:jet_shadow:ps:ps_jet_shadow
+    present_aircraft_pixel:present_aircraft:ps:ps_waves
 )
 
 # Vulkan bindings come from the shared binding layout, so C++ (binding_layout.hpp) and SPIR-V agree.

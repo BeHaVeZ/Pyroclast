@@ -7,6 +7,9 @@ SamplerState linear_clamp : register(s0);
 
 static const float maximum_wave_pixels = 24;
 static const float air_fade_metres = 10;
+#ifdef PYROCLAST_ROTOR
+#include "jet_haze.hlsli"
+#endif
 
 float2 ring_offset(float2 pixel, float3 at, float3 outward, float x, float width, float amplitude, float view_depth, float cap, float gain)
 {
@@ -76,6 +79,9 @@ float4 ps_waves(float4 position : SV_Position) : SV_Target
 {
     uint2 pixel = uint2(position.xy);
     float2 offset = ((frame.light_state.y >> waves_mask_bit) & 1) != 0 ? wave_offset(position.xy) : 0;
+#ifdef PYROCLAST_ROTOR
+    offset += jet_haze_offset(position.xy);
+#endif
     float2 uv = (position.xy + offset) * frame.viewport.zw;
     float3 color = scene.SampleLevel(linear_clamp, uv, 0).rgb * frame.exposure.x;
     float3 display = linear_to_srgb(aces_fitted(color));

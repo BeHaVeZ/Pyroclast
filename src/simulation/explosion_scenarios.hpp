@@ -41,14 +41,14 @@ struct Scenario
 };
 
 inline constexpr std::string_view scenario_names = "single, grid-10, grid-50, grid-100, barrage, presets, range, bombardment, accumulation, "
-                                                   "linger-barrage, linger-saturation, heli-hover, heli-pass, heli-landing, jet-pass";
+                                                   "linger-barrage, linger-saturation, heli-hover, heli-pass, heli-landing, jet-pass, jet-vapor";
 constexpr bool is_helicopter_scenario(std::string_view name)
 {
     return name == "heli-hover" || name == "heli-pass" || name == "heli-landing";
 }
 constexpr bool is_jet_scenario(std::string_view name)
 {
-    return name == "jet-pass";
+    return name == "jet-pass" || name == "jet-vapor";
 }
 constexpr bool is_scenario_name(std::string_view name)
 {
@@ -57,6 +57,7 @@ constexpr bool is_scenario_name(std::string_view name)
         name == "linger-saturation" || is_helicopter_scenario(name) || is_jet_scenario(name);
 }
 
+inline constexpr std::uint32_t jet_vapor_humidity_percent = 95;
 JetFlight jet_flight(std::string_view name, const Environment& environment);
 
 inline constexpr std::uint32_t helicopter_seed = 26000;

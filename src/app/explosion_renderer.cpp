@@ -18,13 +18,14 @@ bool ExplosionRenderer::initialize(GraphicsDevice& device, TargetFormat scene_fo
     depth_ = device.create_render_target({1, {}, TargetFormat::depth, 0.0f});
     present_ = device.create_graphics_pipeline({Shader::tonemap_vertex, Shader::tonemap_pixel, BlendMode::opaque});
     present_waves_ = device.create_graphics_pipeline({Shader::tonemap_vertex, Shader::present_waves_pixel, BlendMode::opaque});
+    present_aircraft_ = device.create_graphics_pipeline({Shader::tonemap_vertex, Shader::present_aircraft_pixel, BlendMode::opaque});
     wilson_ = device.create_graphics_pipeline({Shader::wilson_vertex, Shader::wilson_pixel, BlendMode::premultiplied_alpha, DepthMode::ignore, scene_format});
     for (const auto& effect : effect_classes()) blast_classes_.push_back(effect.blast);
     lines_ = device.create_graphics_pipeline(
         {Shader::debug_lines_vertex, Shader::debug_lines_pixel, BlendMode::opaque, DepthMode::test, scene_format, Topology::lines});
     showcase_lines_ = device.create_graphics_pipeline(
         {Shader::showcase_lines_vertex, Shader::debug_lines_pixel, BlendMode::opaque, DepthMode::test, scene_format, Topology::lines});
-    if (!scene_ || !depth_ || !present_ || !present_waves_ || !wilson_ || !lines_ || !showcase_lines_ || !helicopter_.initialize(device, scene_format) ||
+    if (!scene_ || !depth_ || !present_ || !present_waves_ || !present_aircraft_ || !wilson_ || !lines_ || !showcase_lines_ || !helicopter_.initialize(device, scene_format) ||
         !jet_.initialize(device, scene_format))
     {
         return false;
@@ -145,7 +146,9 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     const bool condensation = ((options.layer_mask >> realism_layout::condensation_mask_bit) & 1) != 0 &&
         std::any_of(blasts.rings.begin(), blasts.rings.begin() + blasts.count, [](const float4& ring) { return ring.w > 0; });
     const Draw wilson{*wilson_, {}, {}, 3, realism_layout::maximum_blasts, "Wilson shells"};
-    const Draw present{waves ? *present_waves_ : *present_, {}, {}, 3, 1, waves ? "Tonemap and blast waves" : "Tonemap"};
+    const bool aircraft = realism && units.rotor;
+    const Draw present{aircraft ? *present_aircraft_ : waves ? *present_waves_ : *present_, {}, {}, 3, 1,
+        aircraft ? "Tonemap, blast waves and heat haze" : waves ? "Tonemap and blast waves" : "Tonemap"};
     const Draw lines{*lines_, {}, {work.effects}, 32, std::max(work.effects, 1u), "Effect lines"};
     listed_clusters_ = 0;
     rotor_frame_ = {};
@@ -182,7 +185,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     std::vector<Draw> helicopter_shadow;
     const float3 sun_towards{constants.sun_direction.x, constants.sun_direction.y, constants.sun_direction.z};
     if (realism) helicopter_.scene_draws(rotor_frame_, range.environment_buffer(), sun_towards, scene_draws, helicopter_shadow);
-    if (realism) jet_.scene_draws(jet_frame_, scene_draws);
+    if (realism) jet_.scene_draws(jet_frame_, range.environment_buffer(), sun_towards, options.humidity, scene_draws, helicopter_shadow);
     scene_draws.push_back(opaque.sky);
     for (const auto& draw : helicopter_shadow) scene_draws.push_back(draw);
     if (props && options.views.collision_boxes) scene_draws.push_back(opaque.colliders);
@@ -209,7 +212,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
             "Half-resolution smoke"});
         passes.push_back({scene_.get(), {smoke_target_.get(), depth_.get()}, over_scene, "Composite and light", true, depth_.get(), false});
     }
-    passes.push_back({nullptr, {scene_.get(), waves ? depth_.get() : nullptr}, {&present, 1}, "Present"});
+    passes.push_back({nullptr, {scene_.get(), waves || aircraft ? depth_.get() : nullptr}, {&present, 1}, "Present"});
     auto constant_bytes = std::as_bytes(std::span(&constants, 1));
     if (!realism_enabled(options.layer_mask)) constant_bytes = constant_bytes.first(legacy_frame_constant_bytes);
     Frame frame{simulate ? std::span<const Dispatch>(work.dispatches) : std::span<const Dispatch>(), passes, {}, constant_bytes,

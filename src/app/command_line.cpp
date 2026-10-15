@@ -699,6 +699,7 @@ CommandLineResult parse_command_line(std::span<const char* const> arguments)
     {
         result.error = "--scenario=" + result.options.scenario + " flies the helicopter; it needs the realism model" + legacy_reason;
     }
+    if (result.options.scenario == "jet-vapor" && !humidity_specified) result.options.humidity_percent = jet_vapor_humidity_percent;
     if (is_jet_scenario(result.options.scenario) && !realism_enabled(model))
     {
         result.error = "--scenario=" + result.options.scenario + " flies the jet; it needs the realism model" + legacy_reason;

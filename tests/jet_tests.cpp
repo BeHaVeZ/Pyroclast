@@ -61,21 +61,28 @@ int main()
 
     {
         FlightBuilder builder("arc", 0, {0, 100, 0}, {160, 0, 0});
-        builder.cruise(60);
+        builder.cruise(600);
         builder.arc({0, 0, 1}, jet::pi / 2, 4 * jet::gravity);
+        const std::uint32_t arc_end = builder.tick();
+        builder.cruise(600);
         const auto plan = builder.build();
-        const auto end = flight_state(plan, plan.knots.back().tick);
+        const auto before = flight_state(plan, 300);
+        const auto after = flight_state(plan, arc_end + 300);
+        check(std::abs(before.position.y - 100) < 1e-6 && std::abs(before.position.z) < 0.05 && std::abs(after.velocity.x) < 0.05 &&
+                std::abs(after.position.x - flight_state(plan, arc_end).position.x) < 0.05,
+            "the segments around an arc stay straight");
+        const auto end = flight_state(plan, arc_end);
         check(std::abs(end.velocity.x) < 1e-6 && std::abs(end.velocity.z - 160) < 1e-6, "an arc turns the velocity by its angle");
         bool steady = true;
-        for (std::uint32_t tick = 60; tick <= plan.knots.back().tick; ++tick)
+        for (std::uint32_t tick = 600; tick <= arc_end; ++tick)
         {
             const auto state = flight_state(plan, tick);
             steady = steady && std::abs(length(state.velocity) - 160) < 0.8;
         }
         check(steady, "an arc keeps its speed within 0.5%");
         const double radius = 160.0 * 160.0 / (4 * jet::gravity);
-        const double3 centre{160, 100, radius};
-        const auto middle = flight_state(plan, (60 + plan.knots.back().tick) / 2);
+        const double3 centre{1600, 100, radius};
+        const auto middle = flight_state(plan, (600 + arc_end) / 2);
         check(std::abs(length(middle.position - centre) - radius) < 0.5, "an arc stays on its circle");
     }
 
