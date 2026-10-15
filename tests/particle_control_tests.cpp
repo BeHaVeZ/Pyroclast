@@ -252,6 +252,15 @@ int main()
         clock.commit(work.steps);
         return work;
     };
+    const auto render_frame = [](ExplosionRenderer& renderer, GraphicsDevice& graphics, const ParticleSystem& particles, SimulationClock& clock,
+        ExplosionSystem& effects, WindDrift& drift, const TestRange& scene, const Camera& view, double elapsed,
+        const ExplosionRenderer::FrameOptions& options) {
+        const StepSettings settings{options.layer_mask, options.wind, options.linger, options.scalability.slot_policy};
+        const auto step = begin_frame_step(clock, effects, drift, nullptr, nullptr, scene.terrain(), settings, elapsed);
+        const auto result = renderer.render(graphics, particles, effects, drift, scene, view, 1280, 720, step, options);
+        if (result == RenderResult::submitted) commit_frame_step(step, clock, drift, settings);
+        return result;
+    };
     const auto run = [](SimulationClock& clock, double elapsed) {
         const auto steps = clock.advance(elapsed);
         clock.commit(steps);
@@ -423,6 +432,7 @@ int main()
 
     ParticleSystem rendered;
     SimulationClock rendered_clock;
+    WindDrift rendered_drift;
     rendered.initialize(device, range.environment_buffer(), targets, classes);
     ExplosionSystem effects(ParticleSystem::effect_slots);
     const auto camera = range.view(RangeView::overview);
@@ -431,12 +441,12 @@ int main()
         device.depth_cleared_far && device.half_target && device.half_target->description().divisor == 2 && device.composite &&
         device.present && device.lines,
         "the renderer creates a scene, a depth target cleared to the far end, and the half-size smoke target and its composite");
-    check(full_resolution.render(device, rendered, rendered_clock, effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::submitted &&
+    check(render_frame(full_resolution, device, rendered, rendered_clock, effects, rendered_drift, range, camera, 1.0 / 60, {}) == RenderResult::submitted &&
         device.valid_frame && device.range_only && device.dispatches == 0 && !device.readback.source, "without effects only the range is drawn");
     const auto group = group_events(range.terrain(), 10);
     for (const auto& event : group) effects.submit(event);
     const auto start_tick = rendered_clock.tick();
-    check(full_resolution.render(device, rendered, rendered_clock, effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::submitted &&
+    check(render_frame(full_resolution, device, rendered, rendered_clock, effects, rendered_drift, range, camera, 1.0 / 60, {}) == RenderResult::submitted &&
         device.valid_frame && device.full_resolution_passes && device.dispatches == 3 && device.dispatch_groups == 10 * groups &&
         device.readback.source && device.readback.offset == layout::counters_offset,
         "ten effects: simulation, scan and scatter over ten slabs, one indirect particle draw and the counters read back");
@@ -463,21 +473,21 @@ int main()
     ExplosionRenderer::FrameOptions lined{};
     lined.views = {true, true, false, false};
     device.expect_boxes = true;
-    check(device.showcase_lines && full_resolution.render(device, rendered, rendered_clock, effects, range, camera, 1280, 720, 1.0 / 60, lined) ==
+    check(device.showcase_lines && render_frame(full_resolution, device, rendered, rendered_clock, effects, rendered_drift, range, camera, 1.0 / 60, lined) ==
         RenderResult::submitted && device.valid_frame && device.lined_passes,
         "effect bounds are drawn before the particles, the collision boxes after the sky");
     auto hidden = lined;
     hidden.layer_mask &= ~(1u << layout::props_mask_bit);
-    check(full_resolution.render(device, rendered, rendered_clock, effects, range, camera, 1280, 720, 1.0 / 60, hidden) == RenderResult::submitted &&
+    check(render_frame(full_resolution, device, rendered, rendered_clock, effects, rendered_drift, range, camera, 1.0 / 60, hidden) == RenderResult::submitted &&
         device.valid_frame && device.lined_passes, "hidden props: the range without them");
     ExplosionRenderer::FrameOptions boxes_only{};
     boxes_only.views.collision_boxes = true;
-    check(full_resolution.render(device, rendered, rendered_clock, effects, range, camera, 1280, 720, 1.0 / 60, boxes_only) == RenderResult::submitted &&
+    check(render_frame(full_resolution, device, rendered, rendered_clock, effects, rendered_drift, range, camera, 1.0 / 60, boxes_only) == RenderResult::submitted &&
         device.valid_frame && device.full_resolution_passes, "the collision boxes alone add only their draw");
     device.expect_boxes = false;
     ExplosionRenderer::FrameOptions bounds_only{};
     bounds_only.views.effect_bounds = true;
-    check(full_resolution.render(device, rendered, rendered_clock, effects, range, camera, 1280, 720, 1.0 / 60, bounds_only) == RenderResult::submitted &&
+    check(render_frame(full_resolution, device, rendered, rendered_clock, effects, rendered_drift, range, camera, 1.0 / 60, bounds_only) == RenderResult::submitted &&
         device.valid_frame && device.lined_passes, "the effect bounds alone add only their draw");
     std::vector<ShowcaseMark> marks(2);
     marks[0].segments = 32;
@@ -488,22 +498,22 @@ int main()
     marked.views.spawn_regions = true;
     marked.marks = marks;
     device.expect_marks = marks;
-    check(full_resolution.render(device, rendered, rendered_clock, effects, range, camera, 1280, 720, 1.0 / 60, marked) == RenderResult::submitted &&
+    check(render_frame(full_resolution, device, rendered, rendered_clock, effects, rendered_drift, range, camera, 1.0 / 60, marked) == RenderResult::submitted &&
         device.valid_frame && device.full_resolution_passes, "each showcase mark is one line draw after the sky, over the environment");
     marked.layer_mask &= ~(1u << layout::props_mask_bit);
-    check(full_resolution.render(device, rendered, rendered_clock, effects, range, camera, 1280, 720, 1.0 / 60, marked) == RenderResult::submitted &&
+    check(render_frame(full_resolution, device, rendered, rendered_clock, effects, rendered_drift, range, camera, 1.0 / 60, marked) == RenderResult::submitted &&
         device.valid_frame && device.full_resolution_passes, "hidden props keep the marks");
     device.expect_marks.clear();
     device.result = RenderResult::skipped;
     const auto before_skip = rendered_clock.tick();
-    check(full_resolution.render(device, rendered, rendered_clock, effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::skipped &&
+    check(render_frame(full_resolution, device, rendered, rendered_clock, effects, rendered_drift, range, camera, 1.0 / 60, {}) == RenderResult::skipped &&
         rendered_clock.tick() == before_skip, "a skipped frame keeps its simulation time");
     device.result = RenderResult::submitted;
     rendered_clock.set_fixed_ticks(true);
     for (std::uint32_t tick = rendered_clock.tick(); tick < start_tick + effect_ticks(ExplosionPreset::small_he, SurfaceType::dirt); ++tick)
-        full_resolution.render(device, rendered, rendered_clock, effects, range, camera, 1280, 720, 0, {});
+        render_frame(full_resolution, device, rendered, rendered_clock, effects, rendered_drift, range, camera, 0, {});
     check(effects.active().size() == 10, "effects live until their last particle has died");
-    full_resolution.render(device, rendered, rendered_clock, effects, range, camera, 1280, 720, 0, {});
+    render_frame(full_resolution, device, rendered, rendered_clock, effects, rendered_drift, range, camera, 0, {});
     check(effects.active().empty() && device.range_only && device.dispatches == 0, "then they retire and nothing is simulated");
 
     TestDevice ordered_device;
@@ -511,6 +521,7 @@ int main()
     ordered_range.initialize(ordered_device, hdr);
     ParticleSystem ordered_particles;
     SimulationClock ordered_clock;
+    WindDrift ordered_drift;
     ordered_particles.initialize(ordered_device, ordered_range.environment_buffer(), targets, classes);
     ExplosionSystem ordered_effects(ParticleSystem::effect_slots);
     for (const auto& event : group_events(ordered_range.terrain(), 100)) ordered_effects.submit(event);
@@ -518,7 +529,7 @@ int main()
     ordered.initialize(ordered_device, hdr);
     auto oblique = camera;
     oblique.position = {-70, 30, 20};
-    check(ordered.render(ordered_device, ordered_particles, ordered_clock, ordered_effects, ordered_range, oblique, 1280, 720, 0, {}) == RenderResult::submitted &&
+    check(render_frame(ordered, ordered_device, ordered_particles, ordered_clock, ordered_effects, ordered_drift, ordered_range, oblique, 0, {}) == RenderResult::submitted &&
         ordered_device.valid_frame && ordered_device.dispatch_groups == 100 * groups, "a 100-effect frame is valid");
     const auto slots = ordered_effects.slots();
     const auto distance = [&](std::uint32_t slot) {
@@ -540,7 +551,7 @@ int main()
     {
         ExplosionRenderer::FrameOptions keyed{};
         keyed.scalability.effect_order = key;
-        ordered.render(ordered_device, ordered_particles, ordered_clock, ordered_effects, ordered_range, oblique, 1280, 720, 0, keyed);
+        render_frame(ordered, ordered_device, ordered_particles, ordered_clock, ordered_effects, ordered_drift, ordered_range, oblique, 0, keyed);
         std::vector<bool> listed(ParticleSystem::effect_slots);
         bool permutation = true;
         for (std::uint32_t rank = 0; rank < 100; ++rank)
@@ -560,35 +571,35 @@ int main()
         "the half-size target holds smoke in its format");
     ExplosionRenderer::FrameOptions half_options{};
     half_options.scalability.smoke_resolution = SmokeResolution::half;
-    check(half_resolution.render(device, rendered, rendered_clock, half_effects, range, camera, 1280, 720, 1.0 / 60, half_options) == RenderResult::submitted &&
+    check(render_frame(half_resolution, device, rendered, rendered_clock, half_effects, rendered_drift, range, camera, 1.0 / 60, half_options) == RenderResult::submitted &&
         device.valid_frame && device.half_resolution_passes && half_resolution.half_smoke(),
         "half resolution draws smoke into the target, then composites it under full-resolution light");
-    check(half_resolution.render(device, rendered, rendered_clock, half_effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::submitted &&
+    check(render_frame(half_resolution, device, rendered, rendered_clock, half_effects, rendered_drift, range, camera, 1.0 / 60, {}) == RenderResult::submitted &&
         device.valid_frame && device.full_resolution_passes && !half_resolution.half_smoke(), "the next frame may draw at full resolution");
     half_options.scalability.half_light = true;
-    check(half_resolution.render(device, rendered, rendered_clock, half_effects, range, camera, 1280, 720, 1.0 / 60, half_options) == RenderResult::submitted &&
+    check(render_frame(half_resolution, device, rendered, rendered_clock, half_effects, rendered_drift, range, camera, 1.0 / 60, half_options) == RenderResult::submitted &&
         device.valid_frame && device.half_light_passes, "with half-resolution light the target holds every translucent particle");
     half_options.scalability.half_light = false;
-    half_resolution.render(device, rendered, rendered_clock, half_effects, range, camera, 1280, 720, 1.0 / 60, {});
+    render_frame(half_resolution, device, rendered, rendered_clock, half_effects, rendered_drift, range, camera, 1.0 / 60, {});
     ExplosionRenderer::FrameOptions automatic{};
     automatic.scalability.smoke_resolution = SmokeResolution::automatic;
     automatic.scalability.smoke_budget = {false, 100};
-    check(half_resolution.render(device, rendered, rendered_clock, half_effects, range, camera, 1280, 720, 1.0 / 60, automatic) == RenderResult::submitted &&
+    check(render_frame(half_resolution, device, rendered, rendered_clock, half_effects, rendered_drift, range, camera, 1.0 / 60, automatic) == RenderResult::submitted &&
         device.valid_frame && device.full_resolution_passes && device.readback.size == layout::counters_bytes,
         "automatic without a record draws at full resolution and measures");
     ParticleCounters heavy_record;
     heavy_record.smoke_coverage[3] = 100 * 1280 * 720 / layout::coverage_unit_pixels;
     heavy_record.measured = true;
     automatic.counters = heavy_record;
-    check(half_resolution.render(device, rendered, rendered_clock, half_effects, range, camera, 1280, 720, 1.0 / 60, automatic) == RenderResult::submitted &&
+    check(render_frame(half_resolution, device, rendered, rendered_clock, half_effects, rendered_drift, range, camera, 1.0 / 60, automatic) == RenderResult::submitted &&
         device.valid_frame && device.half_resolution_passes && half_resolution.half_smoke() && half_resolution.smoke_policy().switches() == 1,
         "automatic switches to half resolution at the budget");
     ExplosionRenderer::FrameOptions fixed_full{};
     fixed_full.counters = heavy_record;
-    half_resolution.render(device, rendered, rendered_clock, half_effects, range, camera, 1280, 720, 1.0 / 60, fixed_full);
+    render_frame(half_resolution, device, rendered, rendered_clock, half_effects, rendered_drift, range, camera, 1.0 / 60, fixed_full);
     ParticleCounters unread_record;
     automatic.counters = unread_record;
-    check(half_resolution.render(device, rendered, rendered_clock, half_effects, range, camera, 1280, 720, 1.0 / 60, automatic) == RenderResult::submitted &&
+    check(render_frame(half_resolution, device, rendered, rendered_clock, half_effects, rendered_drift, range, camera, 1.0 / 60, automatic) == RenderResult::submitted &&
         device.full_resolution_passes && !half_resolution.half_smoke() && half_resolution.smoke_policy().switches() == 1,
         "back in automatic, an unmeasured record keeps the full resolution just drawn");
 
@@ -756,6 +767,7 @@ int main()
         realism_device.environment = &realism_range.environment_buffer();
         ParticleSystem lingering;
         SimulationClock lingering_clock;
+        WindDrift lingering_drift;
         lingering.initialize(realism_device, realism_range.environment_buffer(), targets, classes);
         lingering_clock.set_fixed_ticks(true);
         ExplosionSystem lingering_effects(ParticleSystem::effect_slots);
@@ -765,7 +777,7 @@ int main()
         options.layer_mask = realism_layout::realism_full_mask;
         for (const auto& event : group_events(realism_range.terrain(), 1, ExplosionPreset::artillery_he)) lingering_effects.submit(event);
         const auto render = [&]() {
-            return realism_renderer.render(realism_device, lingering, lingering_clock, lingering_effects, realism_range, camera, 1280, 720, 1.0 / 60, options);
+            return render_frame(realism_renderer, realism_device, lingering, lingering_clock, lingering_effects, lingering_drift, realism_range, camera, 1.0 / 60, options);
         };
         const std::vector<std::optional<Shader>> realism_dispatches{Shader::particle_realism_simulation, Shader::particle_scan_units,
             Shader::particle_scatter_units};
@@ -835,7 +847,7 @@ int main()
             check(barrage.residual().forced_fades() > 0 && lowest == 1 && highest > 2 && highest <= 3 && largest_step < 0.01f && last == 1,
                 "the pall's shadow power grows with the pall and moves smoothly as clusters come, go and are forced out");
         }
-        check(full_resolution.render(device, rendered, rendered_clock, effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::submitted &&
+        check(render_frame(full_resolution, device, rendered, rendered_clock, effects, rendered_drift, range, camera, 1.0 / 60, {}) == RenderResult::submitted &&
             device.constant_bytes == legacy_frame_constant_bytes, "a legacy frame uploads exactly M21's frame constants");
     }
 

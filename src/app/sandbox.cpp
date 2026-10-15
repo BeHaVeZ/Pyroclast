@@ -451,7 +451,7 @@ void Sandbox::fill_snapshot(DiagnosticsSnapshot& snapshot) const
     if (const auto& helicopter = rotorcraft.helicopter())
     {
         const auto& plan = helicopter->plan;
-        const auto& frame = renderer.rotor_frame();
+        const auto& frame = last_step.rotor;
         DiagnosticsSnapshot::Load::Helicopter shown;
         shown.state = pilot.helicopter() == HelicopterPiloting::piloted ? "piloted" : pilot.helicopter() == HelicopterPiloting::settling ? "settling" :
             tick < plan.list_tick ? "not yet in" : tick >= plan.unlist_tick ? "gone" :
@@ -547,6 +547,17 @@ void Sandbox::fill_snapshot(DiagnosticsSnapshot& snapshot) const
 
     snapshot.views = {views.effect_bounds, views.collision_boxes, views.spawn_regions, views.wind_arrow};
     snapshot.layer_mask = layer_mask;
+}
+
+RenderResult Sandbox::render_frame(GraphicsDevice& device, const Camera& view, int width, int height, double elapsed_seconds,
+    bool capture, ImDrawData* overlay)
+{
+    const StepSettings settings{layer_mask, wind, linger, scalability.slot_policy};
+    last_step = begin_frame_step(clock, effects, drift, &rotorcraft, &jetcraft, range.terrain(), settings, elapsed_seconds);
+    const auto result = renderer.render(device, particles, effects, drift, range, view, width, height, last_step,
+        {capture, overlay, views, layer_mask, wind, marks, scalability, counters, linger, humidity, &rotorcraft, &jetcraft});
+    if (result == RenderResult::submitted) commit_frame_step(last_step, clock, drift, settings);
+    return result;
 }
 
 void Sandbox::release_due()

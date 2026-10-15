@@ -36,30 +36,16 @@ bool ExplosionRenderer::initialize(GraphicsDevice& device, TargetFormat scene_fo
     return smoke_target_ && composite_;
 }
 
-RenderResult ExplosionRenderer::render(GraphicsDevice& device, const ParticleSystem& particles, SimulationClock& clock, ExplosionSystem& effects,
-    const TestRange& range, const Camera& camera, int width, int height, double elapsed_seconds, const FrameOptions& options)
+RenderResult ExplosionRenderer::render(GraphicsDevice& device, const ParticleSystem& particles, const ExplosionSystem& effects,
+    const WindDrift& drift, const TestRange& range, const Camera& camera, int width, int height, const FrameStep& step,
+    const FrameOptions& options)
 {
     assert(width > 0 && height > 0);
     const bool realism = realism_enabled(options.layer_mask);
     const bool gusts = ((options.layer_mask >> particle_layout::gusts_mask_bit) & 1) != 0;
-    const auto tick = clock.tick();
-    const RealismStart realism_start{options.layer_mask, options.linger, drift_.at(tick, options.wind, gusts)};
-    auto* rotorcraft = realism ? options.rotorcraft : nullptr;
-    const bool stepping = clock.stepping();
-    if (rotorcraft && rotorcraft->helicopter() && rotorcraft->request_pending() && stepping && tick >= rotorcraft->helicopter()->plan.list_tick)
-    {
-        const auto& helicopter = *rotorcraft->helicopter();
-        effects.request_rotor(helicopter.seed, to_float3(flight_state(helicopter.plan, tick).position), rotorcraft->slot_end());
-        rotorcraft->requested();
-    }
-    auto* jetcraft = realism ? options.jetcraft : nullptr;
-    if (jetcraft && jetcraft->flight() && jetcraft->request_pending() && stepping && tick >= jetcraft->first_list_tick())
-    {
-        const auto& first = jetcraft->flight()->passes.front();
-        effects.request_jet(jetcraft->seed(), to_float3(flight_state(first, first.list_tick).position), jetcraft->slot_end());
-        jetcraft->requested();
-    }
-    effects.start(tick, options.scalability.slot_policy, realism ? &realism_start : nullptr);
+    const auto tick = step.tick;
+    const auto* rotorcraft = realism ? options.rotorcraft : nullptr;
+    const auto* jetcraft = realism ? options.jetcraft : nullptr;
     const auto active = effects.active();
     auto units = realism ? count_units(effects, tick) : FrameUnits{};
     units.rotor = (rotorcraft && rotorcraft->variants()) || (jetcraft && jetcraft->variants());
@@ -69,7 +55,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, const ParticleSys
     const bool half = scalability.smoke_resolution == SmokeResolution::half ||
         (automatic && smoke_policy_.decide(options.counters, scalability.smoke_budget, screen_pixels));
     const bool half_light = half && scalability.half_light;
-    const auto work = particles.plan(tick, clock.advance(elapsed_seconds), static_cast<std::uint32_t>(active.size()),
+    const auto work = particles.plan(tick, step.steps, static_cast<std::uint32_t>(active.size()),
         half ? smoke_target_->description().divisor : 0,
         {scalability.coverage || automatic, half_light, scalability.smoke_lod, scalability.faint_floor}, realism ? &units : nullptr);
 
@@ -95,7 +81,8 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, const ParticleSys
         constants.effect_normals[index] = {slot.normal.x, slot.normal.y, slot.normal.z, 0};
         constants.effect_states[index] = {slot.seed, slot.generation, slot.start_tick, slot.effect_class};
     }
-    std::vector<std::uint32_t> order(active.begin(), active.end());
+    auto& order = order_;
+    order.assign(active.begin(), active.end());
     const auto key_tick = tick + work.steps;
     const auto effect_order = options.scalability.effect_order;
     const auto distance = [&slots, &camera, key_tick, effect_order](std::uint32_t slot) {
@@ -157,42 +144,30 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, const ParticleSys
         aircraft ? "Tonemap, blast waves and heat haze" : waves ? "Tonemap and blast waves" : "Tonemap"};
     const Draw lines{*lines_, {}, {work.effects}, 32, std::max(work.effects, 1u), "Effect lines"};
     listed_clusters_ = 0;
-    rotor_frame_ = {};
-    jet_frame_ = {};
     if (realism)
     {
-        if (rotorcraft)
-        {
-            const auto drift_at = [this, &options, gusts](std::uint32_t at) { return drift_.at(at, options.wind, gusts); };
-            rotor_frame_ = prepare_rotor(*rotorcraft, effects, range.terrain(), options.wind, gusts, options.layer_mask, tick, work.steps, key_tick, drift_at);
-        }
-        if (jetcraft)
-        {
-            jet_frame_ = prepare_jet(*jetcraft, effects, range.terrain(), options.wind, gusts, options.layer_mask, tick, work.steps, key_tick);
-        }
-        const auto filled = fill_realism_constants(constants, effects, tick, key_tick, camera, effect_order, drift_.at(key_tick, options.wind, gusts),
-            options.linger, jet_frame_.slot ? std::optional<float3>(jet_frame_.key) : std::nullopt,
-            rotor_frame_.slot ? std::optional<float3>(rotor_frame_.key) : std::nullopt,
-            rotor_frame_.exists ? std::optional<float3>(rotor_frame_.disc_key) : std::nullopt);
+        const auto filled = fill_realism_constants(constants, effects, tick, key_tick, camera, effect_order, drift.at(key_tick, options.wind, gusts),
+            options.linger, step.jet.slot ? std::optional<float3>(step.jet.key) : std::nullopt,
+            step.rotor.slot ? std::optional<float3>(step.rotor.key) : std::nullopt,
+            step.rotor.exists ? std::optional<float3>(step.rotor.disc_key) : std::nullopt);
         assert(filled.units.units == units.units && filled.units.groups == units.groups);
         listed_clusters_ = filled.clusters;
-        if (rotorcraft)
-        {
-            fill_rotor_constants(constants, *rotorcraft, rotor_frame_);
-        }
-        if (jetcraft) fill_jet_constants(constants, jet_frame_);
+        if (rotorcraft) fill_rotor_constants(constants, *rotorcraft, step.rotor);
+        if (jetcraft) fill_jet_constants(constants, step.jet);
     }
     const bool simulate = realism ? work.units != 0 : work.effects != 0;
     particles_drawn_ = simulate;
     const bool show_lines = options.views.effect_bounds && simulate;
-    std::vector<Draw> scene_draws;
+    auto& scene_draws = scene_draws_;
+    scene_draws.clear();
     if (props) scene_draws.push_back(opaque.props);
     scene_draws.push_back(opaque.terrain);
     if (simulate) scene_draws.push_back(work.debris);
-    std::vector<Draw> helicopter_shadow;
+    auto& helicopter_shadow = shadow_draws_;
+    helicopter_shadow.clear();
     const float3 sun_towards{constants.sun_direction.x, constants.sun_direction.y, constants.sun_direction.z};
-    if (realism) helicopter_.scene_draws(rotor_frame_, range.environment_buffer(), sun_towards, scene_draws, helicopter_shadow);
-    if (realism) jet_.scene_draws(jet_frame_, range.environment_buffer(), sun_towards, options.humidity, scene_draws, helicopter_shadow);
+    if (realism) helicopter_.scene_draws(step.rotor, range.environment_buffer(), sun_towards, scene_draws, helicopter_shadow);
+    if (realism) jet_.scene_draws(step.jet, range.environment_buffer(), sun_towards, options.humidity, scene_draws, helicopter_shadow);
     scene_draws.push_back(opaque.sky);
     for (const auto& draw : helicopter_shadow) scene_draws.push_back(draw);
     if (props && options.views.collision_boxes) scene_draws.push_back(opaque.colliders);
@@ -202,8 +177,10 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, const ParticleSys
     {
         scene_draws.push_back({*showcase_lines_, environment, mark_constants(mark), mark_vertices(mark), 1, "Showcase lines"});
     }
-    std::vector<Pass> passes{{scene_.get(), {}, scene_draws, "Scene", false, depth_.get(), true}};
-    std::vector<Draw> over_scene;
+    auto& passes = passes_;
+    passes.assign({{scene_.get(), {}, scene_draws, "Scene", false, depth_.get(), true}});
+    auto& over_scene = over_scene_;
+    over_scene.clear();
     if (show_lines) over_scene.push_back(lines);
     if (condensation) over_scene.push_back(wilson);
     if (simulate && !half)
@@ -228,8 +205,6 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, const ParticleSys
     const auto result = device.render(frame);
     if (result == RenderResult::submitted)
     {
-        clock.commit(work.steps);
-        drift_.advance(clock.tick(), options.wind, gusts);
         if (automatic) smoke_policy_.commit(half);
         else smoke_policy_.follow(half);
         half_smoke_ = half;

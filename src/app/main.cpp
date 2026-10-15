@@ -720,9 +720,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     drawn.yaw += 0.6f * angle;
                 }
                 const auto submit_begin = SDL_GetPerformanceCounter();
-                const auto result = sandbox.renderer.render(renderer, sandbox.particles, sandbox.clock, sandbox.effects, sandbox.range, drawn, width, height, elapsed,
-                    {capture, overlay, sandbox.views, sandbox.layer_mask, sandbox.wind, sandbox.marks, sandbox.scalability, sandbox.counters,
-                        sandbox.linger, sandbox.humidity, &sandbox.rotorcraft, &sandbox.jetcraft});
+                const auto result = sandbox.render_frame(renderer, drawn, width, height, elapsed, capture, overlay);
                 const auto submit_end = SDL_GetPerformanceCounter();
                 if (result == pyroclast::RenderResult::failed) return 1;
                 if (!unattended)
@@ -744,15 +742,15 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                         static_cast<double>(start - run_start) * counter_milliseconds, static_cast<double>(submit_end - submit_begin) * counter_milliseconds,
                         renderer.last_submit_timings(), sandbox.renderer.submitted_work(), sandbox.renderer.listed_clusters(),
                         sandbox.effects.residual().forced_fades(), sandbox.effects.residual().last_scale(), sandbox.effects.deferred(),
-                        sandbox.renderer.rotor_frame().census.alive, sandbox.renderer.rotor_frame().emission,
-                        sandbox.renderer.rotor_frame().hub_height_cm});
+                        sandbox.last_step.rotor.census.alive, sandbox.last_step.rotor.emission,
+                        sandbox.last_step.rotor.hub_height_cm});
                 }
                 if (result == pyroclast::RenderResult::submitted && realism)
                 {
-                    const auto& rotor = sandbox.renderer.rotor_frame();
+                    const auto& rotor = sandbox.last_step.rotor;
                     if (rotor.exists && rotor.listed) lowest_hub_cm = std::min(lowest_hub_cm, rotor.hub_height_cm);
                     peak_dust = std::max(peak_dust, rotor.census.alive);
-                    const auto& jet = sandbox.renderer.jet_frame();
+                    const auto& jet = sandbox.last_step.jet;
                     peak_knots = std::max(peak_knots, jet.wake.count);
                     peak_jet_dust = std::max(peak_jet_dust, jet.census.dust);
                     if (jet.slot)

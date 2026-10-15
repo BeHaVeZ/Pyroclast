@@ -23,6 +23,8 @@ struct Sandbox
     TestRange range;
     ParticleSystem particles;
     SimulationClock clock;
+    WindDrift drift;
+    FrameStep last_step;
     ExplosionSystem effects{ParticleSystem::effect_slots};
     ExplosionRenderer renderer;
     std::vector<ExplosionEvent> group;
@@ -60,6 +62,8 @@ struct Sandbox
     void return_pilot();
     void fly_pilot(const CameraInput& input, double elapsed);
     void release_due();
+    RenderResult render_frame(GraphicsDevice& device, const Camera& view, int width, int height, double elapsed_seconds, bool capture,
+        ImDrawData* overlay);
     void update_aim(bool needed);
     void build_marks();
     void fill_snapshot(DiagnosticsSnapshot& snapshot) const;

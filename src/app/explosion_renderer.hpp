@@ -1,6 +1,7 @@
 #pragma once
 
 #include "camera.hpp"
+#include "frame_step.hpp"
 #include "helicopter_renderer.hpp"
 #include "jet_renderer.hpp"
 #include "rotor_constants.hpp"
@@ -9,7 +10,6 @@
 #include "smoke_resolution_policy.hpp"
 #include "test_range.hpp"
 #include "../simulation/blast_front.hpp"
-#include "../simulation/simulation_clock.hpp"
 #include "../simulation/explosion_system.hpp"
 #include "../simulation/particle_system.hpp"
 #include "../simulation/wind.hpp"
@@ -34,20 +34,17 @@ public:
         std::optional<ParticleCounters> counters;
         LingerSettings linger;
         float humidity = 0.8f;
-        Rotorcraft* rotorcraft = nullptr;
-        Jetcraft* jetcraft = nullptr;
+        const Rotorcraft* rotorcraft = nullptr;
+        const Jetcraft* jetcraft = nullptr;
     };
-    RenderResult render(GraphicsDevice& device, const ParticleSystem& particles, SimulationClock& clock, ExplosionSystem& effects,
-        const TestRange& range,
-        const Camera& camera, int width, int height, double elapsed_seconds, const FrameOptions& options);
+    RenderResult render(GraphicsDevice& device, const ParticleSystem& particles, const ExplosionSystem& effects, const WindDrift& drift,
+        const TestRange& range, const Camera& camera, int width, int height, const FrameStep& step, const FrameOptions& options);
     std::uint32_t lights() const { return lights_; }
     bool half_smoke() const { return half_smoke_; }
     const FrameWork& submitted_work() const { return submitted_work_; }
     const SmokeResolutionPolicy& smoke_policy() const { return smoke_policy_; }
     std::span<const BlastParameters> blast_classes() const { return blast_classes_; }
     std::uint32_t listed_clusters() const { return listed_clusters_; }
-    const RotorFrame& rotor_frame() const { return rotor_frame_; }
-    const JetFrame& jet_frame() const { return jet_frame_; }
     bool particles_drawn() const { return particles_drawn_; }
 
 private:
@@ -64,14 +61,16 @@ private:
     std::unique_ptr<GraphicsPipeline> composite_;
     std::uint32_t lights_ = 0;
     std::uint32_t listed_clusters_ = 0;
-    RotorFrame rotor_frame_;
     HelicopterRenderer helicopter_;
-    JetFrame jet_frame_;
     JetRenderer jet_;
     bool particles_drawn_ = false;
     bool half_smoke_ = false;
-    WindDrift drift_;
     FrameWork submitted_work_;
+    std::vector<std::uint32_t> order_;
+    std::vector<Draw> scene_draws_;
+    std::vector<Draw> shadow_draws_;
+    std::vector<Draw> over_scene_;
+    std::vector<Pass> passes_;
     SmokeResolutionPolicy smoke_policy_;
 };
 }

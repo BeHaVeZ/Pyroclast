@@ -112,6 +112,7 @@ add_library(pyroclast_app STATIC
     src/app/smoke_resolution_policy.cpp
     src/app/command_line.cpp
     src/app/explosion_renderer.cpp
+    src/app/frame_step.cpp
     src/app/camera.cpp
     src/app/test_range.cpp
     src/app/prop_mesh.cpp
