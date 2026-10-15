@@ -8,7 +8,7 @@
 smoke risen into one pall, lit on top and dark beneath, carried downwind and fading into the haze. D3D12 in-app
 capture, the realism model.*
 
-**Status:** milestones M11-M26 complete. Windows x64, Direct3D 12 and Vulkan. The default is the realism model
+**Status:** milestones M11-M27 complete. Windows x64, Direct3D 12 and Vulkan. The default is the realism model
 (lingering smoke without pops, smoke physics, visible blast waves, and since M26 a helicopter whose rotor wash moves the
 smoke and raises dust); `--realism=off` runs the earlier model, which the seven M20 benchmarks keep.
 
@@ -48,7 +48,8 @@ the simulation and rendering workload bounded.
 The realism phase (M22-M25) adds the second half of the question: smoke that lingers for a minute or more and rises
 into columns, as artillery smoke does, without ever popping out of the scene when the particle budget runs out. M26
 adds a source of moving air: a helicopter whose rotor downwash pushes that smoke around and blows dust up from the
-ground beneath it.
+ground beneath it. M27 is a look pass after two Blastcore references: the star of smoke tendrils an impact throws out
+behind its clods, a size mix of clods, and a downwash that visibly tears the smoke it hits.
 
 The rendering side is held to one rule: build exactly enough rendering infrastructure to support and study scalable
 explosion and smoke simulation well, not a renderer that could theoretically support anything.
@@ -132,11 +133,11 @@ The earlier model (`--realism=off`), as M21 captured it:
 | Area | What it does |
 |---|---|
 | Test range | A 512 m procedural heightfield (257x257 heights, 2 m apart) with a flat central range, sun and hemisphere light, fog and a sky. A 36x36 m concrete pad. 18 props (walls, a hut, crates, a truck, barriers, rocks, a tank, a burnt car) built in code from 36 boxes, no asset files, drawn as one 1,764-vertex mesh. |
-| Explosions | Events placed by clicks or scripts at any time and place. 7 presets (small impact, small HE, artillery HE, heavy, fuel/fire, dust blast, stress test), each a table of up to 7 layers: ground dust, blast smoke, plume, flash, fireball, sparks, debris. Dirt and concrete respond differently. Up to 16 temporary lights per frame, the brightest first. |
+| Explosions | Events placed by clicks or scripts at any time and place. 7 presets (small impact, small HE, artillery HE, heavy, fuel/fire, dust blast, stress test), each a table of up to 7 layers: ground dust, blast smoke, plume, flash, fireball, sparks, debris. Dirt and concrete respond differently. Up to 16 temporary lights per frame, the brightest first. Under the realism model (M27) an HE impact throws clods along ballistic arcs, each trailing a chain of dark smoke knots (the star), and its debris comes in a size mix. |
 | Environment | Sparks and debris collide with the terrain and the props (swept, so nothing tunnels through a thin wall); debris comes to rest on tops; dust is held back and stays on tops; the wind and each explosion's vortex ring turn aside and up over walls. |
 | Showcase | Aim and fire with the crosshair; counts 1, 10, 50 and 100 (the aimed explosion plus a Vogel disc of radius 16.3, 36.6 or 51.6 m around it); an 80-impact barrage across the view; a continuous bombardment; walk or fly; seven camera bookmarks; 0.25x slow motion; debug views (effect bounds, collision boxes, spawn regions, wind arrow). |
 | Realism model (default) | The default since M25 (`--realism=off` for the earlier model). Smoke lingers: when an explosion's energetic phase ends, every eighth dust, smoke and plume particle survives into a residual pool of 65,536 particles and takes over its neighbours' share of the smoke, then lives on for about `--linger` seconds (75 by default, varying by explosion) after the explosion. It rises towards a stabilization height that grows with the charge (about 45 m for artillery) and spreads there, so a cloud becomes a column; the wind strengthens and veers with height, so columns lean and drift; every explosion varies a little in height, spread, darkness and life; dust stays low, falls out and settles; and distant smoke fades into the same haze as the ground. The look (M25): a flash and fireball with a real charge's timing, lighting nearby smoke as a sphere; soil jets and soot-dark young smoke that turns to a ground-tied grey; columns that shade themselves and one another, lit on top and dark beneath; thin smoke that scatters sunlight; billowed puffs. Nothing pops: smoke leaves only by fading, a full pool fades its oldest smoke out over at least 2 s, and with every effect slot busy an older explosion graduates early so the new one starts a moment later instead of being dropped. Deterministic on both APIs. Every explosion's blast wave shows: a ring of refraction races over the ground and through the air, a dust skirt is kicked up where it passes, heavy charges in humid air (`--humidity`, 80% by default) flash a brief condensation dome, lingering smoke jolts outwards as the front crosses it and back as the air returns, and in interactive runs the camera shakes when it arrives. |
-| Helicopter (M26) | A 10 t helicopter (H in the showcase, or three scripts) whose rotor's air, from momentum theory, ground effect and a skewed wake reaching the ground as a wall jet, moves every lingering particle within reach; in a low hover it raises brownout dust by a saltation law. A flat-shaded proxy with blurred rotor discs and a soft ground shadow. |
+| Helicopter (M26) | A 10 t helicopter (H in the showcase, or three scripts) whose rotor's air, from momentum theory, ground effect and a skewed wake reaching the ground as a wall jet, moves every lingering particle within reach and (M27) tears the puffs it overlaps, so a hover opens a hole in a pall and a pass leaves a cleared band; in a low hover it raises a low sheet of brownout dust by a saltation law, none from 3 rotor diameters up. A flat-shaded proxy with blurred rotor discs and a soft ground shadow. |
 | Scalability options | Coverage counters, an automatic smoke resolution with a coverage budget, half-resolution light, projected-size smoke thinning, a faint-smoke floor, effect-order keys and a slot policy. All off by default. |
 | Benchmark mode | 12 named workloads (`--benchmark`; 5 of them for the realism model at 1920x1080, 2 with the helicopter), each after 120 warm-up frames, with a JSON record, a per-frame CSV, an interleaved session driver and a report with charts. |
 | Tooling | A Dear ImGui overlay that shows only values the application measures or owns; `--gpu-regions`; in-app capture (`--capture`, `--capture-sequence`); `ImageDiff`; `tools/captures.py`, `tools/ab.py`, `tools/bench`, `tools/counter_log.py`, `tools/lifecycle.ps1`. |
@@ -367,8 +368,13 @@ effects: when particles run out, a new explosion makes older smoke vanish at onc
 - **The look.**
   - An HE charge flashes for a few hundredths of a second, and its fireball cools from yellow-white to deep orange within
     a fraction of a second. Its light falls on nearby smoke as from a sphere the size of the fireball.
-  - A quarter of its smoke is thrown out as dark soil jets. Young smoke is soot-dark and dense, and turns over a few
-    seconds to a grey tied to the ground it rose from.
+  - Young smoke is soot-dark and dense, and turns over a few seconds to a grey tied to the ground it rose from.
+- **The star (M27).** An HE impact throws 3-9 clods (by charge; none from a small impact) along ballistic arcs, and each
+  lays a chain of dark smoke knots behind it as it flies: a quarter of the blast smoke, born one knot after another at
+  exact ticks where the clod has just been. The knots hang where they were laid, sagging a little while the column rises
+  around them, and only then drift up and graduate with the rest, so a fresh impact wears a star of tendrils that stands
+  two to three fireball heights over artillery. The clods themselves come in a size mix under the realism model: many
+  small, a few big chunks that fly, bounce and rest.
   - Each column shades itself at the scale of the whole cloud, lit on top and dark beneath, and the columns of a barrage
     shade one another more deeply as the pall builds.
   - Thin lingering smoke scatters sunlight forwards rather than shading like a ball. Large puffs break into billows.
@@ -400,12 +406,15 @@ near it, and in a low hover it blows dust up from the ground (brownout). Press *
     evaluated on the GPU for every lingering particle at every step, and by a double-precision twin on the CPU.
   - Smoke inside the wake follows it closely (its drag rises towards 15 /s there); the wind and the helicopter's own
     motion carry the wake along its skew.
+  - The bite (M27): a puff that overlaps the wake is torn. It is drawn smaller and far thinner by the air's speed at its
+    near edge (entrainment at the jet's edge), while the coupling drives it down and out along the ground, so a hover
+    opens a hole in the pall beneath it and a pass through a column leaves a cleared band that the displaced smoke does
+    not refill. Explosion dust on the ground lifts where the wake's air passes over it.
 - **Brownout.**
   - Dust rises where the outwash beats a saltation threshold (6 m/s), at a rate from a saltation-flux law summed over
-    the ground: full at a hover two rotor radii up, weaker higher up.
-  - At 70 m it is still about 0.4 of that, because the wake keeps its momentum all the way down. Real brownout is
-    usually reported below one to three rotor diameters, so this is on the high side.
-  - 2,558 dust particles cycle through 6-18 s lives, each cycle born or not by an integer rule. The CPU therefore counts
+    the ground: full at a hover two rotor radii up, weaker higher up, and (M27) none from 3 rotor diameters up (48 m).
+  - It is a low, fine sheet (M27): 0.4-1 m puffs that ride the wall jet outwards and curl up at its edge.
+  - 2,558 dust particles cycle through 4-10 s lives, each cycle born or not by an integer rule. The CPU therefore counts
     exactly what the GPU draws, and every scripted frame without explosions checks it.
 - **The proxy.**
   - A flat-shaded fuselage built in code from 17 boxes, lit like the props.
@@ -417,10 +426,10 @@ near it, and in a low hover it blows dust up from the ground (brownout). Press *
   - `heli-pass`: a slow pass through the pall at 40 m.
   - `heli-landing`: a landing in brownout.
 - **What reads.**
-  - Low hovers and the landing: the helicopter sits in its own churning dust.
-  - A long hover above the pall presses it down and spreads it (the gallery's pair).
-  - A single pass changes a thick pall only subtly: the wake is about 12 m wide and the puffs 6-11 m, so the puffs on
-    either side of it still cover the gap.
+  - Low hovers and the landing: the helicopter sits in a thin sheet of its own dust.
+  - A hover above the pall presses it down, spreads it and (M27) opens a hole in it, seen from above; from the side the
+    pall sits lower and flatter than without the rotor (the gallery's pair).
+  - A pass through the pall at 40 m leaves a cleared band behind it, seen from above; from the side it is still subtle.
 - **Unchanged without it.** A run without a helicopter draws through M25's shaders, and every earlier image is
   byte-identical.
 
@@ -734,10 +743,11 @@ Earlier decisions, measured the same way:
 - Draw units are sorted per effect by view depth: with a still camera they never swap, but a moving camera can swap
   two overlapping columns in one frame (no sorting within an effect, no OIT).
 - Sustained high impact rates shorten the linger (about 28 s at 12 artillery impacts a second), smoothly.
-- The helicopter's effect on a thick pall reads only subtly in a single pass: its wake is about 12 m wide and the puffs
-  6-11 m. A long hover over it or a low hover reads clearly.
-- The brownout rises from higher hovers than reports suggest (about 0.4 of its full rate at 70 m), because the model's
-  wake keeps its momentum all the way down.
+- The rotor's bite is a draw term: a puff is drawn torn while the wake's air reaches it and re-fattens within 1-2 s
+  after the air leaves it (its displacement persists). From the side a pass through a thick pall still reads subtly:
+  the wake is about 13 m wide and the puffs 6-11 m.
+- The star's knots are laid along an arc without drag, and the trails of every charge use one design table; the knots
+  are smoke puffs, so a tendril is a chain of 1-2 m knots rather than a continuous ribbon.
 - The helicopter's wake is the induced flow of a skewed tube: without skew it creates and loses no air, with skew it is
   slightly off across the tube's slanted faces. No trailing vortices, no wake memory of past positions.
 - With the helicopter, D3D12 and Vulkan images differ by up to 8 levels (counts are identical), and Debug Vulkan's by
@@ -1001,3 +1011,4 @@ powershell -File tools/lifecycle.ps1 -Configuration Debug -Renderer vulkan -Smok
 | M24 | The realism model's visible blast waves: the front from Kinney-Graham, refraction in the present pass, the dust skirt, the Wilson dome, the push on lingering smoke, the camera shake; `--humidity`. |
 | M25 | A look pass (soot and soil colours, a real fireball's timing, lights as spheres, self-shadowed columns and palls, scattering thin smoke, billows, an ejecta crown, a crisper wave and dome); the push made to return; the 1080p budget met with every option off, and the realism model made the default; `linger-ground`; this README's realism sections and images. |
 | M26 | The helicopter: its rotor's air on the smoke, brownout dust, a proxy model, three scripts, the H key and the overlay's button, two benchmarks; the images above. |
+| M27 | A look pass after Blastcore references: the star of smoke tendrils behind an impact's thrown clods, a size mix of clods, the rotor's bite (a hole in the pall under a hover, a band behind a pass) and a subtler brownout; the images above. |
