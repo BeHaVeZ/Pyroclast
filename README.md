@@ -159,14 +159,16 @@ The earlier model (`--realism=off`), as M21 captured it:
 ```mermaid
 flowchart TD
     app["src/app<br/>SDL loop, command line, Sandbox and apply(),<br/>showcase, camera rig, ExplosionRenderer, overlay (src/tools)"]
-    sim["src/simulation<br/>ParticleSystem (plan / commit), effect slots,<br/>presets, scenarios, terrain, props"]
+    render["src/render<br/>ParticleSystem: the GPU pool, its pipelines<br/>and each frame's dispatches and draws"]
+    sim["src/simulation<br/>SimulationClock, effect slots, presets,<br/>scenarios, terrain, props, aircraft (CPU only)"]
     rhi["src/graphics/graphics_device.hpp<br/>the whole RHI: a Frame is dispatches, passes, readback"]
     d3d["src/graphics/d3d12<br/>root signature 1.1, buffer-state tracking"]
     vk["src/graphics/vulkan<br/>Vulkan 1.3: push descriptors, synchronization2,<br/>dynamic rendering"]
     hlsl["shaders/*.hlsl, one source<br/>DXC: DXIL and SPIR-V"]
+    app --> render
     app --> sim
-    app --> rhi
-    sim --> rhi
+    render --> sim
+    render --> rhi
     rhi --> d3d
     rhi --> vk
     hlsl --> d3d
@@ -175,7 +177,10 @@ flowchart TD
 
 - `create_graphics_device` in `src/graphics/graphics_device.cpp` is the only code that includes both backends;
   native API headers appear nowhere else.
-- The simulation layer talks to the RHI only and does not know which backend is active.
+- The simulation layer is CPU-only: its library links the math core alone, so it cannot reach the RHI. Each layer is
+  a static library that links only the layers below it, so a layering violation fails to link.
+- A frame is begun, drawn and committed in that order: `begin_frame_step` starts effects and advances the clock, the
+  renderer draws the step without changing simulation state, and the step is committed only if the GPU received it.
 - `src/core/math` (vectors, matrices, rays) is shared by the application and simulation layers.
 
 ### The frame contract
