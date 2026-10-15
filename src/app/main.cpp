@@ -247,7 +247,7 @@ bool handle_event(const SDL_Event& event, Sandbox& sandbox, EventTargets& target
     return true;
 }
 
-int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sandbox& sandbox, pyroclast::DebugUi* ui,
+int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& device, Sandbox& sandbox, pyroclast::DebugUi* ui,
     const pyroclast::ApplicationOptions& options, std::optional<ScenarioRun> scenario, pyroclast::CounterLog* counter_log)
 {
     {
@@ -269,7 +269,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
     const auto profile_tick = options.profile_tick;
     const bool frozen = scenario && profile_tick;
     const bool unattended = scenario.has_value() || !options.capture_path.empty();
-    pyroclast::FrameBaseline baseline({pyroclast::renderer_name(options.renderer), std::string(renderer.adapter_name()),
+    pyroclast::FrameBaseline baseline({pyroclast::renderer_name(options.renderer), std::string(device.adapter_name()),
         static_cast<std::uint32_t>(sandbox.group.size()), pyroclast::ParticleSystem::capacity, profile_tick,
         pyroclast::smoke_resolution_name(options.scalability.smoke_resolution),
         pose_name(options), options.camera, frozen ? options.scenario : std::string(), pyroclast::scene_format_name(options.scene_format),
@@ -288,8 +288,8 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
     std::uint32_t last_steps = 0;
     double showcase_ms = 0;
     RunRecords records(pyroclast::realism_enabled(options.layer_mask), options.scalability.smoke_resolution == pyroclast::SmokeResolution::automatic);
-    const auto record_json = [&records, &sandbox, &renderer]() {
-        const auto mode = renderer.present_info().mode;
+    const auto record_json = [&records, &sandbox, &device]() {
+        const auto mode = device.present_info().mode;
         auto text = records.json(sandbox);
         return text + (text.empty() ? "" : ",") + "\"present_mode\":\"" + std::string(mode) + "\"";
     };
@@ -346,12 +346,12 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     if (scenario) scenario->invalidate(size_reason.c_str());
                 }
                 const auto start = SDL_GetPerformanceCounter();
-                const auto rebuilds = renderer.swapchain_rebuilds();
-                if (!renderer.resize(width, height))
+                const auto rebuilds = device.swapchain_rebuilds();
+                if (!device.resize(width, height))
                 {
                     return 1;
                 }
-                if (scenario && renderer.swapchain_rebuilds() != rebuilds) scenario->swapchain_rebuilt();
+                if (scenario && device.swapchain_rebuilds() != rebuilds) scenario->swapchain_rebuilt();
                 const double elapsed = static_cast<double>(start - previous_time) /
                     static_cast<double>(SDL_GetPerformanceFrequency());
                 previous_time = start;
@@ -374,12 +374,12 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                 if (ui)
                 {
                     pyroclast::DiagnosticsSnapshot snapshot;
-                    snapshot.system = {.renderer = pyroclast::renderer_name(options.renderer), .adapter = renderer.adapter_name(),
+                    snapshot.system = {.renderer = pyroclast::renderer_name(options.renderer), .adapter = device.adapter_name(),
                         .build = pyroclast::build_configuration, .width = width, .height = height,
                         .vsync = !profile_tick.has_value() && !scenario, .scene_format = pyroclast::scene_format_name(options.scene_format),
                         .exposure = pyroclast::TestRange::exposure};
                     snapshot.frame = {.cpu_ms = history.samples(), .cpu_offset = history.offset(), .gpu_ms = gpu_history.samples(),
-                        .gpu_offset = gpu_history.offset(), .gpu = renderer.completed_gpu_timings(), .showcase_cpu_ms = showcase_ms};
+                        .gpu_offset = gpu_history.offset(), .gpu = device.completed_gpu_timings(), .showcase_cpu_ms = showcase_ms};
                     sandbox.fill_snapshot(snapshot);
                     snapshot.clock.steps = last_steps;
                     snapshot.clock.ticks_per_second = static_cast<float>(tick_rate.rate());
@@ -415,7 +415,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     drawn.yaw += 0.6f * angle;
                 }
                 const auto submit_begin = SDL_GetPerformanceCounter();
-                const auto result = sandbox.render_frame(renderer, drawn, width, height, elapsed, capture, overlay);
+                const auto result = sandbox.render_frame(device, drawn, width, height, elapsed, capture, overlay);
                 const auto submit_end = SDL_GetPerformanceCounter();
                 if (result == pyroclast::RenderResult::failed) return 1;
                 if (!unattended)
@@ -435,7 +435,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                         sandbox.renderer.half_smoke(), sandbox.effects.evicted() - evicted_before,
                         warming ? pyroclast::FramePhase::warmup : pyroclast::FramePhase::measured,
                         static_cast<double>(start - run_start) * counter_milliseconds, static_cast<double>(submit_end - submit_begin) * counter_milliseconds,
-                        renderer.last_submit_timings(), sandbox.renderer.submitted_work(), sandbox.renderer.listed_clusters(),
+                        device.last_submit_timings(), sandbox.renderer.submitted_work(), sandbox.renderer.listed_clusters(),
                         sandbox.effects.residual().forced_fades(), sandbox.effects.residual().last_scale(), sandbox.effects.deferred(),
                         sandbox.last_step.rotor.census.alive, sandbox.last_step.rotor.emission,
                         sandbox.last_step.rotor.hub_height_cm});
@@ -443,13 +443,13 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                 records.after_frame(sandbox, result);
                 const double wall = static_cast<double>(SDL_GetPerformanceCounter()) / static_cast<double>(SDL_GetPerformanceFrequency());
                 tick_rate.add(wall, sandbox.clock.tick());
-                if (const auto gpu = renderer.completed_gpu_timings(); gpu && gpu->sample_id != last_gpu_sample)
+                if (const auto gpu = device.completed_gpu_timings(); gpu && gpu->sample_id != last_gpu_sample)
                 {
                     last_gpu_sample = gpu->sample_id;
                     gpu_history.add(gpu->compute_ms + gpu->draw_ms);
                     if (counter_log) counter_log->add_timing(*gpu);
                 }
-                const auto counters = sandbox.poll_counters(renderer);
+                const auto counters = sandbox.poll_counters(device);
                 if (counters) records.add_counters(*counters);
                 if (scenario && !frozen && counters && scenario->benchmark().empty()) scenario->count(*counters);
                 if (counter_log && counters) counter_log->add_counters(*counters);
@@ -474,7 +474,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                         if (scenario->end_warmup_frame())
                         {
                             sandbox.clock.toggle_pause();
-                            memory_start = renderer.memory_usage();
+                            memory_start = device.memory_usage();
                             focused = (SDL_GetWindowFlags(window) & SDL_WINDOW_INPUT_FOCUS) != 0;
                             if (const auto* mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window)); mode && mode->refresh_rate > 0)
                             {
@@ -492,7 +492,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                         SDL_Log("Startup sample stopped: the group retired before the sample completed; use --profile-tick or --scenario.");
                     }
                     if (!profile_tick || !sandbox.clock.has_pending_steps())
-                        baseline.record(milliseconds, renderer.completed_gpu_timings(), !sandbox.renderer.particles_drawn() ?
+                        baseline.record(milliseconds, device.completed_gpu_timings(), !sandbox.renderer.particles_drawn() ?
                             std::optional<std::uint32_t>(0) : sandbox.counters ? std::optional(sandbox.counters->alive) : std::nullopt);
                     if (sequence_frame)
                     {
@@ -503,7 +503,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                         }
                         char name[32];
                         std::snprintf(name, sizeof(name), "/tick-%06u.png", sandbox.clock.tick());
-                        if (save_capture(renderer, options.capture_sequence + name, false) != 0) return 1;
+                        if (save_capture(device, options.capture_sequence + name, false) != 0) return 1;
                         ++sequence_frames;
                         if (sandbox.clock.tick() >= sequence_last)
                         {
@@ -512,7 +512,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                             return 0;
                         }
                     }
-                    else if (capture) return save_capture(renderer, options.capture_path);
+                    else if (capture) return save_capture(device, options.capture_path);
                     if (scenario && options.capture_tick && scenario->finished(sandbox))
                     {
                         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Scenario %s ended before tick %u.", options.scenario.c_str(),
@@ -521,7 +521,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     }
                     if (scenario && !frozen)
                     {
-                        if (scenario->benchmark().empty()) scenario->record(milliseconds, renderer.completed_gpu_timings(), sandbox);
+                        if (scenario->benchmark().empty()) scenario->record(milliseconds, device.completed_gpu_timings(), sandbox);
                         if (scenario->finished(sandbox))
                         {
                             if (records.mismatches() != 0)
@@ -531,15 +531,15 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                             }
                             if (scenario->benchmark().empty())
                             {
-                                const int code = scenario->report(sandbox, options, renderer.adapter_name(), width, height, ui != nullptr, record_json());
+                                const int code = scenario->report(sandbox, options, device.adapter_name(), width, height, ui != nullptr, record_json());
                                 return records.mismatches() != 0 ? 1 : code;
                             }
                             const auto summary = counter_log->summary();
                             if (counter_log->mismatches() != 0) scenario->invalidate("counter log samples did not match their frames");
                             if (summary.gpu_samples == 0) scenario->invalidate("no GPU timestamps arrived");
-                            const auto tail = pyroclast::benchmark_tail(*scenario, summary, renderer, options.renderer, options.gpu_validation, display_hz,
-                                focused, memory_start, renderer.memory_usage());
-                            const int code = scenario->report(sandbox, options, renderer.adapter_name(), width, height, ui != nullptr, records.json(sandbox),
+                            const auto tail = pyroclast::benchmark_tail(*scenario, summary, device, options.renderer, options.gpu_validation, display_hz,
+                                focused, memory_start, device.memory_usage());
+                            const int code = scenario->report(sandbox, options, device.adapter_name(), width, height, ui != nullptr, records.json(sandbox),
                                 &summary, tail);
                             return records.mismatches() != 0 ? 1 : code;
                         }

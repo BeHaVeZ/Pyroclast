@@ -135,7 +135,7 @@ public:
     RunRecords(bool realism, bool automatic) : realism_(realism), automatic_(automatic) {}
     void after_frame(const Sandbox& sandbox, RenderResult result);
     void add_counters(const ParticleCounters& counters);
-    std::uint32_t mismatches() const { return rotor_mismatches_; }
+    std::uint32_t mismatches() const { return twin_mismatches_; }
     std::string json(const Sandbox& sandbox) const;
     CoverageStatistics coverage;
 
@@ -146,7 +146,7 @@ private:
     std::uint32_t peak_residual_ = 0;
     std::uint32_t ghosts_ = 0;
     std::deque<std::pair<std::uint32_t, std::uint32_t>> rotor_expected_;
-    std::uint32_t rotor_mismatches_ = 0;
+    std::uint32_t twin_mismatches_ = 0;
     std::uint32_t peak_dust_ = 0;
     std::int32_t lowest_hub_cm_ = std::numeric_limits<std::int32_t>::max();
     std::pair<std::uint32_t, std::uint32_t> rotor_slot_{never, never};

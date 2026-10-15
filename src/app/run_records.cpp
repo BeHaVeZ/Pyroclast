@@ -198,12 +198,12 @@ void RunRecords::add_counters(const ParticleCounters& counters)
     const auto expected = rotor_expected_.front().second;
     rotor_expected_.pop_front();
     if (counters.smoke - counters.residual == expected) return;
-    if (rotor_mismatches_ == 0)
+    if (twin_mismatches_ == 0)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Rotor slot at tick %u: the GPU counts %u records, the CPU's twin %u.", counters.tick,
             counters.smoke - counters.residual, expected);
     }
-    ++rotor_mismatches_;
+    ++twin_mismatches_;
 }
 
 std::string RunRecords::json(const Sandbox& sandbox) const
@@ -260,7 +260,7 @@ std::string RunRecords::json(const Sandbox& sandbox) const
         std::snprintf(flight, sizeof(flight),
             ",\"helicopter\":{\"flight\":\"%s\",\"listed\":[%u,%u],\"rotor_slot\":[%u,%u],\"peak_dust\":%u,\"lowest_hub_cm\":%d,\"mismatches\":%u}",
             helicopter->plan.name.c_str(), helicopter->plan.list_tick, helicopter->plan.unlist_tick, rotor_slot_.first, rotor_slot_.second,
-            peak_dust_, lowest_hub_cm_ == std::numeric_limits<std::int32_t>::max() ? -1 : lowest_hub_cm_, rotor_mismatches_);
+            peak_dust_, lowest_hub_cm_ == std::numeric_limits<std::int32_t>::max() ? -1 : lowest_hub_cm_, twin_mismatches_);
         text += flight;
     }
     if (const auto& jet = sandbox.jetcraft.flight())
@@ -268,7 +268,7 @@ std::string RunRecords::json(const Sandbox& sandbox) const
         char passes[256];
         std::snprintf(passes, sizeof(passes),
             ",\"jet\":{\"flight\":\"%s\",\"passes\":%zu,\"peak_knots\":%u,\"jet_slot\":[%u,%u],\"peak_dust\":%u,\"mismatches\":%u}",
-            jet->name.c_str(), jet->passes.size(), peak_knots_, jet_slot_.first, jet_slot_.second, peak_jet_dust_, rotor_mismatches_);
+            jet->name.c_str(), jet->passes.size(), peak_knots_, jet_slot_.first, jet_slot_.second, peak_jet_dust_, twin_mismatches_);
         text += passes;
     }
     return text;

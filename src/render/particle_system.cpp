@@ -41,7 +41,7 @@ bool ParticleSystem::initialize(GraphicsDevice& device, const Buffer& environmen
         {Shader::particle_rotor_vertex, Shader::particle_rotor_lod_vertex, Shader::particle_rotor_pixel, Shader::particle_rotor_simulation,
             Shader::particle_scan_units, Shader::particle_scatter_units, Shader::particle_scatter_rotor_measure},
     }};
-    constexpr const char* model_names[] = {"legacy", "realism", "rotor"};
+    constexpr const char* model_names[] = {"legacy", "realism", "aircraft"};
     const auto translucent = [&device](Shader vertex, Shader pixel, DepthMode depth, TargetFormat target) {
         return device.create_graphics_pipeline({vertex, pixel, BlendMode::premultiplied_alpha, depth, target});
     };
@@ -128,7 +128,7 @@ ParticleWork ParticleSystem::plan(std::uint32_t tick, std::uint32_t steps, std::
     const DrawConstants every_layer = lod ? DrawConstants{records, 0, records, std::max(offscreen_divisor, 1u), lod_pixels, faint_floor} :
         DrawConstants{records, 0, records, std::max(offscreen_divisor, 1u)};
     const DrawConstants debris_list{capacity, particle_layout::debris_list_first, capacity};
-    const auto model = !units ? ParticleModel::legacy : units->rotor ? ParticleModel::rotor : ParticleModel::realism;
+    const auto model = !units ? ParticleModel::legacy : units->aircraft ? ParticleModel::aircraft : ParticleModel::realism;
     const auto& draw = draws_[static_cast<std::size_t>(model)];
     const auto& compute = computes_[static_cast<std::size_t>(model)];
     const auto& particle_pipeline = lod ? *draw.lod_scene : *draw.scene;

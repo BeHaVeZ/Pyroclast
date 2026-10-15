@@ -50,7 +50,7 @@ struct FrameUnits
 {
     std::uint32_t units = 0;
     std::uint32_t groups = 0;
-    bool rotor = false;
+    bool aircraft = false;
 };
 
 struct ParticleCounters
@@ -85,7 +85,7 @@ struct ParticleTargets
     TargetFormat offscreen;
 };
 
-enum class ParticleModel : std::uint8_t { legacy, realism, rotor };
+enum class ParticleModel : std::uint8_t { legacy, realism, aircraft };
 inline constexpr std::size_t particle_model_count = 3;
 
 class ParticleSystem final

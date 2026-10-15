@@ -49,7 +49,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, const ParticleSys
     const auto* jetcraft = realism ? options.jetcraft : nullptr;
     const auto active = effects.active();
     auto units = realism ? count_units(effects, tick) : FrameUnits{};
-    units.rotor = (rotorcraft && rotorcraft->variants()) || (jetcraft && jetcraft->variants());
+    units.aircraft = (rotorcraft && rotorcraft->variants()) || (jetcraft && jetcraft->variants());
     const auto& scalability = options.scalability;
     const bool automatic = scalability.smoke_resolution == SmokeResolution::automatic;
     const double screen_pixels = static_cast<double>(width) * static_cast<double>(height);
@@ -140,7 +140,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, const ParticleSys
     const bool condensation = ((options.layer_mask >> realism_layout::condensation_mask_bit) & 1) != 0 &&
         std::any_of(blasts.rings.begin(), blasts.rings.begin() + blasts.count, [](const float4& ring) { return ring.w > 0; });
     const Draw wilson{*wilson_, {}, {}, 3, realism_layout::maximum_blasts, "Wilson shells"};
-    const bool aircraft = realism && units.rotor;
+    const bool aircraft = realism && units.aircraft;
     const Draw present{aircraft ? *present_aircraft_ : waves ? *present_waves_ : *present_, {}, {}, 3, 1,
         aircraft ? "Tonemap, blast waves and heat haze" : waves ? "Tonemap and blast waves" : "Tonemap"};
     const Draw lines{*lines_, {}, {work.effects}, 32, std::max(work.effects, 1u), "Effect lines"};
@@ -164,13 +164,13 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, const ParticleSys
     if (props) scene_draws.push_back(opaque.props);
     scene_draws.push_back(opaque.terrain);
     if (simulate) scene_draws.push_back(work.debris);
-    auto& helicopter_shadow = shadow_draws_;
-    helicopter_shadow.clear();
+    auto& after_sky = shadow_draws_;
+    after_sky.clear();
     const float3 sun_towards{constants.sun_direction.x, constants.sun_direction.y, constants.sun_direction.z};
-    if (realism) helicopter_.scene_draws(step.rotor, range.environment_buffer(), sun_towards, scene_draws, helicopter_shadow);
-    if (realism) jet_.scene_draws(step.jet, range.environment_buffer(), sun_towards, options.humidity, scene_draws, helicopter_shadow);
+    if (realism) helicopter_.scene_draws(step.rotor, range.environment_buffer(), sun_towards, scene_draws, after_sky);
+    if (realism) jet_.scene_draws(step.jet, range.environment_buffer(), sun_towards, options.humidity, scene_draws, after_sky);
     scene_draws.push_back(opaque.sky);
-    for (const auto& draw : helicopter_shadow) scene_draws.push_back(draw);
+    for (const auto& draw : after_sky) scene_draws.push_back(draw);
     if (props && options.views.collision_boxes) scene_draws.push_back(opaque.colliders);
     Bindings environment{};
     environment.read[0] = &range.environment_buffer();
