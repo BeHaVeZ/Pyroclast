@@ -24,7 +24,7 @@ bool VulkanRenderer::create_timestamps()
     queries.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
     queries.queryType = VK_QUERY_TYPE_TIMESTAMP;
     queries.queryCount = static_cast<std::uint32_t>(frames_.size()) * timestamp_queries_per_slot;
-    if (!check(vkCreateQueryPool(vk_.device, &queries, nullptr, &timing_.pool), "Create timestamp pool")) return false;
+    if (!check(vkCreateQueryPool(vk_.device, &queries, nullptr, timing_.pool.put(vk_.device)), "Create timestamp pool")) return false;
     SDL_Log("GPU timestamp measurements enabled (frame-fence protected results).");
     return true;
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../backend_common.hpp"
+#include "vulkan_handle.hpp"
 
 #include <vulkan/vulkan.h>
 
@@ -34,22 +35,17 @@ struct VulkanContext
 
 struct VulkanFrameSlot
 {
-    VulkanFrameSlot() = default;
-    VulkanFrameSlot(const VulkanFrameSlot&) = delete;
-    VulkanFrameSlot& operator=(const VulkanFrameSlot&) = delete;
-    ~VulkanFrameSlot();
-    VkDevice device = VK_NULL_HANDLE;
     bool timestamps_pending = false;
     TimestampRegions regions;
-    VkCommandPool pool = VK_NULL_HANDLE;
+    UniqueCommandPool pool;
     VkCommandBuffer command = VK_NULL_HANDLE;
-    VkSemaphore acquired = VK_NULL_HANDLE;
-    VkFence submitted = VK_NULL_HANDLE;
-    VkBuffer constants = VK_NULL_HANDLE;
-    VkDeviceMemory constants_memory = VK_NULL_HANDLE;
+    UniqueSemaphore acquired;
+    UniqueFence submitted;
+    UniqueMemory constants_memory;
+    UniqueBuffer constants;
     std::byte* mapped_constants = nullptr;
-    VkBuffer readback = VK_NULL_HANDLE;
-    VkDeviceMemory readback_memory = VK_NULL_HANDLE;
+    UniqueMemory readback_memory;
+    UniqueBuffer readback;
     const std::byte* mapped_readback = nullptr;
     std::uint32_t readback_size = 0;
     bool readback_pending = false;
@@ -60,57 +56,42 @@ struct VulkanSwapchain
     struct Image
     {
         VkImage image = VK_NULL_HANDLE;
-        VkImageView view = VK_NULL_HANDLE;
-        VkSemaphore rendered = VK_NULL_HANDLE;
-        VkFence presented = VK_NULL_HANDLE;
+        UniqueImageView view;
+        UniqueSemaphore rendered;
+        UniqueFence presented;
         bool present_pending = false;
     };
-    VulkanSwapchain() = default;
-    VulkanSwapchain(const VulkanSwapchain&) = delete;
-    VulkanSwapchain& operator=(const VulkanSwapchain&) = delete;
-    ~VulkanSwapchain() { reset(); }
     // Callers wait for the device and presentation to go idle first.
-    void reset();
-    VkDevice device = VK_NULL_HANDLE;
-    VkSwapchainKHR handle = VK_NULL_HANDLE;
+    void reset()
+    {
+        images.clear();
+        handle.reset();
+        extent = {};
+    }
+    UniqueSwapchain handle;
     VkExtent2D extent{};
     std::vector<Image> images;
 };
 
 struct VulkanBindings
 {
-    VulkanBindings() = default;
-    VulkanBindings(const VulkanBindings&) = delete;
-    VulkanBindings& operator=(const VulkanBindings&) = delete;
-    ~VulkanBindings();
-    VkDevice device = VK_NULL_HANDLE;
-    std::array<VkSampler, binding_layout::sampler_count> samplers{};
-    VkDescriptorSetLayout set_layout = VK_NULL_HANDLE;
-    VkPipelineLayout layout = VK_NULL_HANDLE;
+    std::array<UniqueSampler, binding_layout::sampler_count> samplers;
+    UniqueDescriptorSetLayout set_layout;
+    UniquePipelineLayout layout;
     PFN_vkCmdPushDescriptorSetKHR push = nullptr;
 };
 
 struct VulkanTiming
 {
-    VulkanTiming() = default;
-    VulkanTiming(const VulkanTiming&) = delete;
-    VulkanTiming& operator=(const VulkanTiming&) = delete;
-    ~VulkanTiming();
-    VkDevice device = VK_NULL_HANDLE;
-    VkQueryPool pool = VK_NULL_HANDLE;
+    UniqueQueryPool pool;
     std::uint64_t mask = 0;
     double period = 0;
 };
 
 struct VulkanCapture
 {
-    VulkanCapture() = default;
-    VulkanCapture(const VulkanCapture&) = delete;
-    VulkanCapture& operator=(const VulkanCapture&) = delete;
-    ~VulkanCapture();
-    VkDevice device = VK_NULL_HANDLE;
-    VkBuffer buffer = VK_NULL_HANDLE;
-    VkDeviceMemory memory = VK_NULL_HANDLE;
+    UniqueMemory memory;
+    UniqueBuffer buffer;
     VkDeviceSize size = 0;
     VkExtent2D extent{};
     bool pending = false;
@@ -177,7 +158,8 @@ private:
     bool create_frames();
     bool create_swapchain();
     bool create_capture_buffer(VkDeviceSize size);
-    bool record_capture(VkCommandBuffer command, VkImage image);
+    bool prepare_capture();
+    void record_capture(VkCommandBuffer command, VkImage image);
     bool create_overlay();
     void destroy_overlay();
     void record_overlay(VkCommandBuffer command, ImDrawData* overlay, VkImageView backbuffer, VkExtent2D extent);
@@ -192,7 +174,7 @@ private:
     bool allocate_buffer(VulkanBuffer& buffer, VkBufferUsageFlags usage,
         VkMemoryPropertyFlags required, VkMemoryPropertyFlags preferred, const char* purpose);
     bool allocate_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags required,
-        VkMemoryPropertyFlags preferred, const char* purpose, VkBuffer& buffer, VkDeviceMemory& memory);
+        VkMemoryPropertyFlags preferred, const char* purpose, UniqueBuffer& buffer, UniqueMemory& memory);
     bool check(VkResult result, const char* operation);
     bool validation_ok() const;
     static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(

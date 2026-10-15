@@ -96,7 +96,7 @@ bool VulkanRenderer::create_swapchain()
     }
     present_mode_ = vsync_ ? "fifo" : "immediate";
     info.clipped = VK_TRUE;
-    if (!check(vkCreateSwapchainKHR(vk_.device, &info, nullptr, &swapchain_.handle), "Create Vulkan swapchain") ||
+    if (!check(vkCreateSwapchainKHR(vk_.device, &info, nullptr, swapchain_.handle.put(vk_.device)), "Create Vulkan swapchain") ||
         !check(vkGetSwapchainImagesKHR(vk_.device, swapchain_.handle, &count, nullptr), "Count Vulkan swapchain images"))
     {
         return false;
@@ -122,9 +122,9 @@ bool VulkanRenderer::create_swapchain()
         semaphore.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
         VkFenceCreateInfo fence{};
         fence.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        if (!check(vkCreateImageView(vk_.device, &view, nullptr, &image.view), "Create swapchain image view") ||
-            !check(vkCreateSemaphore(vk_.device, &semaphore, nullptr, &image.rendered), "Create present-wait semaphore") ||
-            (vk_.present_fences && !check(vkCreateFence(vk_.device, &fence, nullptr, &image.presented), "Create presentation fence")))
+        if (!check(vkCreateImageView(vk_.device, &view, nullptr, image.view.put(vk_.device)), "Create swapchain image view") ||
+            !check(vkCreateSemaphore(vk_.device, &semaphore, nullptr, image.rendered.put(vk_.device)), "Create present-wait semaphore") ||
+            (vk_.present_fences && !check(vkCreateFence(vk_.device, &fence, nullptr, image.presented.put(vk_.device)), "Create presentation fence")))
         {
             return false;
         }

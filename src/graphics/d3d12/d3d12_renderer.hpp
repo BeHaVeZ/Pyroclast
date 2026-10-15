@@ -105,7 +105,8 @@ private:
     void bind(const Bindings& bindings, bool graphics);
     void draw(const Draw& draw);
     void set_target(D3D12_CPU_DESCRIPTOR_HANDLE rtv, const D3D12_CPU_DESCRIPTOR_HANDLE* dsv, int width, int height);
-    bool record_capture(ID3D12Resource* backbuffer);
+    bool prepare_capture(ID3D12Resource* backbuffer);
+    void record_capture(ID3D12Resource* backbuffer);
     bool create_overlay();
     void destroy_overlay();
     void record_overlay(ImDrawData* overlay, D3D12_CPU_DESCRIPTOR_HANDLE backbuffer_view);

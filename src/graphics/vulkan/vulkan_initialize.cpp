@@ -350,8 +350,6 @@ bool VulkanRenderer::create_device(std::string_view requested_adapter)
     {
         return false;
     }
-    bindings_.device = timing_.device = swapchain_.device = capture_.device = vk_.device;
-    for (auto& slot : frames_) slot.device = vk_.device;
     vkGetDeviceQueue(vk_.device, vk_.queue_family, 0, &vk_.queue);
     VkPhysicalDeviceProperties properties{};
     vkGetPhysicalDeviceProperties(vk_.physical, &properties);
@@ -378,14 +376,14 @@ bool VulkanRenderer::create_frames()
         VkFenceCreateInfo fence{};
         fence.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
         fence.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-        if (!check(vkCreateCommandPool(vk_.device, &pool, nullptr, &frame.pool), "Create frame command pool"))
+        if (!check(vkCreateCommandPool(vk_.device, &pool, nullptr, frame.pool.put(vk_.device)), "Create frame command pool"))
         {
             return false;
         }
         command.commandPool = frame.pool;
         if (!check(vkAllocateCommandBuffers(vk_.device, &command, &frame.command), "Allocate frame command buffer") ||
-            !check(vkCreateSemaphore(vk_.device, &semaphore, nullptr, &frame.acquired), "Create image-acquired semaphore") ||
-            !check(vkCreateFence(vk_.device, &fence, nullptr, &frame.submitted), "Create frame fence"))
+            !check(vkCreateSemaphore(vk_.device, &semaphore, nullptr, frame.acquired.put(vk_.device)), "Create image-acquired semaphore") ||
+            !check(vkCreateFence(vk_.device, &fence, nullptr, frame.submitted.put(vk_.device)), "Create frame fence"))
         {
             return false;
         }

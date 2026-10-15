@@ -23,17 +23,6 @@ std::optional<std::uint32_t> find_memory_type(VkPhysicalDevice physical, std::ui
     return found;
 }
 
-VulkanBuffer::~VulkanBuffer()
-{
-    vkDestroyBuffer(device, buffer, nullptr);
-    vkFreeMemory(device, memory, nullptr);
-}
-
-VulkanGraphicsPipeline::~VulkanGraphicsPipeline()
-{
-    vkDestroyPipeline(device, pipeline, nullptr);
-}
-
 template <typename Record>
 bool VulkanRenderer::submit_immediately(const char* operation, Record&& record)
 {
@@ -76,19 +65,18 @@ bool VulkanRenderer::submit_immediately(const char* operation, Record&& record)
 bool VulkanRenderer::allocate_buffer(VulkanBuffer& buffer, VkBufferUsageFlags usage,
     VkMemoryPropertyFlags required, VkMemoryPropertyFlags preferred, const char* purpose)
 {
-    buffer.device = vk_.device;
     return allocate_buffer(buffer.size(), usage, required, preferred, purpose, buffer.buffer, buffer.memory);
 }
 
 bool VulkanRenderer::allocate_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags required,
-    VkMemoryPropertyFlags preferred, const char* purpose, VkBuffer& buffer, VkDeviceMemory& memory)
+    VkMemoryPropertyFlags preferred, const char* purpose, UniqueBuffer& buffer, UniqueMemory& memory)
 {
     VkBufferCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     info.size = size;
     info.usage = usage;
     info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    if (!check(vkCreateBuffer(vk_.device, &info, nullptr, &buffer), purpose))
+    if (!check(vkCreateBuffer(vk_.device, &info, nullptr, buffer.put(vk_.device)), purpose))
     {
         return false;
     }
@@ -108,7 +96,7 @@ bool VulkanRenderer::allocate_buffer(VkDeviceSize size, VkBufferUsageFlags usage
     allocation.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocation.allocationSize = requirements.size;
     allocation.memoryTypeIndex = *type;
-    return check(vkAllocateMemory(vk_.device, &allocation, nullptr, &memory), purpose) &&
+    return check(vkAllocateMemory(vk_.device, &allocation, nullptr, memory.put(vk_.device)), purpose) &&
         check(vkBindBufferMemory(vk_.device, buffer, memory, 0), purpose);
 }
 
@@ -182,7 +170,6 @@ std::unique_ptr<GraphicsPipeline> VulkanRenderer::create_graphics_pipeline(
         return nullptr;
     }
     auto pipeline = std::make_unique<VulkanGraphicsPipeline>(shaders.blend, shaders.depth, shaders.target, this);
-    pipeline->device = vk_.device;
     VkPipelineShaderStageCreateInfo stages[2]{};
     stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
@@ -255,7 +242,7 @@ std::unique_ptr<GraphicsPipeline> VulkanRenderer::create_graphics_pipeline(
     rendering.pColorAttachmentFormats = &color_format;
     rendering.depthAttachmentFormat = shaders.depth != DepthMode::none ? depth_format : VK_FORMAT_UNDEFINED;
     info.pNext = &rendering;
-    if (!check(vkCreateGraphicsPipelines(vk_.device, VK_NULL_HANDLE, 1, &info, nullptr, &pipeline->pipeline), "Create Vulkan graphics pipeline"))
+    if (!check(vkCreateGraphicsPipelines(vk_.device, VK_NULL_HANDLE, 1, &info, nullptr, pipeline->pipeline.put(vk_.device)), "Create Vulkan graphics pipeline"))
     {
         return nullptr;
     }

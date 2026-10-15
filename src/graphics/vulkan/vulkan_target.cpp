@@ -5,13 +5,6 @@
 
 namespace pyroclast
 {
-VulkanRenderTarget::~VulkanRenderTarget()
-{
-    vkDestroyImageView(device, view, nullptr);
-    vkDestroyImage(device, image, nullptr);
-    vkFreeMemory(device, memory, nullptr);
-}
-
 std::unique_ptr<RenderTarget> VulkanRenderer::create_render_target(const RenderTargetDescription& description)
 {
     if (description.divisor == 0)
@@ -32,7 +25,6 @@ std::unique_ptr<RenderTarget> VulkanRenderer::create_render_target(const RenderT
         return nullptr;
     }
     auto target = std::make_unique<VulkanRenderTarget>(description, this);
-    target->device = vk_.device;
     return validation_ok() ? std::move(target) : nullptr;
 }
 
@@ -48,12 +40,9 @@ bool VulkanRenderer::size_target(VulkanRenderTarget& target)
     {
         return false;
     }
-    vkDestroyImageView(vk_.device, target.view, nullptr);
-    vkDestroyImage(vk_.device, target.image, nullptr);
-    vkFreeMemory(vk_.device, target.memory, nullptr);
-    target.view = VK_NULL_HANDLE;
-    target.image = VK_NULL_HANDLE;
-    target.memory = VK_NULL_HANDLE;
+    target.view.reset();
+    target.image.reset();
+    target.memory.reset();
 
     const bool depth = target.description().format == TargetFormat::depth;
     const auto format = vulkan_format(target.description().format);
@@ -66,7 +55,7 @@ bool VulkanRenderer::size_target(VulkanRenderTarget& target)
     texture.samples = VK_SAMPLE_COUNT_1_BIT;
     texture.tiling = VK_IMAGE_TILING_OPTIMAL;
     texture.usage = (depth ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) | VK_IMAGE_USAGE_SAMPLED_BIT;
-    if (!check(vkCreateImage(vk_.device, &texture, nullptr, &target.image), "Create render target image")) return false;
+    if (!check(vkCreateImage(vk_.device, &texture, nullptr, target.image.put(vk_.device)), "Create render target image")) return false;
     VkMemoryRequirements requirements{};
     vkGetImageMemoryRequirements(vk_.device, target.image, &requirements);
     const auto type = find_memory_type(vk_.physical, requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0);
@@ -79,7 +68,7 @@ bool VulkanRenderer::size_target(VulkanRenderTarget& target)
     memory.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     memory.allocationSize = requirements.size;
     memory.memoryTypeIndex = *type;
-    if (!check(vkAllocateMemory(vk_.device, &memory, nullptr, &target.memory), "Allocate render target memory") ||
+    if (!check(vkAllocateMemory(vk_.device, &memory, nullptr, target.memory.put(vk_.device)), "Allocate render target memory") ||
         !check(vkBindImageMemory(vk_.device, target.image, target.memory, 0), "Bind render target memory")) return false;
     VkImageViewCreateInfo view{};
     view.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -87,7 +76,7 @@ bool VulkanRenderer::size_target(VulkanRenderTarget& target)
     view.viewType = VK_IMAGE_VIEW_TYPE_2D;
     view.format = format;
     view.subresourceRange = {static_cast<VkImageAspectFlags>(depth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT), 0, 1, 0, 1};
-    if (!check(vkCreateImageView(vk_.device, &view, nullptr, &target.view), "Create render target view")) return false;
+    if (!check(vkCreateImageView(vk_.device, &view, nullptr, target.view.put(vk_.device)), "Create render target view")) return false;
     target.extent = extent;
     const auto kind = target.description().format;
     SDL_Log("Vulkan render target: %ux%u, %s.", extent.width, extent.height, depth ? "D32" : kind == TargetFormat::rgba16_float ? "RGBA16F" :

@@ -28,11 +28,6 @@ Program program(pyroclast::Shader shader)
 
 namespace pyroclast
 {
-VulkanShaderModule::~VulkanShaderModule()
-{
-    vkDestroyShaderModule(device, handle, nullptr);
-}
-
 bool VulkanRenderer::create_shader_module(Shader shader, VulkanShaderModule& module)
 {
     const auto [bytes, entry] = program(shader);
@@ -42,8 +37,7 @@ bool VulkanRenderer::create_shader_module(Shader shader, VulkanShaderModule& mod
     info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     info.codeSize = words.size() * sizeof(std::uint32_t);
     info.pCode = words.data();
-    module.device = vk_.device;
     module.entry = entry;
-    return check(vkCreateShaderModule(vk_.device, &info, nullptr, &module.handle), "Create Vulkan shader module");
+    return check(vkCreateShaderModule(vk_.device, &info, nullptr, module.handle.put(vk_.device)), "Create Vulkan shader module");
 }
 }

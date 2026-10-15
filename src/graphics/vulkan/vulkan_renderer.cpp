@@ -41,38 +41,6 @@ VulkanContext::~VulkanContext()
 #endif
 }
 
-VulkanFrameSlot::~VulkanFrameSlot()
-{
-    if (!device) return;
-    vkDestroyCommandPool(device, pool, nullptr);
-    vkDestroySemaphore(device, acquired, nullptr);
-    vkDestroyFence(device, submitted, nullptr);
-    vkDestroyBuffer(device, constants, nullptr);
-    vkFreeMemory(device, constants_memory, nullptr);
-    vkDestroyBuffer(device, readback, nullptr);
-    vkFreeMemory(device, readback_memory, nullptr);
-}
-
-void VulkanSwapchain::reset()
-{
-    if (!device) return;
-    for (auto& image : images)
-    {
-        vkDestroyImageView(device, image.view, nullptr);
-        vkDestroySemaphore(device, image.rendered, nullptr);
-        vkDestroyFence(device, image.presented, nullptr);
-    }
-    images.clear();
-    vkDestroySwapchainKHR(device, handle, nullptr);
-    handle = VK_NULL_HANDLE;
-    extent = {};
-}
-
-VulkanTiming::~VulkanTiming()
-{
-    if (device) vkDestroyQueryPool(device, pool, nullptr);
-}
-
 VulkanRenderer::~VulkanRenderer()
 {
     wait_idle();
@@ -93,7 +61,7 @@ bool VulkanRenderer::wait_idle()
     {
         if (image.present_pending)
         {
-            if (!check(vkWaitForFences(vk_.device, 1, &image.presented, VK_TRUE,
+            if (!check(vkWaitForFences(vk_.device, 1, image.presented.address(), VK_TRUE,
                 std::numeric_limits<std::uint64_t>::max()), "Wait for Vulkan presentation"))
             {
                 return false;
@@ -211,9 +179,13 @@ RenderResult VulkanRenderer::render(const Frame& frame)
             return RenderResult::failed;
         }
     }
+    if (frame.capture && !prepare_capture())
+    {
+        return RenderResult::failed;
+    }
     auto& slot = frames_[frame_index_];
     const auto fence_begin = SDL_GetPerformanceCounter();
-    if (!check(vkWaitForFences(vk_.device, 1, &slot.submitted, VK_TRUE,
+    if (!check(vkWaitForFences(vk_.device, 1, slot.submitted.address(), VK_TRUE,
         std::numeric_limits<std::uint64_t>::max()), "Wait for frame command buffer"))
     {
         return RenderResult::failed;
@@ -240,7 +212,7 @@ RenderResult VulkanRenderer::render(const Frame& frame)
     }
     rebuild_ = acquired == VK_SUBOPTIMAL_KHR;
     auto& image = swapchain_.images[image_index];
-    if (image.present_pending && !check(vkWaitForFences(vk_.device, 1, &image.presented, VK_TRUE,
+    if (image.present_pending && !check(vkWaitForFences(vk_.device, 1, image.presented.address(), VK_TRUE,
         std::numeric_limits<std::uint64_t>::max()), "Wait for image presentation fence"))
     {
         return RenderResult::failed;
@@ -429,13 +401,8 @@ RenderResult VulkanRenderer::render(const Frame& frame)
             VK_PIPELINE_STAGE_2_NONE, VK_ACCESS_2_NONE);
     }
     if (timing_.pool && !frame.overlay) vkCmdWriteTimestamp2(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, timing_.pool, query + 3);
-    if (frame.capture && !record_capture(command, image.image))
-    {
-        return RenderResult::failed;
-    }
-    if (!check(vkEndCommandBuffer(command), "End Vulkan command buffer") ||
-        !check(vkResetFences(vk_.device, 1, &slot.submitted), "Reset frame fence") ||
-        (vk_.present_fences && !check(vkResetFences(vk_.device, 1, &image.presented), "Reset presentation fence")))
+    if (frame.capture) record_capture(command, image.image);
+    if (!check(vkEndCommandBuffer(command), "End Vulkan command buffer"))
     {
         return RenderResult::failed;
     }
@@ -458,7 +425,9 @@ RenderResult VulkanRenderer::render(const Frame& frame)
     submit.pCommandBufferInfos = &buffer;
     submit.signalSemaphoreInfoCount = 1;
     submit.pSignalSemaphoreInfos = &signal;
-    if (!check(vkQueueSubmit2(vk_.queue, 1, &submit, slot.submitted), "Submit Vulkan frame"))
+    if (!check(vkResetFences(vk_.device, 1, slot.submitted.address()), "Reset frame fence") ||
+        (vk_.present_fences && !check(vkResetFences(vk_.device, 1, image.presented.address()), "Reset presentation fence")) ||
+        !check(vkQueueSubmit2(vk_.queue, 1, &submit, slot.submitted), "Submit Vulkan frame"))
     {
         return RenderResult::failed;
     }
@@ -467,14 +436,14 @@ RenderResult VulkanRenderer::render(const Frame& frame)
     VkSwapchainPresentFenceInfoEXT fence{};
     fence.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT;
     fence.swapchainCount = 1;
-    fence.pFences = &image.presented;
+    fence.pFences = image.presented.address();
     VkPresentInfoKHR present{};
     present.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     present.pNext = vk_.present_fences ? &fence : nullptr;
     present.waitSemaphoreCount = 1;
-    present.pWaitSemaphores = &image.rendered;
+    present.pWaitSemaphores = image.rendered.address();
     present.swapchainCount = 1;
-    present.pSwapchains = &swapchain_.handle;
+    present.pSwapchains = swapchain_.handle.address();
     present.pImageIndices = &image_index;
     const auto present_begin = SDL_GetPerformanceCounter();
     const VkResult result = vkQueuePresentKHR(vk_.queue, &present);

@@ -6,12 +6,7 @@ namespace pyroclast
 {
 struct VulkanShaderModule
 {
-    VulkanShaderModule() = default;
-    VulkanShaderModule(const VulkanShaderModule&) = delete;
-    VulkanShaderModule& operator=(const VulkanShaderModule&) = delete;
-    ~VulkanShaderModule();
-    VkDevice device = VK_NULL_HANDLE;
-    VkShaderModule handle = VK_NULL_HANDLE;
+    UniqueShaderModule handle;
     const char* entry = nullptr;
 };
 
@@ -19,36 +14,24 @@ class VulkanBuffer final : public Buffer
 {
 public:
     using Buffer::Buffer;
-    VulkanBuffer(const VulkanBuffer&) = delete;
-    VulkanBuffer& operator=(const VulkanBuffer&) = delete;
-    ~VulkanBuffer() override;
-    VkDevice device = VK_NULL_HANDLE;
-    VkBuffer buffer = VK_NULL_HANDLE;
-    VkDeviceMemory memory = VK_NULL_HANDLE;
+    UniqueMemory memory;
+    UniqueBuffer buffer;
 };
 
 class VulkanGraphicsPipeline final : public GraphicsPipeline
 {
 public:
     using GraphicsPipeline::GraphicsPipeline;
-    VulkanGraphicsPipeline(const VulkanGraphicsPipeline&) = delete;
-    VulkanGraphicsPipeline& operator=(const VulkanGraphicsPipeline&) = delete;
-    ~VulkanGraphicsPipeline() override;
-    VkDevice device = VK_NULL_HANDLE;
-    VkPipeline pipeline = VK_NULL_HANDLE;
+    UniquePipeline pipeline;
 };
 
 class VulkanRenderTarget final : public RenderTarget
 {
 public:
     using RenderTarget::RenderTarget;
-    VulkanRenderTarget(const VulkanRenderTarget&) = delete;
-    VulkanRenderTarget& operator=(const VulkanRenderTarget&) = delete;
-    ~VulkanRenderTarget() override;
-    VkDevice device = VK_NULL_HANDLE;
-    VkImage image = VK_NULL_HANDLE;
-    VkDeviceMemory memory = VK_NULL_HANDLE;
-    VkImageView view = VK_NULL_HANDLE;
+    UniqueMemory memory;
+    UniqueImage image;
+    UniqueImageView view;
     VkExtent2D extent{};
 };
 
@@ -56,10 +39,6 @@ class VulkanComputePipeline final : public ComputePipeline
 {
 public:
     using ComputePipeline::ComputePipeline;
-    VulkanComputePipeline(const VulkanComputePipeline&) = delete;
-    VulkanComputePipeline& operator=(const VulkanComputePipeline&) = delete;
-    ~VulkanComputePipeline() override;
-    VkDevice device = VK_NULL_HANDLE;
-    VkPipeline pipeline = VK_NULL_HANDLE;
+    UniquePipeline pipeline;
 };
 }

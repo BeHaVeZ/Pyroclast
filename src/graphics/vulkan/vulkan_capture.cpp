@@ -7,30 +7,21 @@
 
 namespace pyroclast
 {
-VulkanCapture::~VulkanCapture()
-{
-    if (!device) return;
-    vkDestroyBuffer(device, buffer, nullptr);
-    vkFreeMemory(device, memory, nullptr);
-}
-
 bool VulkanRenderer::create_capture_buffer(VkDeviceSize size)
 {
     if (capture_.buffer && !wait_idle())
     {
         return false;
     }
-    vkDestroyBuffer(vk_.device, capture_.buffer, nullptr);
-    vkFreeMemory(vk_.device, capture_.memory, nullptr);
-    capture_.buffer = VK_NULL_HANDLE;
-    capture_.memory = VK_NULL_HANDLE;
+    capture_.buffer.reset();
+    capture_.memory.reset();
     capture_.size = 0;
     VkBufferCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     info.size = size;
     info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    if (!check(vkCreateBuffer(vk_.device, &info, nullptr, &capture_.buffer), "Create capture readback buffer"))
+    if (!check(vkCreateBuffer(vk_.device, &info, nullptr, capture_.buffer.put(vk_.device)), "Create capture readback buffer"))
     {
         return false;
     }
@@ -47,7 +38,7 @@ bool VulkanRenderer::create_capture_buffer(VkDeviceSize size)
     allocation.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocation.allocationSize = requirements.size;
     allocation.memoryTypeIndex = *type;
-    if (!check(vkAllocateMemory(vk_.device, &allocation, nullptr, &capture_.memory), "Allocate capture readback memory") ||
+    if (!check(vkAllocateMemory(vk_.device, &allocation, nullptr, capture_.memory.put(vk_.device)), "Allocate capture readback memory") ||
         !check(vkBindBufferMemory(vk_.device, capture_.buffer, capture_.memory, 0), "Bind capture readback memory"))
     {
         return false;
@@ -56,13 +47,14 @@ bool VulkanRenderer::create_capture_buffer(VkDeviceSize size)
     return validation_ok();
 }
 
-bool VulkanRenderer::record_capture(VkCommandBuffer command, VkImage image)
+bool VulkanRenderer::prepare_capture()
 {
     const VkDeviceSize size = static_cast<VkDeviceSize>(swapchain_.extent.width) * swapchain_.extent.height * 4;
-    if (capture_.size != size && !create_capture_buffer(size))
-    {
-        return false;
-    }
+    return capture_.size == size || create_capture_buffer(size);
+}
+
+void VulkanRenderer::record_capture(VkCommandBuffer command, VkImage image)
+{
     transition_image(command, image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
         VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
         VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
@@ -76,7 +68,6 @@ bool VulkanRenderer::record_capture(VkCommandBuffer command, VkImage image)
         VK_PIPELINE_STAGE_2_HOST_BIT, VK_ACCESS_2_HOST_READ_BIT);
     capture_.extent = swapchain_.extent;
     capture_.pending = true;
-    return true;
 }
 
 std::optional<CapturedImage> VulkanRenderer::read_capture()

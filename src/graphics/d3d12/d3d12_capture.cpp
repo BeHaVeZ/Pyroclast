@@ -6,7 +6,7 @@
 
 namespace pyroclast
 {
-bool D3D12Renderer::record_capture(ID3D12Resource* backbuffer)
+bool D3D12Renderer::prepare_capture(ID3D12Resource* backbuffer)
 {
     const auto description = backbuffer->GetDesc();
     D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
@@ -37,6 +37,11 @@ bool D3D12Renderer::record_capture(ID3D12Resource* backbuffer)
         capture_size_ = size;
     }
     capture_footprint_ = footprint;
+    return true;
+}
+
+void D3D12Renderer::record_capture(ID3D12Resource* backbuffer)
+{
     D3D12_RESOURCE_BARRIER barrier{};
     barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     barrier.Transition.pResource = backbuffer;
@@ -47,7 +52,7 @@ bool D3D12Renderer::record_capture(ID3D12Resource* backbuffer)
     D3D12_TEXTURE_COPY_LOCATION destination{};
     destination.pResource = capture_readback_.Get();
     destination.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-    destination.PlacedFootprint = footprint;
+    destination.PlacedFootprint = capture_footprint_;
     D3D12_TEXTURE_COPY_LOCATION source{};
     source.pResource = backbuffer;
     source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
@@ -55,7 +60,6 @@ bool D3D12Renderer::record_capture(ID3D12Resource* backbuffer)
     std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
     command_list_->ResourceBarrier(1, &barrier);
     capture_pending_ = true;
-    return true;
 }
 
 std::optional<CapturedImage> D3D12Renderer::read_capture()

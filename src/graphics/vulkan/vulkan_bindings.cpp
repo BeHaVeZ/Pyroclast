@@ -12,14 +12,6 @@ namespace
 constexpr VkShaderStageFlags all_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
 }
 
-VulkanBindings::~VulkanBindings()
-{
-    if (!device) return;
-    vkDestroyPipelineLayout(device, layout, nullptr);
-    vkDestroyDescriptorSetLayout(device, set_layout, nullptr);
-    for (auto sampler : samplers) vkDestroySampler(device, sampler, nullptr);
-}
-
 bool VulkanRenderer::create_bindings()
 {
     bindings_.push = reinterpret_cast<PFN_vkCmdPushDescriptorSetKHR>(vkGetDeviceProcAddr(vk_.device, "vkCmdPushDescriptorSetKHR"));
@@ -37,7 +29,7 @@ bool VulkanRenderer::create_bindings()
         sampler.mipmapMode = index == 0 ? VK_SAMPLER_MIPMAP_MODE_LINEAR : VK_SAMPLER_MIPMAP_MODE_NEAREST;
         sampler.addressModeU = sampler.addressModeV = sampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         sampler.maxLod = VK_LOD_CLAMP_NONE;
-        if (!check(vkCreateSampler(vk_.device, &sampler, nullptr, &bindings_.samplers[index]), "Create sampler")) return false;
+        if (!check(vkCreateSampler(vk_.device, &sampler, nullptr, bindings_.samplers[index].put(vk_.device)), "Create sampler")) return false;
     }
     std::vector<VkDescriptorSetLayoutBinding> slots;
     slots.push_back({binding_layout::frame_constants_binding, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, all_stages, nullptr});
@@ -74,15 +66,15 @@ bool VulkanRenderer::create_bindings()
     set.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
     set.bindingCount = static_cast<std::uint32_t>(slots.size());
     set.pBindings = slots.data();
-    if (!check(vkCreateDescriptorSetLayout(vk_.device, &set, nullptr, &bindings_.set_layout), "Create descriptor set layout")) return false;
+    if (!check(vkCreateDescriptorSetLayout(vk_.device, &set, nullptr, bindings_.set_layout.put(vk_.device)), "Create descriptor set layout")) return false;
     const VkPushConstantRange constants{all_stages, 0, binding_layout::draw_constant_words * sizeof(std::uint32_t)};
     VkPipelineLayoutCreateInfo layout{};
     layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     layout.setLayoutCount = 1;
-    layout.pSetLayouts = &bindings_.set_layout;
+    layout.pSetLayouts = bindings_.set_layout.address();
     layout.pushConstantRangeCount = 1;
     layout.pPushConstantRanges = &constants;
-    if (!check(vkCreatePipelineLayout(vk_.device, &layout, nullptr, &bindings_.layout), "Create pipeline layout")) return false;
+    if (!check(vkCreatePipelineLayout(vk_.device, &layout, nullptr, bindings_.layout.put(vk_.device)), "Create pipeline layout")) return false;
 
     for (auto& slot : frames_)
     {

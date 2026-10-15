@@ -207,6 +207,10 @@ RenderResult D3D12Renderer::render(const Frame& frame)
     const UINT backbuffer_index = swapchain_->GetCurrentBackBufferIndex();
     auto* backbuffer = backbuffers_[backbuffer_index].Get();
     auto& slot = frames_[frame_index_];
+    if (frame.capture && !prepare_capture(backbuffer))
+    {
+        return RenderResult::failed;
+    }
 
     const auto wait_begin = SDL_GetPerformanceCounter();
     const bool slot_free = wait_for_fence(slot.fence_value);
@@ -333,10 +337,7 @@ RenderResult D3D12Renderer::render(const Frame& frame)
         command_list_->ResolveQueryData(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query, 4 + 2 * slot.regions.count,
             timestamp_readback_.Get(), query * sizeof(std::uint64_t));
     }
-    if (frame.capture && !record_capture(backbuffer))
-    {
-        return RenderResult::failed;
-    }
+    if (frame.capture) record_capture(backbuffer);
     if (!check(command_list_->Close(), "Close frame command list"))
     {
         return RenderResult::failed;
