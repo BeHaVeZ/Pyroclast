@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../graphics_device.hpp"
+#include "../backend_common.hpp"
 
 #include <vulkan/vulkan.h>
 
@@ -40,8 +40,7 @@ struct VulkanFrameSlot
     ~VulkanFrameSlot();
     VkDevice device = VK_NULL_HANDLE;
     bool timestamps_pending = false;
-    std::array<const char*, max_gpu_regions> region_labels{};
-    std::uint32_t region_count = 0;
+    TimestampRegions regions;
     VkCommandPool pool = VK_NULL_HANDLE;
     VkCommandBuffer command = VK_NULL_HANDLE;
     VkSemaphore acquired = VK_NULL_HANDLE;
@@ -173,8 +172,6 @@ private:
     bool create_timestamps();
     std::uint32_t begin_region(VkCommandBuffer command, const char* label, const char* fallback);
     void end_region(VkCommandBuffer command, std::uint32_t region);
-    static constexpr std::uint32_t queries_per_slot = 4 + 2 * max_gpu_regions;
-    static constexpr std::uint32_t no_region = ~0u;
     bool read_timestamps(std::size_t frame);
     void read_readback(VulkanFrameSlot& slot);
     bool create_frames();
@@ -185,7 +182,6 @@ private:
     void destroy_overlay();
     void record_overlay(VkCommandBuffer command, ImDrawData* overlay, VkImageView backbuffer, VkExtent2D extent);
     bool size_target(class VulkanRenderTarget& target);
-    bool owns(const Frame& frame) const;
     void push_bindings(VkCommandBuffer command, VkPipelineBindPoint point, const Bindings& bindings,
         const VulkanFrameSlot& slot, std::span<const RenderTarget* const> inputs);
     void set_viewport(VkCommandBuffer command, VkExtent2D extent);

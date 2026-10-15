@@ -186,45 +186,9 @@ void memory_barrier(VkCommandBuffer command,
     vkCmdPipelineBarrier2(command, &dependency);
 }
 
-bool VulkanRenderer::owns(const Frame& frame) const
-{
-    const auto buffer_owned = [this](const Buffer* buffer) {
-        const auto* resource = dynamic_cast<const VulkanBuffer*>(buffer);
-        return buffer == nullptr || (resource && resource->owner == this);
-    };
-    const auto buffers_owned = [&buffer_owned](const Bindings& bindings) {
-        return std::all_of(bindings.read.begin(), bindings.read.end(), buffer_owned) &&
-            std::all_of(bindings.write.begin(), bindings.write.end(), buffer_owned);
-    };
-    const auto target_owned = [this](const RenderTarget* target) {
-        const auto* native_target = dynamic_cast<const VulkanRenderTarget*>(target);
-        return target == nullptr || (native_target && native_target->owner == this);
-    };
-    if (!buffer_owned(frame.readback.source)) return false;
-    for (const auto& dispatch : frame.dispatches)
-    {
-        const auto* pipeline = dynamic_cast<const VulkanComputePipeline*>(&dispatch.pipeline);
-        if (!pipeline || pipeline->owner != this || !buffers_owned(dispatch.bindings)) return false;
-    }
-    for (const auto& pass : frame.passes)
-    {
-        if (!target_owned(pass.target) || !target_owned(pass.depth) ||
-            !std::all_of(pass.inputs.begin(), pass.inputs.end(), target_owned)) return false;
-        for (const auto& draw : pass.draws)
-        {
-            const auto* pipeline = dynamic_cast<const VulkanGraphicsPipeline*>(&draw.pipeline);
-            if (!pipeline || pipeline->owner != this || !buffers_owned(draw.bindings) || !buffer_owned(draw.indirect)) return false;
-        }
-    }
-    return true;
-}
-
 RenderResult VulkanRenderer::render(const Frame& frame)
 {
-    const char* error = !owns(frame) ? "Frame uses resources from another graphics device." :
-        frame.capture && !capture_enabled_ ? "Frame capture requires a device created with capture enabled." :
-        frame.overlay && !overlay_ ? "Frame overlay requires a device created with the debug overlay." :
-        validate_frame(frame);
+    const char* error = submission_error(frame, *this, capture_enabled_, overlay_);
     if (error)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "%s", error);
@@ -298,11 +262,11 @@ RenderResult VulkanRenderer::render(const Frame& frame)
     const auto command = slot.command;
     constexpr VkShaderStageFlags constant_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
     constexpr std::uint32_t constant_bytes = binding_layout::draw_constant_words * sizeof(std::uint32_t);
-    slot.region_count = 0;
-    const auto query = static_cast<std::uint32_t>(frame_index_) * queries_per_slot;
+    slot.regions = {};
+    const auto query = static_cast<std::uint32_t>(frame_index_) * timestamp_queries_per_slot;
     if (timing_.pool)
     {
-        vkCmdResetQueryPool(command, timing_.pool, query, queries_per_slot);
+        vkCmdResetQueryPool(command, timing_.pool, query, timestamp_queries_per_slot);
         vkCmdWriteTimestamp2(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, timing_.pool, query);
         memory_barrier(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_NONE);
     }

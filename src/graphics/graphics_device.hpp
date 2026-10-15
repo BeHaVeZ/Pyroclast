@@ -20,6 +20,8 @@ struct ImDrawData;
 
 namespace pyroclast
 {
+class GraphicsDevice;
+
 enum class BlendMode { opaque, additive, premultiplied_alpha };
 
 enum class DepthMode { none, ignore, test, test_write };
@@ -27,12 +29,14 @@ enum class DepthMode { none, ignore, test, test_write };
 class Buffer
 {
 public:
-    explicit Buffer(std::uint32_t size) : size_(size) {}
+    explicit Buffer(std::uint32_t size, const GraphicsDevice* owner = nullptr) : size_(size), owner_(owner) {}
     virtual ~Buffer() = default;
     std::uint32_t size() const { return size_; }
+    const GraphicsDevice* owner() const { return owner_; }
 
 private:
     std::uint32_t size_;
+    const GraphicsDevice* owner_;
 };
 
 enum class Topology { triangles, lines };
@@ -42,9 +46,11 @@ enum class TargetFormat { color, rgba16_float, r11g11b10_float, depth };
 class GraphicsPipeline
 {
 public:
-    explicit GraphicsPipeline(BlendMode blend, DepthMode depth = DepthMode::none, TargetFormat target = TargetFormat::color)
-        : blend_(blend), depth_(depth), target_(target) {}
+    explicit GraphicsPipeline(BlendMode blend, DepthMode depth = DepthMode::none, TargetFormat target = TargetFormat::color,
+        const GraphicsDevice* owner = nullptr)
+        : blend_(blend), depth_(depth), target_(target), owner_(owner) {}
     virtual ~GraphicsPipeline() = default;
+    const GraphicsDevice* owner() const { return owner_; }
     BlendMode blend() const { return blend_; }
     DepthMode depth() const { return depth_; }
     TargetFormat target() const { return target_; }
@@ -53,12 +59,18 @@ private:
     BlendMode blend_;
     DepthMode depth_;
     TargetFormat target_;
+    const GraphicsDevice* owner_;
 };
 
 class ComputePipeline
 {
 public:
+    explicit ComputePipeline(const GraphicsDevice* owner = nullptr) : owner_(owner) {}
     virtual ~ComputePipeline() = default;
+    const GraphicsDevice* owner() const { return owner_; }
+
+private:
+    const GraphicsDevice* owner_;
 };
 
 struct GraphicsPipelineDescription
@@ -82,12 +94,20 @@ struct RenderTargetDescription
 class RenderTarget
 {
 public:
-    explicit RenderTarget(const RenderTargetDescription& description) : description_(description) {}
+    explicit RenderTarget(const RenderTargetDescription& description, const GraphicsDevice* owner = nullptr)
+        : description_(description), owner_(owner) {}
     virtual ~RenderTarget() = default;
     const RenderTargetDescription& description() const { return description_; }
+    const GraphicsDevice* owner() const { return owner_; }
+    std::array<std::uint32_t, 2> extent_for(std::uint32_t width, std::uint32_t height) const
+    {
+        const auto divisor = description_.divisor;
+        return {(width + divisor - 1) / divisor, (height + divisor - 1) / divisor};
+    }
 
 private:
     RenderTargetDescription description_;
+    const GraphicsDevice* owner_;
 };
 
 struct Bindings

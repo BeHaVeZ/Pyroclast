@@ -173,46 +173,10 @@ void D3D12Renderer::draw(const Draw& draw)
     end_event(command_list_.Get(), draw.label);
 }
 
-bool D3D12Renderer::owns(const Frame& frame) const
-{
-    const auto buffer_owned = [this](const Buffer* buffer) {
-        const auto* resource = dynamic_cast<const D3D12Buffer*>(buffer);
-        return buffer == nullptr || (resource && resource->owner == this);
-    };
-    const auto buffers_owned = [&buffer_owned](const Bindings& bindings) {
-        return std::all_of(bindings.read.begin(), bindings.read.end(), buffer_owned) &&
-            std::all_of(bindings.write.begin(), bindings.write.end(), buffer_owned);
-    };
-    const auto target_owned = [this](const RenderTarget* target) {
-        const auto* native_target = dynamic_cast<const D3D12RenderTarget*>(target);
-        return target == nullptr || (native_target && native_target->owner == this);
-    };
-    if (!buffer_owned(frame.readback.source)) return false;
-    for (const auto& dispatch : frame.dispatches)
-    {
-        const auto* pipeline = dynamic_cast<const D3D12ComputePipeline*>(&dispatch.pipeline);
-        if (!pipeline || pipeline->owner != this || !buffers_owned(dispatch.bindings)) return false;
-    }
-    for (const auto& pass : frame.passes)
-    {
-        if (!target_owned(pass.target) || !target_owned(pass.depth) ||
-            !std::all_of(pass.inputs.begin(), pass.inputs.end(), target_owned)) return false;
-        for (const auto& draw : pass.draws)
-        {
-            const auto* pipeline = dynamic_cast<const D3D12GraphicsPipeline*>(&draw.pipeline);
-            if (!pipeline || pipeline->owner != this || !buffers_owned(draw.bindings) || !buffer_owned(draw.indirect)) return false;
-        }
-    }
-    return true;
-}
-
 RenderResult D3D12Renderer::render(const Frame& frame)
 {
     assert(swapchain_ && command_list_);
-    const char* error = !owns(frame) ? "Frame uses resources from another graphics device." :
-        frame.capture && !capture_enabled_ ? "Frame capture requires a device created with capture enabled." :
-        frame.overlay && !overlay_ ? "Frame overlay requires a device created with the debug overlay." :
-        validate_frame(frame);
+    const char* error = submission_error(frame, *this, capture_enabled_, overlay_);
     if (error)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "%s", error);
@@ -260,8 +224,8 @@ RenderResult D3D12Renderer::render(const Frame& frame)
     command_list_->SetDescriptorHeaps(1, heaps);
     buffer_states_.reset();
 
-    slot.region_count = 0;
-    const auto query = static_cast<UINT>(frame_index_) * queries_per_slot;
+    slot.regions = {};
+    const auto query = static_cast<UINT>(frame_index_) * timestamp_queries_per_slot;
     if (timestamps_) command_list_->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query);
     if (!frame.dispatches.empty())
     {
@@ -366,7 +330,7 @@ RenderResult D3D12Renderer::render(const Frame& frame)
     if (timestamps_)
     {
         if (!frame.overlay) command_list_->EndQuery(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query + 3);
-        command_list_->ResolveQueryData(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query, 4 + 2 * slot.region_count,
+        command_list_->ResolveQueryData(timestamps_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query, 4 + 2 * slot.regions.count,
             timestamp_readback_.Get(), query * sizeof(std::uint64_t));
     }
     if (frame.capture && !record_capture(backbuffer))

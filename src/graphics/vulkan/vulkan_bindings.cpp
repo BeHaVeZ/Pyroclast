@@ -110,11 +110,7 @@ bool VulkanRenderer::create_bindings()
 void VulkanRenderer::read_readback(VulkanFrameSlot& slot)
 {
     if (!slot.readback_pending) return;
-    ReadbackData data;
-    std::memcpy(data.bytes.data(), slot.mapped_readback, slot.readback_size);
-    data.size = slot.readback_size;
-    data.sample_id = ++readback_sample_id_;
-    readback_ = data;
+    readback_ = copy_readback(slot.mapped_readback, slot.readback_size, ++readback_sample_id_);
     slot.readback_pending = false;
 }
 

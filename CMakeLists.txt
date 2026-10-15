@@ -53,6 +53,7 @@ target_include_directories(pyroclast_core PUBLIC src)
 
 add_library(pyroclast_rhi STATIC
     src/graphics/adapter_name.cpp
+    src/graphics/backend_common.cpp
     src/graphics/draw_validation.cpp
 )
 target_link_libraries(pyroclast_rhi PUBLIC pyroclast_core pyroclast_shader_list)

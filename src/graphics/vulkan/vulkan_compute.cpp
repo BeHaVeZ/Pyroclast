@@ -11,8 +11,7 @@ VulkanComputePipeline::~VulkanComputePipeline()
 
 std::unique_ptr<ComputePipeline> VulkanRenderer::create_compute_pipeline(Shader shader)
 {
-    auto pipeline = std::make_unique<VulkanComputePipeline>();
-    pipeline->owner = this;
+    auto pipeline = std::make_unique<VulkanComputePipeline>(this);
     pipeline->device = vk_.device;
     VulkanShaderModule module;
     if (!create_shader_module(shader, module))

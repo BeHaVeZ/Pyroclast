@@ -76,7 +76,6 @@ bool VulkanRenderer::submit_immediately(const char* operation, Record&& record)
 bool VulkanRenderer::allocate_buffer(VulkanBuffer& buffer, VkBufferUsageFlags usage,
     VkMemoryPropertyFlags required, VkMemoryPropertyFlags preferred, const char* purpose)
 {
-    buffer.owner = this;
     buffer.device = vk_.device;
     return allocate_buffer(buffer.size(), usage, required, preferred, purpose, buffer.buffer, buffer.memory);
 }
@@ -120,7 +119,7 @@ std::unique_ptr<Buffer> VulkanRenderer::create_buffer(std::uint32_t size, std::s
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Buffer size must be a nonzero multiple of four bytes and match its initial data.");
         return nullptr;
     }
-    auto buffer = std::make_unique<VulkanBuffer>(size);
+    auto buffer = std::make_unique<VulkanBuffer>(size, this);
     if (!allocate_buffer(*buffer, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
             VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, "Create Vulkan buffer"))
@@ -182,9 +181,8 @@ std::unique_ptr<GraphicsPipeline> VulkanRenderer::create_graphics_pipeline(
     {
         return nullptr;
     }
-    auto pipeline = std::make_unique<VulkanGraphicsPipeline>(shaders.blend, shaders.depth, shaders.target);
+    auto pipeline = std::make_unique<VulkanGraphicsPipeline>(shaders.blend, shaders.depth, shaders.target, this);
     pipeline->device = vk_.device;
-    pipeline->owner = this;
     VkPipelineShaderStageCreateInfo stages[2]{};
     stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;

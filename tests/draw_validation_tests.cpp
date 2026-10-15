@@ -4,6 +4,32 @@
 #include <string_view>
 #include <vector>
 
+namespace
+{
+class NullDevice final : public pyroclast::GraphicsDevice
+{
+public:
+    std::unique_ptr<pyroclast::Buffer> create_buffer(std::uint32_t, std::span<const std::byte>) override { return nullptr; }
+    std::unique_ptr<pyroclast::GraphicsPipeline> create_graphics_pipeline(const pyroclast::GraphicsPipelineDescription&) override
+    {
+        return nullptr;
+    }
+    std::unique_ptr<pyroclast::ComputePipeline> create_compute_pipeline(pyroclast::Shader) override { return nullptr; }
+    std::unique_ptr<pyroclast::RenderTarget> create_render_target(const pyroclast::RenderTargetDescription&) override { return nullptr; }
+    bool resize(int, int) override { return true; }
+    pyroclast::RenderResult render(const pyroclast::Frame&) override { return pyroclast::RenderResult::failed; }
+    bool wait_idle() override { return true; }
+    std::optional<pyroclast::GpuTimings> completed_gpu_timings() const override { return std::nullopt; }
+    std::optional<pyroclast::ReadbackData> completed_readback() const override { return std::nullopt; }
+    std::optional<pyroclast::CapturedImage> read_capture() override { return std::nullopt; }
+    std::string_view adapter_name() const override { return {}; }
+    pyroclast::SubmitTimings last_submit_timings() const override { return {}; }
+    pyroclast::PresentInfo present_info() const override { return {}; }
+    std::optional<pyroclast::GpuMemory> memory_usage() const override { return std::nullopt; }
+    std::uint64_t swapchain_rebuilds() const override { return 0; }
+};
+}
+
 int main()
 {
     using namespace pyroclast;
@@ -155,6 +181,47 @@ int main()
     check("a readback of a partial word", with_readback({&arguments, 0, 6}), "readback");
     check("an unaligned readback", with_readback({&arguments, 2, 16}), "readback");
     check("depth writes against read-only depth", validate({opaque, {&scene, {}, {&terrain, 1}, nullptr, true, &depth, false}, present}), "depth-writing");
+
+    {
+        const NullDevice device;
+        const NullDevice other_device;
+        const Buffer owned_buffer(64, &device);
+        const Buffer foreign_buffer(64, &other_device);
+        const GraphicsPipeline owned_pipeline(BlendMode::opaque, DepthMode::none, TargetFormat::color, &device);
+        const ComputePipeline owned_compute(&device);
+        const ComputePipeline foreign_compute(&other_device);
+        RenderTarget owned_target({1, {}}, &device);
+        RenderTarget foreign_target({1, {}}, &other_device);
+        const std::vector<std::byte> constants(16);
+        const auto frame_with = [](const Draw& draw, RenderTarget* target) {
+            return std::vector<Pass>{{target, {}, std::span(&draw, 1)}, {nullptr, {target}, {}}};
+        };
+        const Draw owned_draw{owned_pipeline, {{&owned_buffer}}, {}, 3};
+        const Draw foreign_read{owned_pipeline, {{&foreign_buffer}}, {}, 3};
+        const Draw foreign_indirect{owned_pipeline, {}, {}, 0, 1, nullptr, &foreign_buffer};
+        const Dispatch owned_dispatch{owned_compute};
+        const Dispatch foreign_dispatch{foreign_compute};
+        const auto owned = [&](const Draw& draw, RenderTarget* target, const Dispatch& dispatch) {
+            const auto passes = frame_with(draw, target);
+            return owned_by({std::span(&dispatch, 1), passes, {}, constants}, device);
+        };
+        const bool results[] = {
+            owned(owned_draw, &owned_target, owned_dispatch),
+            !owned(foreign_read, &owned_target, owned_dispatch),
+            !owned(foreign_indirect, &owned_target, owned_dispatch),
+            !owned(owned_draw, &foreign_target, owned_dispatch),
+            !owned(owned_draw, &owned_target, foreign_dispatch),
+            !owned_by({{}, frame_with(owned_draw, &owned_target), {}, constants, false, nullptr, {&foreign_buffer, 0, 4}}, device),
+        };
+        for (std::size_t index = 0; index < std::size(results); ++index)
+        {
+            if (!results[index])
+            {
+                std::fprintf(stderr, "FAIL: ownership case %zu\n", index);
+                ++failures;
+            }
+        }
+    }
 
     const std::vector<std::byte> no_constants;
     const auto counted = count_work({std::span(&dispatch, 1), two_passes, {}, no_constants});

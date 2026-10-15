@@ -17,8 +17,7 @@ std::unique_ptr<RenderTarget> D3D12Renderer::create_render_target(const RenderTa
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The render target range of the shader descriptor heap is full.");
         return nullptr;
     }
-    auto target = std::make_unique<D3D12RenderTarget>(description);
-    target->owner = this;
+    auto target = std::make_unique<D3D12RenderTarget>(description, this);
     target->shader_view = next_shader_descriptor_++;
     const bool depth = description.format == TargetFormat::depth;
     D3D12_DESCRIPTOR_HEAP_DESC heap{};
@@ -30,9 +29,9 @@ std::unique_ptr<RenderTarget> D3D12Renderer::create_render_target(const RenderTa
 
 bool D3D12Renderer::size_target(D3D12RenderTarget& target)
 {
-    const auto divisor = static_cast<int>(target.description().divisor);
-    const int width = (width_ + divisor - 1) / divisor;
-    const int height = (height_ + divisor - 1) / divisor;
+    const auto extent = target.extent_for(static_cast<std::uint32_t>(width_), static_cast<std::uint32_t>(height_));
+    const int width = static_cast<int>(extent[0]);
+    const int height = static_cast<int>(extent[1]);
     if (target.texture && target.width == width && target.height == height)
     {
         return true;

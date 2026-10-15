@@ -9,8 +9,7 @@ namespace pyroclast
 std::unique_ptr<ComputePipeline> D3D12Renderer::create_compute_pipeline(Shader program)
 {
     const auto shader = d3d12_shader(program);
-    auto pipeline = std::make_unique<D3D12ComputePipeline>();
-    pipeline->owner = this;
+    auto pipeline = std::make_unique<D3D12ComputePipeline>(this);
     D3D12_COMPUTE_PIPELINE_STATE_DESC description{};
     description.pRootSignature = root_signature_.Get();
     description.CS = {shader.data(), shader.size()};

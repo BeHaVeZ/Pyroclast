@@ -14,7 +14,6 @@ class D3D12Buffer final : public Buffer
 public:
     using Buffer::Buffer;
 
-    const D3D12Renderer* owner = nullptr;
     Microsoft::WRL::ComPtr<ID3D12Resource> resource;
 };
 
@@ -23,7 +22,6 @@ class D3D12GraphicsPipeline final : public GraphicsPipeline
 public:
     using GraphicsPipeline::GraphicsPipeline;
 
-    const D3D12Renderer* owner = nullptr;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> state;
     D3D_PRIMITIVE_TOPOLOGY topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 };
@@ -33,7 +31,6 @@ class D3D12RenderTarget final : public RenderTarget
 public:
     using RenderTarget::RenderTarget;
 
-    const D3D12Renderer* owner = nullptr;
     Microsoft::WRL::ComPtr<ID3D12Resource> texture;
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> render_view;
     UINT shader_view = 0;
@@ -44,7 +41,8 @@ public:
 class D3D12ComputePipeline final : public ComputePipeline
 {
 public:
-    const D3D12Renderer* owner = nullptr;
+    using ComputePipeline::ComputePipeline;
+
     Microsoft::WRL::ComPtr<ID3D12PipelineState> state;
 };
 }

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../graphics_device.hpp"
+#include "../backend_common.hpp"
 
 #include <d3d12.h>
 #include <d3d12sdklayers.h>
@@ -74,14 +74,10 @@ private:
         root_parameter_count = root_textures + binding_layout::texture_slots
     };
 
-    static constexpr UINT queries_per_slot = 4 + 2 * max_gpu_regions;
-    static constexpr UINT no_region = ~0u;
-
     struct FrameSlot
     {
         bool timestamps_pending = false;
-        std::array<const char*, max_gpu_regions> region_labels{};
-        std::uint32_t region_count = 0;
+        TimestampRegions regions;
         Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
         std::uint64_t fence_value = 0;
         Microsoft::WRL::ComPtr<ID3D12Resource> constants;
@@ -106,7 +102,6 @@ private:
 
     bool create_bindings();
     bool size_target(class D3D12RenderTarget& target);
-    bool owns(const Frame& frame) const;
     void bind(const Bindings& bindings, bool graphics);
     void draw(const Draw& draw);
     void set_target(D3D12_CPU_DESCRIPTOR_HANDLE rtv, const D3D12_CPU_DESCRIPTOR_HANDLE* dsv, int width, int height);

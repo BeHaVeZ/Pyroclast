@@ -143,11 +143,7 @@ bool D3D12Renderer::create_bindings()
 void D3D12Renderer::read_readback(FrameSlot& slot)
 {
     if (!slot.readback_pending) return;
-    ReadbackData data;
-    std::memcpy(data.bytes.data(), slot.mapped_readback, slot.readback_size);
-    data.size = slot.readback_size;
-    data.sample_id = ++readback_sample_id_;
-    readback_ = data;
+    readback_ = copy_readback(slot.mapped_readback, slot.readback_size, ++readback_sample_id_);
     slot.readback_pending = false;
 }
 

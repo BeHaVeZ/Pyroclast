@@ -21,8 +21,7 @@ std::unique_ptr<GraphicsPipeline> D3D12Renderer::create_graphics_pipeline(
     }
     const auto vertex_shader = d3d12_shader(shaders.vertex_shader);
     const auto pixel_shader = d3d12_shader(shaders.pixel_shader);
-    auto pipeline = std::make_unique<D3D12GraphicsPipeline>(shaders.blend, shaders.depth, shaders.target);
-    pipeline->owner = this;
+    auto pipeline = std::make_unique<D3D12GraphicsPipeline>(shaders.blend, shaders.depth, shaders.target, this);
     D3D12_FEATURE_DATA_SHADER_MODEL shader_model{D3D_SHADER_MODEL_6_0};
     if (!check(device_->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL,
         &shader_model, sizeof(shader_model)), "Query shader model support"))
@@ -79,8 +78,7 @@ std::unique_ptr<Buffer> D3D12Renderer::create_buffer(std::uint32_t size, std::sp
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Buffer size must be a nonzero multiple of four bytes and match its initial data.");
         return nullptr;
     }
-    auto buffer = std::make_unique<D3D12Buffer>(size);
-    buffer->owner = this;
+    auto buffer = std::make_unique<D3D12Buffer>(size, this);
     D3D12_RESOURCE_DESC description{};
     description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
     description.Width = size;

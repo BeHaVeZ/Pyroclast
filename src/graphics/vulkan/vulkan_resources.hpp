@@ -22,7 +22,6 @@ public:
     VulkanBuffer(const VulkanBuffer&) = delete;
     VulkanBuffer& operator=(const VulkanBuffer&) = delete;
     ~VulkanBuffer() override;
-    const VulkanRenderer* owner = nullptr;
     VkDevice device = VK_NULL_HANDLE;
     VkBuffer buffer = VK_NULL_HANDLE;
     VkDeviceMemory memory = VK_NULL_HANDLE;
@@ -35,7 +34,6 @@ public:
     VulkanGraphicsPipeline(const VulkanGraphicsPipeline&) = delete;
     VulkanGraphicsPipeline& operator=(const VulkanGraphicsPipeline&) = delete;
     ~VulkanGraphicsPipeline() override;
-    const VulkanRenderer* owner = nullptr;
     VkDevice device = VK_NULL_HANDLE;
     VkPipeline pipeline = VK_NULL_HANDLE;
 };
@@ -47,7 +45,6 @@ public:
     VulkanRenderTarget(const VulkanRenderTarget&) = delete;
     VulkanRenderTarget& operator=(const VulkanRenderTarget&) = delete;
     ~VulkanRenderTarget() override;
-    const VulkanRenderer* owner = nullptr;
     VkDevice device = VK_NULL_HANDLE;
     VkImage image = VK_NULL_HANDLE;
     VkDeviceMemory memory = VK_NULL_HANDLE;
@@ -58,11 +55,10 @@ public:
 class VulkanComputePipeline final : public ComputePipeline
 {
 public:
-    VulkanComputePipeline() = default;
+    using ComputePipeline::ComputePipeline;
     VulkanComputePipeline(const VulkanComputePipeline&) = delete;
     VulkanComputePipeline& operator=(const VulkanComputePipeline&) = delete;
     ~VulkanComputePipeline() override;
-    const VulkanRenderer* owner = nullptr;
     VkDevice device = VK_NULL_HANDLE;
     VkPipeline pipeline = VK_NULL_HANDLE;
 };

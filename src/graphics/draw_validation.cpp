@@ -137,6 +137,36 @@ const char* validate_frame(const Frame& frame)
     return nullptr;
 }
 
+bool owned_by(const Frame& frame, const GraphicsDevice& device)
+{
+    const auto owned = [&device](const auto* resource) { return resource == nullptr || resource->owner() == &device; };
+    const auto bindings_owned = [&owned](const Bindings& bindings) {
+        return std::all_of(bindings.read.begin(), bindings.read.end(), owned) && std::all_of(bindings.write.begin(), bindings.write.end(), owned);
+    };
+    if (!owned(frame.readback.source)) return false;
+    for (const auto& dispatch : frame.dispatches)
+    {
+        if (!owned(&dispatch.pipeline) || !bindings_owned(dispatch.bindings)) return false;
+    }
+    for (const auto& pass : frame.passes)
+    {
+        if (!owned(pass.target) || !owned(pass.depth) || !std::all_of(pass.inputs.begin(), pass.inputs.end(), owned)) return false;
+        for (const auto& draw : pass.draws)
+        {
+            if (!owned(&draw.pipeline) || !bindings_owned(draw.bindings) || !owned(draw.indirect)) return false;
+        }
+    }
+    return true;
+}
+
+const char* submission_error(const Frame& frame, const GraphicsDevice& device, bool capture_enabled, bool overlay_enabled)
+{
+    if (!owned_by(frame, device)) return "Frame uses resources from another graphics device.";
+    if (frame.capture && !capture_enabled) return "Frame capture requires a device created with capture enabled.";
+    if (frame.overlay && !overlay_enabled) return "Frame overlay requires a device created with the debug overlay.";
+    return validate_frame(frame);
+}
+
 FrameWork count_work(const Frame& frame)
 {
     FrameWork work{static_cast<std::uint32_t>(frame.dispatches.size()), static_cast<std::uint32_t>(frame.passes.size()), 0};

@@ -31,16 +31,15 @@ std::unique_ptr<RenderTarget> VulkanRenderer::create_render_target(const RenderT
             "Vulkan colour target format cannot be rendered to, blended and linearly sampled.");
         return nullptr;
     }
-    auto target = std::make_unique<VulkanRenderTarget>(description);
-    target->owner = this;
+    auto target = std::make_unique<VulkanRenderTarget>(description, this);
     target->device = vk_.device;
     return validation_ok() ? std::move(target) : nullptr;
 }
 
 bool VulkanRenderer::size_target(VulkanRenderTarget& target)
 {
-    const auto divisor = target.description().divisor;
-    const VkExtent2D extent{(swapchain_.extent.width + divisor - 1) / divisor, (swapchain_.extent.height + divisor - 1) / divisor};
+    const auto [width, height] = target.extent_for(swapchain_.extent.width, swapchain_.extent.height);
+    const VkExtent2D extent{width, height};
     if (target.image && target.extent.width == extent.width && target.extent.height == extent.height)
     {
         return true;
