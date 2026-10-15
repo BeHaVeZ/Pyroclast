@@ -111,6 +111,7 @@ add_library(pyroclast_app STATIC
     src/app/frame_baseline.cpp
     src/app/frame_statistics.cpp
     src/app/counter_log.cpp
+    src/app/run_records.cpp
     src/app/smoke_resolution_policy.cpp
     src/app/command_line.cpp
     src/app/explosion_renderer.cpp

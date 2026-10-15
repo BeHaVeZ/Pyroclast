@@ -7,6 +7,7 @@
 #include "frame_baseline.hpp"
 #include "frame_statistics.hpp"
 #include "key_bindings.hpp"
+#include "run_records.hpp"
 #include "sandbox.hpp"
 #include "../simulation/explosion_scenarios.hpp"
 #include "../tools/debug_ui.hpp"
@@ -15,7 +16,6 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
-#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -94,6 +94,12 @@ bool create_sequence_folder(const std::string& path)
     return true;
 }
 
+using pyroclast::RunRecords;
+using pyroclast::Sandbox;
+using pyroclast::ScenarioRun;
+using pyroclast::pose_name;
+using pyroclast::view_keys;
+
 struct SdlCleanup final
 {
     SdlCleanup() = default;
@@ -120,255 +126,6 @@ struct FrameHistory
     std::span<const float> samples() const { return {milliseconds.data(), count}; }
     int offset() const { return count < milliseconds.size() ? 0 : static_cast<int>(next); }
 };
-
-using pyroclast::Sandbox;
-
-std::string statistics_json(const std::optional<pyroclast::FrameStatistics>& statistics)
-{
-    if (!statistics) return "null";
-    char text[224];
-    std::snprintf(text, sizeof(text), "{\"average\":%.6f,\"median\":%.6f,\"p95\":%.6f,\"p99\":%.6f,\"worst_1_percent\":%.6f,\"max\":%.6f}",
-        statistics->average, statistics->median, statistics->p95, statistics->p99, statistics->worst_1_percent, statistics->max);
-    return text;
-}
-
-const char* pose_name(const pyroclast::ApplicationOptions& options)
-{
-    return options.camera ? "custom" : pyroclast::view_name(options.view);
-}
-
-std::string view_keys(float vertical_fov, bool borderless)
-{
-    std::string keys;
-    if (vertical_fov != pyroclast::Camera{}.vertical_fov)
-    {
-        char text[48];
-        std::snprintf(text, sizeof(text), ",\"fov\":%.3f", static_cast<double>(vertical_fov) * 57.29577951308232);
-        keys += text;
-    }
-    if (borderless) keys += ",\"borderless\":true";
-    return keys;
-}
-
-class ScenarioRun final
-{
-public:
-    ScenarioRun(pyroclast::Scenario scenario, std::string benchmark, std::uint32_t warmup_frames) :
-        scenario_(std::move(scenario)), benchmark_(std::move(benchmark)), warmup_left_(warmup_frames)
-    {
-    }
-    explicit ScenarioRun(pyroclast::Scenario scenario) : ScenarioRun(std::move(scenario), {}, 0) {}
-    bool finished(const Sandbox& sandbox) const { return sandbox.clock.tick() >= scenario_.duration_ticks; }
-    void invalidate(const char* reason)
-    {
-        if (valid_)
-        {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Scenario measurement invalidated: %s.", reason);
-            invalid_reason_ = reason;
-        }
-        valid_ = false;
-    }
-    const std::string& benchmark() const { return benchmark_; }
-    const char* invalid_reason() const { return invalid_reason_; }
-    bool warming() const { return warmup_left_ != 0; }
-    bool end_warmup_frame() { return warmup_left_ != 0 && --warmup_left_ == 0; }
-    void skipped()
-    {
-        if (benchmark_.empty() || warming()) return;
-        ++skipped_frames_;
-        invalidate("a frame was skipped while measuring");
-    }
-    std::size_t skipped_frames() const { return skipped_frames_; }
-    void swapchain_rebuilt()
-    {
-        if (benchmark_.empty() || warming()) return;
-        invalidate("the swapchain was rebuilt while measuring");
-    }
-    const pyroclast::Scenario& script() const { return scenario_; }
-    void set_vertical_fov(float radians) { vertical_fov_ = radians; }
-    void submit_due(Sandbox& sandbox)
-    {
-        while (next_ < scenario_.events.size() && scenario_.events[next_].tick <= sandbox.clock.tick())
-        {
-            sandbox.effects.submit(scenario_.events[next_++].event);
-        }
-    }
-    void record(double cpu_ms, std::optional<pyroclast::GpuTimings> gpu, const Sandbox& sandbox)
-    {
-        cpu_ms_.push_back(cpu_ms);
-        if (gpu && gpu->sample_id != last_gpu_sample_)
-        {
-            last_gpu_sample_ = gpu->sample_id;
-            draw_ms_.push_back(gpu->draw_ms);
-            compute_ms_.push_back(gpu->compute_ms);
-            for (std::uint32_t index = 0; index < gpu->region_count; ++index)
-            {
-                const auto& region = gpu->regions[index];
-                auto found = std::find_if(regions_.begin(), regions_.end(), [&region](const RegionSum& sum) { return sum.label == region.label; });
-                if (found == regions_.end()) found = regions_.insert(regions_.end(), {region.label, 0, 0});
-                found->milliseconds += region.milliseconds;
-                ++found->samples;
-            }
-        }
-        peak_effects_ = std::max(peak_effects_, static_cast<std::uint32_t>(sandbox.effects.explosions()));
-    }
-    void count(const pyroclast::ParticleCounters& counters)
-    {
-        ++counter_samples_;
-        peak_alive_ = std::max(peak_alive_, counters.alive);
-        alive_sum_ += counters.alive;
-        checksum_ = pyroclast::counter_checksum(checksum_, counters);
-    }
-    int report(const Sandbox& sandbox, const pyroclast::ApplicationOptions& options, std::string_view gpu_name, int width, int height,
-        bool overlay, const std::string& extra, const pyroclast::CounterLog::Summary* summary = nullptr, const std::string& tail = {})
-    {
-        const auto statistics = [](std::vector<double>& samples) {
-            if (samples.empty()) return std::string("null");
-            const auto summary = pyroclast::summarize(samples);
-            char text[160];
-            std::snprintf(text, sizeof(text), "{\"average\":%.6f,\"median\":%.6f,\"p95\":%.6f,\"p99\":%.6f,\"max\":%.6f}",
-                summary.average, summary.median, summary.p95, summary.p99, summary.max);
-            return std::string(text);
-        };
-        const auto frames = summary ? summary->frames : cpu_ms_.size();
-        const auto peak_effects = summary ? summary->peak_active : peak_effects_;
-        const auto counter_samples = summary ? summary->counter_records : counter_samples_;
-        const auto peak_alive = summary ? summary->peak_alive : peak_alive_;
-        const auto checksum = summary ? summary->checksum : checksum_;
-        SDL_Log("Scenario %.*s finished: %zu frames, %llu effects started, %llu dropped, peak %u active.",
-            static_cast<int>(scenario_.name.size()), scenario_.name.data(), frames,
-            static_cast<unsigned long long>(sandbox.effects.started()), static_cast<unsigned long long>(sandbox.effects.dropped()),
-            peak_effects);
-        const double mean_alive = summary ? summary->mean_alive :
-            counter_samples_ != 0 ? static_cast<double>(alive_sum_) / static_cast<double>(counter_samples_) : 0.0;
-        SDL_Log("Live particles: %zu counter samples, peak %u alive, mean %.1f, checksum %016llx.", counter_samples, peak_alive,
-            mean_alive, static_cast<unsigned long long>(checksum));
-        std::string gpu = "\"";
-        for (const char character : gpu_name) if (character != '"' && character != '\\' && static_cast<unsigned char>(character) >= 0x20) gpu += character;
-        gpu += '"';
-        const auto cpu = summary ? statistics_json(summary->cpu) : statistics(cpu_ms_);
-        const auto draw = summary ? statistics_json(summary->draw) : statistics(draw_ms_);
-        const auto compute = summary ? statistics_json(summary->compute) : statistics(compute_ms_);
-        const auto gpu_samples = summary ? summary->gpu_samples : draw_ms_.size();
-        std::string regions;
-        if (summary)
-        {
-            for (const auto& region : summary->regions)
-            {
-                const auto& values = region.statistics;
-                char entry[320];
-                std::snprintf(entry, sizeof(entry),
-                    "%s{\"label\":\"%s\",\"ms\":%.6f,\"samples\":%zu,\"median\":%.6f,\"p95\":%.6f,\"p99\":%.6f,\"worst_1_percent\":%.6f,\"max\":%.6f}",
-                    regions.empty() ? "" : ",", region.label.c_str(), values.average, region.samples, values.median, values.p95,
-                    values.p99, values.worst_1_percent, values.max);
-                regions += entry;
-            }
-        }
-        for (const auto& sum : summary ? std::vector<RegionSum>() : regions_)
-        {
-            char entry[160];
-            std::snprintf(entry, sizeof(entry), "%s{\"label\":\"%s\",\"ms\":%.6f,\"samples\":%zu}", regions.empty() ? "" : ",",
-                sum.label, sum.milliseconds / static_cast<double>(sum.samples), sum.samples);
-            regions += entry;
-        }
-        const std::string benchmark_key = benchmark_.empty() ? std::string() : "\"benchmark\":\"" + benchmark_ + "\",";
-        std::string camera = options.camera ? ",\"camera\":" + pyroclast::camera_json(*options.camera) : std::string();
-        camera += view_keys(vertical_fov_, options.borderless);
-        if (!extra.empty()) camera += "," + extra;
-        std::printf("{%s\"scenario\":\"%.*s\",\"valid\":%s,\"build\":\"%s\",\"renderer\":\"%s\",\"gpu\":%s,\"width\":%d,\"height\":%d,"
-            "\"smoke_resolution\":\"%s\",\"scene_format\":\"%s\",\"view\":\"%s\"%s,\"overlay\":%s,\"effect_lines\":%s,\"gpu_regions\":%s,"
-            "\"preset\":\"%.*s\",\"layer_mask\":%u,\"wind\":[%.2f,%.1f,%.2f],\"ticks\":%u,\"frames\":%zu,\"effects_started\":%llu,\"effects_dropped\":%llu,\"effects_evicted\":%llu,\"peak_effects\":%u,"
-            "\"particles\":{\"samples\":%zu,\"peak_alive\":%u,\"mean_alive\":%.3f,\"checksum\":\"%016llx\"},\"cpu_ms\":%s,"
-            "\"gpu_ms\":{\"samples\":%zu,\"draw\":%s,\"compute\":%s,\"regions\":[%s]}%s}\n",
-            benchmark_key.c_str(), static_cast<int>(scenario_.name.size()), scenario_.name.data(), valid_ ? "true" : "false",
-            pyroclast::build_configuration,
-            pyroclast::renderer_name(options.renderer), gpu.c_str(), width, height, pyroclast::smoke_resolution_name(options.scalability.smoke_resolution),
-            pyroclast::scene_format_name(options.scene_format), pose_name(options), camera.c_str(), overlay ? "true" : "false",
-            sandbox.views.effect_bounds ? "true" : "false", options.gpu_regions ? "true" : "false",
-            static_cast<int>(pyroclast::preset_name(options.preset).size()), pyroclast::preset_name(options.preset).data(),
-            sandbox.layer_mask, static_cast<double>(sandbox.wind.speed), static_cast<double>(sandbox.wind.direction_degrees),
-            static_cast<double>(sandbox.wind.gustiness), scenario_.duration_ticks, frames,
-            static_cast<unsigned long long>(sandbox.effects.started()), static_cast<unsigned long long>(sandbox.effects.dropped()),
-            static_cast<unsigned long long>(sandbox.effects.evicted()), peak_effects, counter_samples, peak_alive, mean_alive,
-            static_cast<unsigned long long>(checksum), cpu.c_str(), gpu_samples, draw.c_str(), compute.c_str(), regions.c_str(), tail.c_str());
-        std::fflush(stdout);
-        return valid_ ? 0 : 1;
-    }
-
-private:
-    pyroclast::Scenario scenario_;
-    std::size_t next_ = 0;
-    std::vector<double> cpu_ms_;
-    std::vector<double> draw_ms_;
-    std::vector<double> compute_ms_;
-    std::uint64_t last_gpu_sample_ = 0;
-    struct RegionSum
-    {
-        const char* label;
-        double milliseconds;
-        std::size_t samples;
-    };
-    std::vector<RegionSum> regions_;
-    std::uint32_t peak_effects_ = 0;
-    std::size_t counter_samples_ = 0;
-    std::uint32_t peak_alive_ = 0;
-    std::uint64_t alive_sum_ = 0;
-    std::uint64_t checksum_ = pyroclast::checksum_basis;
-    bool valid_ = true;
-    const char* invalid_reason_ = nullptr;
-    std::string benchmark_;
-    std::uint32_t warmup_left_ = 0;
-    std::size_t skipped_frames_ = 0;
-    float vertical_fov_ = pyroclast::Camera{}.vertical_fov;
-};
-
-std::string benchmark_tail(const ScenarioRun& run, const pyroclast::CounterLog::Summary& summary, const pyroclast::GraphicsDevice& device,
-    pyroclast::Renderer renderer, bool gpu_validation, std::optional<float> display_hz, bool focused,
-    const std::optional<pyroclast::GpuMemory>& memory_start, const std::optional<pyroclast::GpuMemory>& memory_end)
-{
-    const auto memory_json = [](const pyroclast::GpuMemory& memory) {
-        char text[192];
-        std::snprintf(text, sizeof(text), "{\"local_usage\":%llu,\"local_budget\":%llu,\"non_local_usage\":%llu,\"non_local_budget\":%llu}",
-            static_cast<unsigned long long>(memory.local_usage), static_cast<unsigned long long>(memory.local_budget),
-            static_cast<unsigned long long>(memory.non_local_usage), static_cast<unsigned long long>(memory.non_local_budget));
-        return std::string(text);
-    };
-    const auto count_json = [](const std::optional<pyroclast::CounterLog::CountSummary>& count) {
-        if (!count) return std::string("null");
-        char text[96];
-        std::snprintf(text, sizeof(text), "{\"mean\":%.3f,\"peak\":%u}", count->mean, count->peak);
-        return std::string(text);
-    };
-    const auto present = device.present_info();
-    char text[512];
-    std::string tail = ",\"schema\":1,\"invalid_reason\":";
-    tail += run.invalid_reason() ? "\"" + std::string(run.invalid_reason()) + "\"" : std::string("null");
-    std::snprintf(text, sizeof(text),
-        ",\"warmup_frames\":%u,\"skipped_frames\":%zu,\"focused\":%s,\"vsync\":false,\"gpu_validation\":%s,\"capacity\":%u,\"present_mode\":\"%.*s\",\"swapchain_images\":%u,",
-        pyroclast::benchmark_warmup_frames, run.skipped_frames(), focused ? "true" : "false", gpu_validation ? "true" : "false",
-        pyroclast::ParticleSystem::capacity,
-        static_cast<int>(present.mode.size()), present.mode.data(), present.images);
-    tail += text;
-    if (display_hz) std::snprintf(text, sizeof(text), "\"display_hz\":%.3f", static_cast<double>(*display_hz));
-    else std::snprintf(text, sizeof(text), "\"display_hz\":null");
-    tail += text;
-    tail += ",\"frame_ms\":" + statistics_json(summary.frame) + ",\"submit_ms\":" + statistics_json(summary.submit) +
-        ",\"wait_ms\":" + statistics_json(summary.wait) + ",\"present_ms\":" + statistics_json(summary.present) +
-        ",\"gpu_frame_ms\":" + statistics_json(summary.gpu_frame);
-    std::snprintf(text, sizeof(text), ",\"work\":{\"dispatches\":[%u,%u],\"passes\":[%u,%u],\"draws\":[%u,%u]}",
-        summary.work_min.dispatches, summary.work_max.dispatches, summary.work_min.passes, summary.work_max.passes,
-        summary.work_min.draws, summary.work_max.draws);
-    tail += text;
-    tail += ",\"counts\":{\"visible\":" + count_json(summary.visible) + ",\"offscreen\":" + count_json(summary.offscreen) + ",\"culled\":null}";
-    tail += ",\"gpu_memory\":";
-    if (memory_start && memory_end)
-    {
-        tail += std::string("{\"source\":\"") + (renderer == pyroclast::Renderer::d3d12 ? "dxgi" : "vk_ext_memory_budget") +
-            "\",\"start\":" + memory_json(*memory_start) + ",\"end\":" + memory_json(*memory_end) + "}";
-    }
-    else tail += "null";
-    return tail;
-}
 
 struct FlightControls
 {
@@ -406,10 +163,92 @@ pyroclast::Camera camera_pose(const std::array<float, 6>& pose)
     return camera;
 }
 
+struct EventTargets
+{
+    SDL_Window* window;
+    pyroclast::DebugUi* ui;
+    FlightControls& flight;
+    pyroclast::FrameBaseline& baseline;
+    std::optional<ScenarioRun>& scenario;
+    pyroclast::WindowSize size;
+    bool unattended;
+};
+
+bool handle_event(const SDL_Event& event, Sandbox& sandbox, EventTargets& targets)
+{
+    auto& [window, ui, flight, baseline, scenario, size, unattended] = targets;
+    const auto window_id = SDL_GetWindowID(window);
+    if (event.type == SDL_EVENT_QUIT ||
+        (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED &&
+            event.window.windowID == window_id))
+    {
+        return false;
+    }
+    if ((event.type == SDL_EVENT_MOUSE_BUTTON_UP && event.button.button == SDL_BUTTON_RIGHT) ||
+        event.type == SDL_EVENT_WINDOW_FOCUS_LOST)
+    {
+        flight.stop_looking(window);
+    }
+    if (ui && ui->process_event(event)) return true;
+    if (ui && event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_F1 && !event.key.repeat) ui->toggle_visible();
+    if (event.type == SDL_EVENT_WINDOW_MINIMIZED || event.type == SDL_EVENT_WINDOW_FOCUS_LOST ||
+        (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED && (event.window.data1 != static_cast<int>(size.width) ||
+            event.window.data2 != static_cast<int>(size.height))))
+    {
+        baseline.disable();
+        if (scenario) scenario->invalidate("the window was minimized, unfocused or resized");
+    }
+    if (unattended) return true;
+    if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.windowID == window_id && event.button.button == SDL_BUTTON_RIGHT)
+    {
+        flight.looking = SDL_SetWindowRelativeMouseMode(window, true);
+        baseline.disable();
+    }
+    if (event.type == SDL_EVENT_MOUSE_MOTION && flight.looking)
+    {
+        flight.look.x += event.motion.xrel;
+        flight.look.y += event.motion.yrel;
+    }
+    if (event.type == SDL_EVENT_MOUSE_WHEEL && event.wheel.windowID == window_id)
+    {
+        if (sandbox.pilot.controlling() && sandbox.pilot.chase().attached()) sandbox.pilot.chase().zoom(event.wheel.y);
+        else sandbox.camera.scale_speed(event.wheel.y);
+    }
+    if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.windowID == window_id &&
+        event.button.button == SDL_BUTTON_LEFT && flight.looking)
+    {
+        sandbox.spawn(pyroclast::crosshair_ray(sandbox.camera.camera()), "crosshair");
+        baseline.disable();
+    }
+    else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.windowID == window_id &&
+        event.button.button == SDL_BUTTON_LEFT)
+    {
+        int window_width = 0;
+        int window_height = 0;
+        if (SDL_GetWindowSize(window, &window_width, &window_height) && window_width > 0 && window_height > 0)
+        {
+            const float w = static_cast<float>(window_width);
+            const float h = static_cast<float>(window_height);
+            const auto ndc = pyroclast::window_to_ndc(event.button.x, event.button.y, w, h);
+            sandbox.spawn(sandbox.camera.camera().ray_through(ndc.x, ndc.y, w / h), "cursor");
+            baseline.disable();
+        }
+    }
+    if (event.type == SDL_EVENT_KEY_DOWN) baseline.disable();
+    if (event.type == SDL_EVENT_KEY_DOWN && event.key.windowID == window_id && !event.key.repeat)
+    {
+        if (const auto command = pyroclast::key_command(event.key.key, event.key.mod))
+        {
+            pyroclast::apply(*command, sandbox);
+            if (command->kind == pyroclast::UiCommand::Kind::recall_bookmark) flight.look = {};
+        }
+    }
+    return true;
+}
+
 int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sandbox& sandbox, pyroclast::DebugUi* ui,
     const pyroclast::ApplicationOptions& options, std::optional<ScenarioRun> scenario, pyroclast::CounterLog* counter_log)
 {
-    const auto window_id = SDL_GetWindowID(window);
     {
         std::array<pyroclast::Camera, pyroclast::CameraRig::bookmark_count> views;
         std::array<std::string_view, pyroclast::CameraRig::bookmark_count> names;
@@ -447,92 +286,10 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
     pyroclast::TickRate tick_rate;
     std::uint32_t last_steps = 0;
     double showcase_ms = 0;
-    pyroclast::CoverageStatistics coverage;
-    const bool automatic = options.scalability.smoke_resolution == pyroclast::SmokeResolution::automatic;
-    const bool realism = pyroclast::realism_enabled(options.layer_mask);
-    std::uint32_t peak_clusters = 0;
-    std::uint32_t peak_residual = 0;
-    std::uint32_t ghosts = 0;
-    std::deque<std::pair<std::uint32_t, std::uint32_t>> rotor_expected;
-    std::uint32_t rotor_mismatches = 0;
-    std::uint32_t peak_dust = 0;
-    std::int32_t lowest_hub_cm = std::numeric_limits<std::int32_t>::max();
-    std::pair<std::uint32_t, std::uint32_t> rotor_slot{pyroclast::never, pyroclast::never};
-    std::uint32_t peak_knots = 0;
-    std::pair<std::uint32_t, std::uint32_t> jet_slot{pyroclast::never, pyroclast::never};
-    std::uint32_t peak_jet_dust = 0;
-    const auto scalability_json = [&coverage, &sandbox, automatic, realism, &peak_clusters, &peak_residual, &ghosts, &rotor_mismatches, &peak_dust,
-                                      &lowest_hub_cm, &rotor_slot, &peak_knots, &jet_slot, &peak_jet_dust]() {
-        std::string text = coverage.json();
-        if (automatic)
-        {
-            const auto& policy = sandbox.renderer.smoke_policy();
-            text += (text.empty() ? "" : ",") + std::string("\"half_frames\":") + std::to_string(policy.half_frames()) +
-                ",\"switches\":" + std::to_string(policy.switches());
-        }
-        const auto& settings = sandbox.scalability;
-        std::string options;
-        char number[64];
-        const auto add = [&options](const std::string& entry) { options += (options.empty() ? "" : ",") + entry; };
-        if (settings.smoke_budget.count || settings.smoke_budget.limit > 0)
-        {
-            std::snprintf(number, sizeof(number), "%s:%g", settings.smoke_budget.count ? "count" : "coverage",
-                pyroclast::SmokeResolutionPolicy::limit(settings.smoke_budget));
-            add(std::string("\"smoke_budget\":\"") + number + "\"");
-        }
-        if (settings.half_light) add("\"half_light\":true");
-        if (settings.smoke_lod > 0)
-        {
-            std::snprintf(number, sizeof(number), "%g", static_cast<double>(settings.smoke_lod));
-            add(std::string("\"smoke_lod\":") + number);
-        }
-        if (settings.faint_floor > 0)
-        {
-            std::snprintf(number, sizeof(number), "%g", static_cast<double>(settings.faint_floor));
-            add(std::string("\"faint_floor\":") + number);
-        }
-        if (settings.effect_order != pyroclast::EffectOrder::origin)
-        {
-            add(std::string("\"effect_order\":\"") + pyroclast::effect_order_name(settings.effect_order) + "\"");
-        }
-        if (settings.slot_policy != pyroclast::SlotPolicy::drop_new)
-        {
-            add(std::string("\"slot_policy\":\"") + pyroclast::slot_policy_name(settings.slot_policy) + "\"");
-        }
-        if (!options.empty()) text += (text.empty() ? "" : ",") + std::string("\"scalability\":{") + options + "}";
-        if (realism)
-        {
-            char lingering[256];
-            std::snprintf(lingering, sizeof(lingering),
-                "\"realism\":{\"linger_seconds\":%u,\"humidity_percent\":%u,\"forced_fades\":%llu,\"deferred\":%llu,\"peak_clusters\":%u,"
-                "\"peak_residual\":%u,\"ghosts\":%u}",
-                sandbox.linger.linger_ticks / 60, static_cast<unsigned>(std::lround(sandbox.humidity * 100)),
-                static_cast<unsigned long long>(sandbox.effects.residual().forced_fades()),
-                static_cast<unsigned long long>(sandbox.effects.deferred()), peak_clusters, peak_residual, ghosts);
-            text += (text.empty() ? "" : ",") + std::string(lingering);
-            if (const auto& helicopter = sandbox.rotorcraft.helicopter())
-            {
-                char flight[320];
-                std::snprintf(flight, sizeof(flight),
-                    ",\"helicopter\":{\"flight\":\"%s\",\"listed\":[%u,%u],\"rotor_slot\":[%u,%u],\"peak_dust\":%u,\"lowest_hub_cm\":%d,\"mismatches\":%u}",
-                    helicopter->plan.name.c_str(), helicopter->plan.list_tick, helicopter->plan.unlist_tick, rotor_slot.first, rotor_slot.second, peak_dust,
-                    lowest_hub_cm == std::numeric_limits<std::int32_t>::max() ? -1 : lowest_hub_cm, rotor_mismatches);
-                text += flight;
-            }
-            if (const auto& jet = sandbox.jetcraft.flight())
-            {
-                char passes[256];
-                std::snprintf(passes, sizeof(passes),
-                    ",\"jet\":{\"flight\":\"%s\",\"passes\":%zu,\"peak_knots\":%u,\"jet_slot\":[%u,%u],\"peak_dust\":%u,\"mismatches\":%u}",
-                    jet->name.c_str(), jet->passes.size(), peak_knots, jet_slot.first, jet_slot.second, peak_jet_dust, rotor_mismatches);
-                text += passes;
-            }
-        }
-        return text;
-    };
-    const auto record_json = [&scalability_json, &renderer]() {
+    RunRecords records(pyroclast::realism_enabled(options.layer_mask), options.scalability.smoke_resolution == pyroclast::SmokeResolution::automatic);
+    const auto record_json = [&records, &sandbox, &renderer]() {
         const auto mode = renderer.present_info().mode;
-        auto text = scalability_json();
+        auto text = records.json(sandbox);
         return text + (text.empty() ? "" : ",") + "\"present_mode\":\"" + std::string(mode) + "\"";
     };
     baseline.set_extra(record_json);
@@ -560,76 +317,13 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
             options.capture_tick ? *options.capture_tick : *options.profile_tick);
         return 1;
     };
+    EventTargets events{window, ui, flight, baseline, scenario, window_size, unattended};
     while (true)
     {
         SDL_Event event{};
         while (SDL_PollEvent(&event))
         {
-            if (event.type == SDL_EVENT_QUIT ||
-                (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED &&
-                    event.window.windowID == window_id))
-            {
-                return finish();
-            }
-            if ((event.type == SDL_EVENT_MOUSE_BUTTON_UP && event.button.button == SDL_BUTTON_RIGHT) ||
-                event.type == SDL_EVENT_WINDOW_FOCUS_LOST)
-            {
-                flight.stop_looking(window);
-            }
-            if (ui && ui->process_event(event)) continue;
-            if (ui && event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_F1 && !event.key.repeat) ui->toggle_visible();
-            if (event.type == SDL_EVENT_WINDOW_MINIMIZED || event.type == SDL_EVENT_WINDOW_FOCUS_LOST ||
-                (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED && (event.window.data1 != static_cast<int>(window_size.width) ||
-                    event.window.data2 != static_cast<int>(window_size.height))))
-            {
-                baseline.disable();
-                if (scenario) scenario->invalidate("the window was minimized, unfocused or resized");
-            }
-            if (unattended) continue;
-            if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.windowID == window_id && event.button.button == SDL_BUTTON_RIGHT)
-            {
-                flight.looking = SDL_SetWindowRelativeMouseMode(window, true);
-                baseline.disable();
-            }
-            if (event.type == SDL_EVENT_MOUSE_MOTION && flight.looking)
-            {
-                flight.look.x += event.motion.xrel;
-                flight.look.y += event.motion.yrel;
-            }
-            if (event.type == SDL_EVENT_MOUSE_WHEEL && event.wheel.windowID == window_id)
-            {
-                if (sandbox.pilot.controlling() && sandbox.pilot.chase().attached()) sandbox.pilot.chase().zoom(event.wheel.y);
-                else sandbox.camera.scale_speed(event.wheel.y);
-            }
-            if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.windowID == window_id &&
-                event.button.button == SDL_BUTTON_LEFT && flight.looking)
-            {
-                sandbox.spawn(pyroclast::crosshair_ray(sandbox.camera.camera()), "crosshair");
-                baseline.disable();
-            }
-            else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.windowID == window_id &&
-                event.button.button == SDL_BUTTON_LEFT)
-            {
-                int window_width = 0;
-                int window_height = 0;
-                if (SDL_GetWindowSize(window, &window_width, &window_height) && window_width > 0 && window_height > 0)
-                {
-                    const float w = static_cast<float>(window_width);
-                    const float h = static_cast<float>(window_height);
-                    const auto ndc = pyroclast::window_to_ndc(event.button.x, event.button.y, w, h);
-                    sandbox.spawn(sandbox.camera.camera().ray_through(ndc.x, ndc.y, w / h), "cursor");
-                    baseline.disable();
-                }
-            }
-            if (event.type == SDL_EVENT_KEY_DOWN) baseline.disable();
-            if (event.type == SDL_EVENT_KEY_DOWN && event.key.windowID == window_id && !event.key.repeat)
-            {
-                if (const auto command = pyroclast::key_command(event.key.key, event.key.mod))
-                {
-                    pyroclast::apply(*command, sandbox);
-                    if (command->kind == pyroclast::UiCommand::Kind::recall_bookmark) flight.look = {};
-                }
-            }
+            if (!handle_event(event, sandbox, events)) return finish();
         }
 
         const bool minimized = (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED) != 0;
@@ -745,31 +439,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                         sandbox.last_step.rotor.census.alive, sandbox.last_step.rotor.emission,
                         sandbox.last_step.rotor.hub_height_cm});
                 }
-                if (result == pyroclast::RenderResult::submitted && realism)
-                {
-                    const auto& rotor = sandbox.last_step.rotor;
-                    if (rotor.exists && rotor.listed) lowest_hub_cm = std::min(lowest_hub_cm, rotor.hub_height_cm);
-                    peak_dust = std::max(peak_dust, rotor.census.alive);
-                    const auto& jet = sandbox.last_step.jet;
-                    peak_knots = std::max(peak_knots, jet.wake.count);
-                    peak_jet_dust = std::max(peak_jet_dust, jet.census.dust);
-                    if (jet.slot)
-                    {
-                        const auto& slot = sandbox.effects.slots()[*jet.slot];
-                        jet_slot = {slot.start_tick, slot.start_tick + slot.lifetime_ticks};
-                    }
-                    if (rotor.slot)
-                    {
-                        const auto& slot = sandbox.effects.slots()[*rotor.slot];
-                        rotor_slot = {slot.start_tick, slot.start_tick + slot.lifetime_ticks};
-                    }
-                    if ((rotor.slot || jet.slot) && sandbox.effects.explosions() == 0 && sandbox.renderer.particles_drawn())
-                    {
-                        const std::uint32_t rotor_records = rotor.slot ? rotor.census.alive + (rotor.listed ? pyroclast::rotor_layout::rotor_disc_records : 0u) : 0u;
-                        const std::uint32_t jet_records = jet.slot ? jet.census.dust : 0u;
-                        rotor_expected.push_back({sandbox.clock.tick(), rotor_records + jet_records});
-                    }
-                }
+                records.after_frame(sandbox, result);
                 const double wall = static_cast<double>(SDL_GetPerformanceCounter()) / static_cast<double>(SDL_GetPerformanceFrequency());
                 tick_rate.add(wall, sandbox.clock.tick());
                 if (const auto gpu = renderer.completed_gpu_timings(); gpu && gpu->sample_id != last_gpu_sample)
@@ -779,32 +449,12 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     if (counter_log) counter_log->add_timing(*gpu);
                 }
                 const auto counters = sandbox.poll_counters(renderer);
-                peak_clusters = std::max(peak_clusters, sandbox.renderer.listed_clusters());
-                if (counters)
-                {
-                    peak_residual = std::max(peak_residual, counters->residual);
-                    ghosts = std::max(ghosts, counters->ghosts);
-                    while (!rotor_expected.empty() && rotor_expected.front().first < counters->tick) rotor_expected.pop_front();
-                    if (!rotor_expected.empty() && rotor_expected.front().first == counters->tick)
-                    {
-                        const auto expected = rotor_expected.front().second;
-                        rotor_expected.pop_front();
-                        if (counters->smoke - counters->residual != expected)
-                        {
-                            if (rotor_mismatches == 0)
-                            {
-                                SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Rotor slot at tick %u: the GPU counts %u records, the CPU's twin %u.",
-                                    counters->tick, counters->smoke - counters->residual, expected);
-                            }
-                            ++rotor_mismatches;
-                        }
-                    }
-                }
+                if (counters) records.add_counters(*counters);
                 if (scenario && !frozen && counters && scenario->benchmark().empty()) scenario->count(*counters);
                 if (counter_log && counters) counter_log->add_counters(*counters);
                 if (counters && counters->measured && (!profile_tick || counters->tick == *profile_tick))
                 {
-                    coverage.add(counters->smoke_coverage, counters->light_coverage, counters->offscreen,
+                    records.coverage.add(counters->smoke_coverage, counters->light_coverage, counters->offscreen,
                         static_cast<double>(width) * static_cast<double>(height));
                 }
                 if (result == pyroclast::RenderResult::submitted)
@@ -873,23 +523,24 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                         if (scenario->benchmark().empty()) scenario->record(milliseconds, renderer.completed_gpu_timings(), sandbox);
                         if (scenario->finished(sandbox))
                         {
-                            if (rotor_mismatches != 0)
+                            if (records.mismatches() != 0)
                             {
-                                SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The rotor slot's counts differed from the CPU's twin in %u frames.", rotor_mismatches);
+                                SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The rotor slot's counts differed from the CPU's twin in %u frames.",
+                                    records.mismatches());
                             }
                             if (scenario->benchmark().empty())
                             {
                                 const int code = scenario->report(sandbox, options, renderer.adapter_name(), width, height, ui != nullptr, record_json());
-                                return rotor_mismatches != 0 ? 1 : code;
+                                return records.mismatches() != 0 ? 1 : code;
                             }
                             const auto summary = counter_log->summary();
                             if (counter_log->mismatches() != 0) scenario->invalidate("counter log samples did not match their frames");
                             if (summary.gpu_samples == 0) scenario->invalidate("no GPU timestamps arrived");
-                            const auto tail = benchmark_tail(*scenario, summary, renderer, options.renderer, options.gpu_validation, display_hz,
+                            const auto tail = pyroclast::benchmark_tail(*scenario, summary, renderer, options.renderer, options.gpu_validation, display_hz,
                                 focused, memory_start, renderer.memory_usage());
-                            const int code = scenario->report(sandbox, options, renderer.adapter_name(), width, height, ui != nullptr, scalability_json(),
+                            const int code = scenario->report(sandbox, options, renderer.adapter_name(), width, height, ui != nullptr, records.json(sandbox),
                                 &summary, tail);
-                            return rotor_mismatches != 0 ? 1 : code;
+                            return records.mismatches() != 0 ? 1 : code;
                         }
                     }
                     if (options.exit_after && ++submitted_frames >= *options.exit_after)
