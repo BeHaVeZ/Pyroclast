@@ -247,14 +247,23 @@ int main()
     device.prop_vertices = range.prop_vertex_count();
     device.boxes = range.environment().box_count();
     device.environment = &range.environment_buffer();
-    const auto submit = [](ParticleSystem& particles, double elapsed, std::uint32_t effects = 1) {
-        const auto work = particles.plan(elapsed, effects);
-        particles.commit(work);
+    const auto submit = [](const ParticleSystem& particles, SimulationClock& clock, double elapsed, std::uint32_t effects = 1) {
+        const auto work = particles.plan(clock.tick(), clock.advance(elapsed), effects);
+        clock.commit(work.steps);
         return work;
+    };
+    const auto run = [](SimulationClock& clock, double elapsed) {
+        const auto steps = clock.advance(elapsed);
+        clock.commit(steps);
+        return steps;
     };
     constexpr auto groups = ParticleSystem::groups_per_slab;
 
     ParticleSystem system;
+    SimulationClock system_clock;
+    const auto plan_now = [&](std::uint32_t effects, std::uint32_t divisor = 0, ParticleListing listing = {}) {
+        return system.plan(system_clock.tick(), system_clock.advance(0), effects, divisor, listing);
+    };
     namespace layout = particle_layout;
     constexpr std::uint32_t all_groups = realism_layout::maximum_unit_groups;
     const auto classes = effect_classes();
@@ -268,9 +277,9 @@ int main()
         uploaded = std::memcmp(&device.uploaded_classes[index], &expected, sizeof(EffectClass)) == 0;
     }
     check(uploaded, "the effect classes are uploaded once, in index order, the rest zero");
-    const auto idle = system.plan(1.0 / 60, 0);
+    const auto idle = system.plan(system_clock.tick(), system_clock.advance(1.0 / 60), 0);
     check(idle.effects == 0 && idle.steps == 1, "no active effect: nothing to simulate or draw");
-    const auto three = submit(system, 1.0 / 60, 3);
+    const auto three = submit(system, system_clock, 1.0 / 60, 3);
     const auto* pool = &system.particles();
     const auto& [simulation, scan, scatter] = three.dispatches;
     const auto* masks = simulation.bindings.write[1];
@@ -284,7 +293,7 @@ int main()
         simulation.bindings.read[0] == &range.environment_buffer() && simulation.bindings.read[1],
         "the simulation covers the active slabs, 40 groups each, by their classes, and writes their alive masks");
     const auto* class_buffer = simulation.bindings.read[1];
-    check(scan.groups[0] == 1 && scan.constants[0] == 3 * groups && scan.constants[1] == system.tick() && scan.constants[2] == 0 &&
+    check(scan.groups[0] == 1 && scan.constants[0] == 3 * groups && scan.constants[1] == system_clock.tick() && scan.constants[2] == 0 &&
         scan.bindings.read[0] == masks && scan.bindings.read[1] == class_buffer &&
         offsets && arguments && arguments->size() == layout::arguments_bytes,
         "one scan group turns the masks into offsets and arguments stamped with the tick after the steps");
@@ -295,7 +304,7 @@ int main()
         three.counters.size == layout::counters_basic_bytes, "the counter record's first 32 bytes are read back from the arguments");
     check(!scatter.bindings.read[3] && !scatter.bindings.write[1] && scatter.constants[2] == 0 && scan.constants[3] == 0,
         "by default the scatter only lists");
-    const auto measured = system.plan(0, 3, 0, {true});
+    const auto measured = plan_now(3, 0, {true});
     const auto& measuring_scan = measured.dispatches[1];
     const auto& measuring = measured.dispatches[2];
     check(device.shader_of(measuring.pipeline) == Shader::particle_scatter_measure && measuring.bindings.read[3] == pool &&
@@ -311,12 +320,12 @@ int main()
     };
     check(draws(three.particles, device.particles, 0, ParticleSystem::capacity, 1, layout::particle_arguments_offset),
         "every layer is drawn from the whole list");
-    const auto layered = system.plan(0, 3, 2);
+    const auto layered = plan_now(3, 2);
     ParticleListing thinning;
     thinning.lod_pixels = 24;
     thinning.faint_floor = 0.002f;
-    const auto thinned = system.plan(0, 3, 0, thinning);
-    const auto thinned_half = system.plan(0, 3, 2, thinning);
+    const auto thinned = plan_now(3, 0, thinning);
+    const auto thinned_half = plan_now(3, 2, thinning);
     check(device.lod_particles && device.lod_offscreen && &thinned.particles.pipeline == device.lod_particles &&
         thinned.particles.constants[4] == std::bit_cast<std::uint32_t>(24.0f) && thinned.particles.constants[5] == std::bit_cast<std::uint32_t>(0.002f) &&
         &thinned_half.offscreen_smoke.pipeline == device.lod_offscreen && thinned_half.offscreen_smoke.constants[4] == thinned.particles.constants[4] &&
@@ -324,14 +333,14 @@ int main()
         "thinning draws smoke through the LOD shader; light and the default frame keep M18's draws");
     ParticleListing counting = thinning;
     counting.measure = true;
-    const auto counted_lod = system.plan(0, 3, 0, counting);
+    const auto counted_lod = plan_now(3, 0, counting);
     check(counted_lod.dispatches[2].constants[3] == thinned.particles.constants[4] && counted_lod.dispatches[2].constants[4] ==
         thinned.particles.constants[5], "the measuring scatter counts thinned and faint particles by the same radius and floor");
-    const auto one_list = system.plan(0, 3, 2, {false, true});
+    const auto one_list = plan_now(3, 2, {false, true});
     check(one_list.dispatches[1].constants[2] == 0 && one_list.dispatches[2].constants[1] == 0 &&
         draws(one_list.offscreen_particles, device.offscreen, 0, ParticleSystem::capacity, 2, layout::particle_arguments_offset),
         "half-resolution light keeps one list and draws all of it offscreen");
-    const auto thinned_one_list = system.plan(0, 3, 2, {false, true, 24, 0.002f});
+    const auto thinned_one_list = plan_now(3, 2, {false, true, 24, 0.002f});
     check(&thinned_one_list.offscreen_particles.pipeline == device.lod_offscreen &&
         thinned_one_list.offscreen_particles.constants[4] == std::bit_cast<std::uint32_t>(24.0f) &&
         thinned_one_list.offscreen_particles.constants[5] == std::bit_cast<std::uint32_t>(0.002f) &&
@@ -365,21 +374,20 @@ int main()
     check(ParticleSystem::counters(record)->smoke_coverage[0] == 0 && ParticleSystem::counters(record)->light_coverage == 0,
         "a short record has no coverage words");
 
-    ParticleSystem timed;
-    timed.initialize(device, range.environment_buffer(), targets, classes);
+    SimulationClock timed;
     std::uint32_t ticks = 0;
-    for (int frame = 0; frame < 240; ++frame) ticks += submit(timed, 1.0 / 240).steps;
+    for (int frame = 0; frame < 240; ++frame) ticks += run(timed, 1.0 / 240);
     check(ticks == 60 && timed.tick() == 60, "240 Hz presentation still advances 60 simulation ticks per second");
-    check(submit(timed, 1.0).steps == particle_layout::maximum_simulation_steps, "catch-up work is bounded after a stall");
-    check(submit(timed, 0).steps == 0, "excess catch-up time is discarded");
-    timed.plan(1.0 / 60, 1);
-    check(submit(timed, 0).steps == 1, "a skipped submission keeps its simulation time");
+    check(run(timed, 1.0) == particle_layout::maximum_simulation_steps, "catch-up work is bounded after a stall");
+    check(run(timed, 0) == 0, "excess catch-up time is discarded");
+    timed.advance(1.0 / 60);
+    check(run(timed, 0) == 1, "a skipped submission keeps its simulation time");
     timed.toggle_pause();
     const auto before_pause = timed.tick();
-    check(submit(timed, 1.0 / 60).steps == 0 && timed.tick() == before_pause, "pause does not advance simulation");
+    check(run(timed, 1.0 / 60) == 0 && timed.tick() == before_pause, "pause does not advance simulation");
     timed.step();
-    timed.plan(1.0 / 60, 1);
-    check(timed.has_pending_steps() && submit(timed, 1.0 / 60).steps == 1 && submit(timed, 1.0 / 60).steps == 0,
+    timed.advance(1.0 / 60);
+    check(timed.has_pending_steps() && run(timed, 1.0 / 60) == 1 && run(timed, 1.0 / 60) == 0,
         "a single step survives a skipped frame and advances exactly once");
     timed.step();
     timed.discard_pending();
@@ -388,33 +396,33 @@ int main()
     timed.set_time_scale(0.25);
     const auto slow_start = timed.tick();
     ticks = 0;
-    for (int frame = 0; frame < 240; ++frame) ticks += submit(timed, 1.0 / 60).steps;
+    for (int frame = 0; frame < 240; ++frame) ticks += run(timed, 1.0 / 60);
     check(ticks == 60 && timed.tick() == slow_start + 60, "0.25x advances 60 ticks in 4 wall seconds");
     const auto capped = timed.capped_frames();
-    check(submit(timed, 1.0).steps == particle_layout::maximum_simulation_steps && submit(timed, 0).steps == 0 &&
+    check(run(timed, 1.0) == particle_layout::maximum_simulation_steps && run(timed, 0) == 0 &&
         timed.capped_frames() == capped + 1, "at 0.25x a stall is still capped at 4 steps, and the capped frame is counted");
     timed.toggle_pause();
     timed.step();
-    check(submit(timed, 1.0).steps == 1 && submit(timed, 1.0).steps == 0, "paused single steps ignore the time scale");
+    check(run(timed, 1.0) == 1 && run(timed, 1.0) == 0, "paused single steps ignore the time scale");
     timed.toggle_pause();
     timed.set_time_scale(1);
     timed.set_fixed_ticks(true);
-    check(submit(timed, 0).steps == 1 && submit(timed, 5.0).steps == 1, "scripted runs advance one tick per frame whatever the elapsed time");
+    check(run(timed, 0) == 1 && run(timed, 5.0) == 1, "scripted runs advance one tick per frame whatever the elapsed time");
     timed.set_time_scale(0.25);
-    check(submit(timed, 1.0 / 60).steps == 1, "scripted runs ignore the time scale");
+    check(run(timed, 1.0 / 60) == 1, "scripted runs ignore the time scale");
     timed.set_time_scale(1);
 
-    ParticleSystem profile;
-    profile.initialize(device, range.environment_buffer(), targets, classes);
+    SimulationClock profile;
     profile.prepare_profile(180);
     profile.set_time_scale(0.25);
-    profile.plan(1, 1);
+    profile.advance(1);
     check(profile.has_pending_steps(), "skipped profile preparation retains ticks");
-    for (int tick = 0; tick < 180; ++tick) check(submit(profile, 1).steps == 1, "profile preparation advances one fixed tick");
+    for (int tick = 0; tick < 180; ++tick) check(run(profile, 1) == 1, "profile preparation advances one fixed tick");
     check(!profile.has_pending_steps() && profile.tick() == 180, "profile reaches its target tick exactly");
-    check(submit(profile, 1).steps == 0, "profile state stays frozen regardless of elapsed time");
+    check(run(profile, 1) == 0, "profile state stays frozen regardless of elapsed time");
 
     ParticleSystem rendered;
+    SimulationClock rendered_clock;
     rendered.initialize(device, range.environment_buffer(), targets, classes);
     ExplosionSystem effects(ParticleSystem::effect_slots);
     const auto camera = range.view(RangeView::overview);
@@ -423,12 +431,12 @@ int main()
         device.depth_cleared_far && device.half_target && device.half_target->description().divisor == 2 && device.composite &&
         device.present && device.lines,
         "the renderer creates a scene, a depth target cleared to the far end, and the half-size smoke target and its composite");
-    check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::submitted &&
+    check(full_resolution.render(device, rendered, rendered_clock, effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::submitted &&
         device.valid_frame && device.range_only && device.dispatches == 0 && !device.readback.source, "without effects only the range is drawn");
     const auto group = group_events(range.terrain(), 10);
     for (const auto& event : group) effects.submit(event);
-    const auto start_tick = rendered.tick();
-    check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::submitted &&
+    const auto start_tick = rendered_clock.tick();
+    check(full_resolution.render(device, rendered, rendered_clock, effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::submitted &&
         device.valid_frame && device.full_resolution_passes && device.dispatches == 3 && device.dispatch_groups == 10 * groups &&
         device.readback.source && device.readback.offset == layout::counters_offset,
         "ten effects: simulation, scan and scatter over ten slabs, one indirect particle draw and the counters read back");
@@ -441,35 +449,35 @@ int main()
     }
     check(table, "the frame constants carry every started effect's slot");
     const auto& drawn = device.constants;
-    const auto expected_wind = wind_velocity(WindSettings{}, rendered.tick(), true);
+    const auto expected_wind = wind_velocity(WindSettings{}, rendered_clock.tick(), true);
     const float3 right = camera.right();
     const float3 up = camera.up();
     const float3 towards = cross(right, up);
     const auto rebuild = [&](const float4& billboard) { return right * billboard.x + up * billboard.y + towards * billboard.z; };
     const float3 sun{drawn.sun_direction.x, drawn.sun_direction.y, drawn.sun_direction.z};
     const auto near = [](float3 a, float3 b) { return std::abs(a.x - b.x) < 1e-5f && std::abs(a.y - b.y) < 1e-5f && std::abs(a.z - b.z) < 1e-5f; };
-    check(drawn.clock[0] == rendered.tick() && drawn.wind.x == expected_wind.x && drawn.wind.z == expected_wind.z &&
+    check(drawn.clock[0] == rendered_clock.tick() && drawn.wind.x == expected_wind.x && drawn.wind.z == expected_wind.z &&
         near(rebuild(drawn.sun_billboard), sun) && near(rebuild(drawn.up_billboard), {0, 1, 0}) &&
         dot(towards, camera.position - (camera.position + camera.forward())) > 0,
         "the frame carries its tick, the gusting wind, and the sun and up directions in billboard space");
     ExplosionRenderer::FrameOptions lined{};
     lined.views = {true, true, false, false};
     device.expect_boxes = true;
-    check(device.showcase_lines && full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, lined) ==
+    check(device.showcase_lines && full_resolution.render(device, rendered, rendered_clock, effects, range, camera, 1280, 720, 1.0 / 60, lined) ==
         RenderResult::submitted && device.valid_frame && device.lined_passes,
         "effect bounds are drawn before the particles, the collision boxes after the sky");
     auto hidden = lined;
     hidden.layer_mask &= ~(1u << layout::props_mask_bit);
-    check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, hidden) == RenderResult::submitted &&
+    check(full_resolution.render(device, rendered, rendered_clock, effects, range, camera, 1280, 720, 1.0 / 60, hidden) == RenderResult::submitted &&
         device.valid_frame && device.lined_passes, "hidden props: the range without them");
     ExplosionRenderer::FrameOptions boxes_only{};
     boxes_only.views.collision_boxes = true;
-    check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, boxes_only) == RenderResult::submitted &&
+    check(full_resolution.render(device, rendered, rendered_clock, effects, range, camera, 1280, 720, 1.0 / 60, boxes_only) == RenderResult::submitted &&
         device.valid_frame && device.full_resolution_passes, "the collision boxes alone add only their draw");
     device.expect_boxes = false;
     ExplosionRenderer::FrameOptions bounds_only{};
     bounds_only.views.effect_bounds = true;
-    check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, bounds_only) == RenderResult::submitted &&
+    check(full_resolution.render(device, rendered, rendered_clock, effects, range, camera, 1280, 720, 1.0 / 60, bounds_only) == RenderResult::submitted &&
         device.valid_frame && device.lined_passes, "the effect bounds alone add only their draw");
     std::vector<ShowcaseMark> marks(2);
     marks[0].segments = 32;
@@ -480,28 +488,29 @@ int main()
     marked.views.spawn_regions = true;
     marked.marks = marks;
     device.expect_marks = marks;
-    check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, marked) == RenderResult::submitted &&
+    check(full_resolution.render(device, rendered, rendered_clock, effects, range, camera, 1280, 720, 1.0 / 60, marked) == RenderResult::submitted &&
         device.valid_frame && device.full_resolution_passes, "each showcase mark is one line draw after the sky, over the environment");
     marked.layer_mask &= ~(1u << layout::props_mask_bit);
-    check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, marked) == RenderResult::submitted &&
+    check(full_resolution.render(device, rendered, rendered_clock, effects, range, camera, 1280, 720, 1.0 / 60, marked) == RenderResult::submitted &&
         device.valid_frame && device.full_resolution_passes, "hidden props keep the marks");
     device.expect_marks.clear();
     device.result = RenderResult::skipped;
-    const auto before_skip = rendered.tick();
-    check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::skipped &&
-        rendered.tick() == before_skip, "a skipped frame keeps its simulation time");
+    const auto before_skip = rendered_clock.tick();
+    check(full_resolution.render(device, rendered, rendered_clock, effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::skipped &&
+        rendered_clock.tick() == before_skip, "a skipped frame keeps its simulation time");
     device.result = RenderResult::submitted;
-    rendered.set_fixed_ticks(true);
-    for (std::uint32_t tick = rendered.tick(); tick < start_tick + effect_ticks(ExplosionPreset::small_he, SurfaceType::dirt); ++tick)
-        full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 0, {});
+    rendered_clock.set_fixed_ticks(true);
+    for (std::uint32_t tick = rendered_clock.tick(); tick < start_tick + effect_ticks(ExplosionPreset::small_he, SurfaceType::dirt); ++tick)
+        full_resolution.render(device, rendered, rendered_clock, effects, range, camera, 1280, 720, 0, {});
     check(effects.active().size() == 10, "effects live until their last particle has died");
-    full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 0, {});
+    full_resolution.render(device, rendered, rendered_clock, effects, range, camera, 1280, 720, 0, {});
     check(effects.active().empty() && device.range_only && device.dispatches == 0, "then they retire and nothing is simulated");
 
     TestDevice ordered_device;
     TestRange ordered_range;
     ordered_range.initialize(ordered_device, hdr);
     ParticleSystem ordered_particles;
+    SimulationClock ordered_clock;
     ordered_particles.initialize(ordered_device, ordered_range.environment_buffer(), targets, classes);
     ExplosionSystem ordered_effects(ParticleSystem::effect_slots);
     for (const auto& event : group_events(ordered_range.terrain(), 100)) ordered_effects.submit(event);
@@ -509,7 +518,7 @@ int main()
     ordered.initialize(ordered_device, hdr);
     auto oblique = camera;
     oblique.position = {-70, 30, 20};
-    check(ordered.render(ordered_device, ordered_particles, ordered_effects, ordered_range, oblique, 1280, 720, 0, {}) == RenderResult::submitted &&
+    check(ordered.render(ordered_device, ordered_particles, ordered_clock, ordered_effects, ordered_range, oblique, 1280, 720, 0, {}) == RenderResult::submitted &&
         ordered_device.valid_frame && ordered_device.dispatch_groups == 100 * groups, "a 100-effect frame is valid");
     const auto slots = ordered_effects.slots();
     const auto distance = [&](std::uint32_t slot) {
@@ -531,7 +540,7 @@ int main()
     {
         ExplosionRenderer::FrameOptions keyed{};
         keyed.scalability.effect_order = key;
-        ordered.render(ordered_device, ordered_particles, ordered_effects, ordered_range, oblique, 1280, 720, 0, keyed);
+        ordered.render(ordered_device, ordered_particles, ordered_clock, ordered_effects, ordered_range, oblique, 1280, 720, 0, keyed);
         std::vector<bool> listed(ParticleSystem::effect_slots);
         bool permutation = true;
         for (std::uint32_t rank = 0; rank < 100; ++rank)
@@ -551,35 +560,35 @@ int main()
         "the half-size target holds smoke in its format");
     ExplosionRenderer::FrameOptions half_options{};
     half_options.scalability.smoke_resolution = SmokeResolution::half;
-    check(half_resolution.render(device, rendered, half_effects, range, camera, 1280, 720, 1.0 / 60, half_options) == RenderResult::submitted &&
+    check(half_resolution.render(device, rendered, rendered_clock, half_effects, range, camera, 1280, 720, 1.0 / 60, half_options) == RenderResult::submitted &&
         device.valid_frame && device.half_resolution_passes && half_resolution.half_smoke(),
         "half resolution draws smoke into the target, then composites it under full-resolution light");
-    check(half_resolution.render(device, rendered, half_effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::submitted &&
+    check(half_resolution.render(device, rendered, rendered_clock, half_effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::submitted &&
         device.valid_frame && device.full_resolution_passes && !half_resolution.half_smoke(), "the next frame may draw at full resolution");
     half_options.scalability.half_light = true;
-    check(half_resolution.render(device, rendered, half_effects, range, camera, 1280, 720, 1.0 / 60, half_options) == RenderResult::submitted &&
+    check(half_resolution.render(device, rendered, rendered_clock, half_effects, range, camera, 1280, 720, 1.0 / 60, half_options) == RenderResult::submitted &&
         device.valid_frame && device.half_light_passes, "with half-resolution light the target holds every translucent particle");
     half_options.scalability.half_light = false;
-    half_resolution.render(device, rendered, half_effects, range, camera, 1280, 720, 1.0 / 60, {});
+    half_resolution.render(device, rendered, rendered_clock, half_effects, range, camera, 1280, 720, 1.0 / 60, {});
     ExplosionRenderer::FrameOptions automatic{};
     automatic.scalability.smoke_resolution = SmokeResolution::automatic;
     automatic.scalability.smoke_budget = {false, 100};
-    check(half_resolution.render(device, rendered, half_effects, range, camera, 1280, 720, 1.0 / 60, automatic) == RenderResult::submitted &&
+    check(half_resolution.render(device, rendered, rendered_clock, half_effects, range, camera, 1280, 720, 1.0 / 60, automatic) == RenderResult::submitted &&
         device.valid_frame && device.full_resolution_passes && device.readback.size == layout::counters_bytes,
         "automatic without a record draws at full resolution and measures");
     ParticleCounters heavy_record;
     heavy_record.smoke_coverage[3] = 100 * 1280 * 720 / layout::coverage_unit_pixels;
     heavy_record.measured = true;
     automatic.counters = heavy_record;
-    check(half_resolution.render(device, rendered, half_effects, range, camera, 1280, 720, 1.0 / 60, automatic) == RenderResult::submitted &&
+    check(half_resolution.render(device, rendered, rendered_clock, half_effects, range, camera, 1280, 720, 1.0 / 60, automatic) == RenderResult::submitted &&
         device.valid_frame && device.half_resolution_passes && half_resolution.half_smoke() && half_resolution.smoke_policy().switches() == 1,
         "automatic switches to half resolution at the budget");
     ExplosionRenderer::FrameOptions fixed_full{};
     fixed_full.counters = heavy_record;
-    half_resolution.render(device, rendered, half_effects, range, camera, 1280, 720, 1.0 / 60, fixed_full);
+    half_resolution.render(device, rendered, rendered_clock, half_effects, range, camera, 1280, 720, 1.0 / 60, fixed_full);
     ParticleCounters unread_record;
     automatic.counters = unread_record;
-    check(half_resolution.render(device, rendered, half_effects, range, camera, 1280, 720, 1.0 / 60, automatic) == RenderResult::submitted &&
+    check(half_resolution.render(device, rendered, rendered_clock, half_effects, range, camera, 1280, 720, 1.0 / 60, automatic) == RenderResult::submitted &&
         device.full_resolution_passes && !half_resolution.half_smoke() && half_resolution.smoke_policy().switches() == 1,
         "back in automatic, an unmeasured record keeps the full resolution just drawn");
 
@@ -648,13 +657,13 @@ int main()
         check(!sandbox.showcase.bombardment, "toggle_bombardment stops a running bombardment");
 
         apply(command(Kind::toggle_slow_motion), sandbox);
-        const bool slow = sandbox.particles.time_scale() == 0.25;
+        const bool slow = sandbox.clock.time_scale() == 0.25;
         apply(command(Kind::toggle_slow_motion), sandbox);
-        check(slow && sandbox.particles.time_scale() == 1, "toggle_slow_motion switches between 0.25x and 1x");
+        check(slow && sandbox.clock.time_scale() == 1, "toggle_slow_motion switches between 0.25x and 1x");
         apply(command(Kind::toggle_pause), sandbox);
-        const bool paused = sandbox.particles.paused();
+        const bool paused = sandbox.clock.paused();
         apply(command(Kind::toggle_pause), sandbox);
-        check(paused && !sandbox.particles.paused(), "toggle_pause pauses and resumes");
+        check(paused && !sandbox.clock.paused(), "toggle_pause pauses and resumes");
 
         apply(command(Kind::toggle_walk), sandbox);
         const bool walking = sandbox.camera.mode() == CameraMode::walk;
@@ -746,8 +755,9 @@ int main()
         realism_device.boxes = realism_range.environment().box_count();
         realism_device.environment = &realism_range.environment_buffer();
         ParticleSystem lingering;
+        SimulationClock lingering_clock;
         lingering.initialize(realism_device, realism_range.environment_buffer(), targets, classes);
-        lingering.set_fixed_ticks(true);
+        lingering_clock.set_fixed_ticks(true);
         ExplosionSystem lingering_effects(ParticleSystem::effect_slots);
         ExplosionRenderer realism_renderer;
         realism_renderer.initialize(realism_device, hdr);
@@ -755,7 +765,7 @@ int main()
         options.layer_mask = realism_layout::realism_full_mask;
         for (const auto& event : group_events(realism_range.terrain(), 1, ExplosionPreset::artillery_he)) lingering_effects.submit(event);
         const auto render = [&]() {
-            return realism_renderer.render(realism_device, lingering, lingering_effects, realism_range, camera, 1280, 720, 1.0 / 60, options);
+            return realism_renderer.render(realism_device, lingering, lingering_clock, lingering_effects, realism_range, camera, 1280, 720, 1.0 / 60, options);
         };
         const std::vector<std::optional<Shader>> realism_dispatches{Shader::particle_realism_simulation, Shader::particle_scan_units,
             Shader::particle_scatter_units};
@@ -770,14 +780,14 @@ int main()
             realism_device.constants.effect_residual[0][1] == slot.residual->graduation_tick, "the slot's link to its cluster is in the constants");
         const auto graduation = slot.residual->graduation_tick;
         const auto natural_end = lingering_effects.residual().find(*slot.residual)->natural_end;
-        while (lingering.tick() < graduation) render();
+        while (lingering_clock.tick() < graduation) render();
         check(render() == RenderResult::submitted && lingering_effects.active().empty() && realism_device.valid_frame &&
             realism_device.dispatches == 3 && realism_device.dispatch_groups == 3 &&
             realism_device.constants.unit_state == std::array<std::uint32_t, 4>{1, 3, 1, 0} &&
             realism_device.constants.unit_order[0][0] == realism_layout::unit_cluster_first + lingering_effects.residual().clusters()[0].slot &&
             realism_renderer.particles_drawn() && realism_renderer.listed_clusters() == 1,
             "after its slab retires, the effect's cluster alone is simulated and drawn");
-        while (lingering.tick() < natural_end) render();
+        while (lingering_clock.tick() < natural_end) render();
         check(render() == RenderResult::submitted && realism_device.dispatches == 0 && realism_device.range_only &&
             !realism_renderer.particles_drawn() && lingering_effects.residual().clusters().empty(),
             "once its last record has died, nothing is simulated");
@@ -825,7 +835,7 @@ int main()
             check(barrage.residual().forced_fades() > 0 && lowest == 1 && highest > 2 && highest <= 3 && largest_step < 0.01f && last == 1,
                 "the pall's shadow power grows with the pall and moves smoothly as clusters come, go and are forced out");
         }
-        check(full_resolution.render(device, rendered, effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::submitted &&
+        check(full_resolution.render(device, rendered, rendered_clock, effects, range, camera, 1280, 720, 1.0 / 60, {}) == RenderResult::submitted &&
             device.constant_bytes == legacy_frame_constant_bytes, "a legacy frame uploads exactly M21's frame constants");
     }
 

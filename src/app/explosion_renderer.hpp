@@ -9,6 +9,7 @@
 #include "smoke_resolution_policy.hpp"
 #include "test_range.hpp"
 #include "../simulation/blast_front.hpp"
+#include "../simulation/simulation_clock.hpp"
 #include "../simulation/explosion_system.hpp"
 #include "../simulation/particle_system.hpp"
 #include "../simulation/wind.hpp"
@@ -36,7 +37,8 @@ public:
         Rotorcraft* rotorcraft = nullptr;
         Jetcraft* jetcraft = nullptr;
     };
-    RenderResult render(GraphicsDevice& device, ParticleSystem& particles, ExplosionSystem& effects, const TestRange& range,
+    RenderResult render(GraphicsDevice& device, const ParticleSystem& particles, SimulationClock& clock, ExplosionSystem& effects,
+        const TestRange& range,
         const Camera& camera, int width, int height, double elapsed_seconds, const FrameOptions& options);
     std::uint32_t lights() const { return lights_; }
     bool half_smoke() const { return half_smoke_; }

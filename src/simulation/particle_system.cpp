@@ -24,52 +24,51 @@ bool ParticleSystem::initialize(GraphicsDevice& device, const Buffer& environmen
     std::copy(classes.begin(), classes.end(), table.begin());
     classes_ = device.create_buffer(static_cast<std::uint32_t>(table.size() * sizeof(EffectClass)), std::as_bytes(std::span(table)));
     arguments_ = device.create_buffer(particle_layout::arguments_bytes, {});
-    graphics_ = device.create_graphics_pipeline(
-        {Shader::particle_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha, DepthMode::test, targets.scene});
-    offscreen_graphics_ = device.create_graphics_pipeline(
-        {Shader::particle_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha, DepthMode::none, targets.offscreen});
-    lod_graphics_ = device.create_graphics_pipeline(
-        {Shader::particle_lod_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha, DepthMode::test, targets.scene});
-    lod_offscreen_graphics_ = device.create_graphics_pipeline(
-        {Shader::particle_lod_vertex, Shader::particle_pixel, BlendMode::premultiplied_alpha, DepthMode::none, targets.offscreen});
-    debris_graphics_ = device.create_graphics_pipeline(
-        {Shader::debris_vertex, Shader::debris_pixel, BlendMode::opaque, DepthMode::test_write, targets.scene});
-    compute_ = device.create_compute_pipeline(Shader::particle_simulation);
-    scan_ = device.create_compute_pipeline(Shader::particle_scan);
-    scatter_ = device.create_compute_pipeline(Shader::particle_scatter);
-    scatter_measure_ = device.create_compute_pipeline(Shader::particle_scatter_measure);
-    realism_compute_ = device.create_compute_pipeline(Shader::particle_realism_simulation);
-    units_scan_ = device.create_compute_pipeline(Shader::particle_scan_units);
-    units_scatter_ = device.create_compute_pipeline(Shader::particle_scatter_units);
-    units_scatter_measure_ = device.create_compute_pipeline(Shader::particle_scatter_units_measure);
-    realism_graphics_ = device.create_graphics_pipeline(
-        {Shader::particle_realism_vertex, Shader::particle_realism_pixel, BlendMode::premultiplied_alpha, DepthMode::test, targets.scene});
-    realism_offscreen_graphics_ = device.create_graphics_pipeline(
-        {Shader::particle_realism_vertex, Shader::particle_realism_pixel, BlendMode::premultiplied_alpha, DepthMode::none, targets.offscreen});
-    realism_lod_graphics_ = device.create_graphics_pipeline(
-        {Shader::particle_realism_lod_vertex, Shader::particle_realism_pixel, BlendMode::premultiplied_alpha, DepthMode::test, targets.scene});
-    realism_lod_offscreen_graphics_ = device.create_graphics_pipeline(
-        {Shader::particle_realism_lod_vertex, Shader::particle_realism_pixel, BlendMode::premultiplied_alpha, DepthMode::none, targets.offscreen});
-    rotor_compute_ = device.create_compute_pipeline(Shader::particle_rotor_simulation);
-    rotor_scatter_measure_ = device.create_compute_pipeline(Shader::particle_scatter_rotor_measure);
-    rotor_graphics_ = device.create_graphics_pipeline(
-        {Shader::particle_rotor_vertex, Shader::particle_rotor_pixel, BlendMode::premultiplied_alpha, DepthMode::test, targets.scene});
-    rotor_offscreen_graphics_ = device.create_graphics_pipeline(
-        {Shader::particle_rotor_vertex, Shader::particle_rotor_pixel, BlendMode::premultiplied_alpha, DepthMode::none, targets.offscreen});
-    rotor_lod_graphics_ = device.create_graphics_pipeline(
-        {Shader::particle_rotor_lod_vertex, Shader::particle_rotor_pixel, BlendMode::premultiplied_alpha, DepthMode::test, targets.scene});
-    rotor_lod_offscreen_graphics_ = device.create_graphics_pipeline(
-        {Shader::particle_rotor_lod_vertex, Shader::particle_rotor_pixel, BlendMode::premultiplied_alpha, DepthMode::none, targets.offscreen});
-    if (!rotor_compute_ || !rotor_scatter_measure_ || !rotor_graphics_ || !rotor_offscreen_graphics_ || !rotor_lod_graphics_ ||
-        !rotor_lod_offscreen_graphics_)
+    if (!particles_ || !alive_masks_ || !offsets_ || !alive_ || !arguments_ || !classes_)
     {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Particle buffers could not be created.");
         return false;
     }
-    if (!particles_ || !alive_masks_ || !offsets_ || !alive_ || !arguments_ || !classes_ || !graphics_ || !offscreen_graphics_ ||
-        !debris_graphics_ || !lod_graphics_ || !lod_offscreen_graphics_ || !compute_ || !scan_ || !scatter_ || !scatter_measure_ ||
-        !realism_compute_ || !units_scan_ || !units_scatter_ || !units_scatter_measure_ || !realism_graphics_ || !realism_offscreen_graphics_ ||
-        !realism_lod_graphics_ || !realism_lod_offscreen_graphics_)
+    struct ModelShaders
     {
+        Shader vertex, lod_vertex, pixel, simulation, scan, scatter, scatter_measure;
+    };
+    constexpr std::array<ModelShaders, particle_model_count> shaders{{
+        {Shader::particle_vertex, Shader::particle_lod_vertex, Shader::particle_pixel, Shader::particle_simulation, Shader::particle_scan,
+            Shader::particle_scatter, Shader::particle_scatter_measure},
+        {Shader::particle_realism_vertex, Shader::particle_realism_lod_vertex, Shader::particle_realism_pixel,
+            Shader::particle_realism_simulation, Shader::particle_scan_units, Shader::particle_scatter_units, Shader::particle_scatter_units_measure},
+        {Shader::particle_rotor_vertex, Shader::particle_rotor_lod_vertex, Shader::particle_rotor_pixel, Shader::particle_rotor_simulation,
+            Shader::particle_scan_units, Shader::particle_scatter_units, Shader::particle_scatter_rotor_measure},
+    }};
+    constexpr const char* model_names[] = {"legacy", "realism", "rotor"};
+    const auto translucent = [&device](Shader vertex, Shader pixel, DepthMode depth, TargetFormat target) {
+        return device.create_graphics_pipeline({vertex, pixel, BlendMode::premultiplied_alpha, depth, target});
+    };
+    for (std::size_t model = 0; model < particle_model_count; ++model)
+    {
+        const auto& shader = shaders[model];
+        auto& draw = draws_[model];
+        draw.scene = translucent(shader.vertex, shader.pixel, DepthMode::test, targets.scene);
+        draw.offscreen = translucent(shader.vertex, shader.pixel, DepthMode::none, targets.offscreen);
+        draw.lod_scene = translucent(shader.lod_vertex, shader.pixel, DepthMode::test, targets.scene);
+        draw.lod_offscreen = translucent(shader.lod_vertex, shader.pixel, DepthMode::none, targets.offscreen);
+        auto& compute = computes_[model];
+        compute.simulation = device.create_compute_pipeline(shader.simulation);
+        compute.scan = device.create_compute_pipeline(shader.scan);
+        compute.scatter = device.create_compute_pipeline(shader.scatter);
+        compute.scatter_measure = device.create_compute_pipeline(shader.scatter_measure);
+        if (!draw.scene || !draw.offscreen || !draw.lod_scene || !draw.lod_offscreen || !compute.simulation || !compute.scan ||
+            !compute.scatter || !compute.scatter_measure)
+        {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The %s particle pipelines could not be created.", model_names[model]);
+            return false;
+        }
+    }
+    debris_ = device.create_graphics_pipeline({Shader::debris_vertex, Shader::debris_pixel, BlendMode::opaque, DepthMode::test_write, targets.scene});
+    if (!debris_)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The debris pipeline could not be created.");
         return false;
     }
     SDL_Log("Particle pool ready: %u effect slots of %u particles and a residual pool of %u, %u bytes, fixed step=1/60 s.", effect_slots,
@@ -77,33 +76,12 @@ bool ParticleSystem::initialize(GraphicsDevice& device, const Buffer& environmen
     return true;
 }
 
-namespace
+ParticleWork ParticleSystem::plan(std::uint32_t tick, std::uint32_t steps, std::uint32_t active_effects, std::uint32_t offscreen_divisor,
+    ParticleListing listing, const FrameUnits* units) const
 {
-constexpr double fixed_step = 1.0 / 60.0;
-}
-
-std::uint32_t ParticleSystem::upcoming_steps(double elapsed_seconds) const
-{
-    if (paused_) return std::min(pending_steps_, 1u);
-    if (fixed_ticks_) return 1;
-    const double cap = particle_layout::maximum_simulation_steps * fixed_step;
-    return static_cast<std::uint32_t>(std::floor(std::min(accumulator_ + elapsed_seconds * time_scale_, cap) / fixed_step));
-}
-
-ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_effects, std::uint32_t offscreen_divisor,
-    ParticleListing listing, const FrameUnits* units)
-{
-    assert(particles_ && environment_ && graphics_ && offscreen_graphics_ && debris_graphics_ && compute_ && scan_ && scatter_);
-    assert(std::isfinite(elapsed_seconds) && elapsed_seconds >= 0);
+    assert(particles_ && environment_ && debris_);
+    assert(steps <= particle_layout::maximum_simulation_steps);
     assert(active_effects <= effect_slots);
-    const auto steps = upcoming_steps(elapsed_seconds);
-    if (!paused_ && !fixed_ticks_)
-    {
-        const double wanted = accumulator_ + elapsed_seconds * time_scale_;
-        const double cap = particle_layout::maximum_simulation_steps * fixed_step;
-        if (wanted > cap) ++capped_frames_;
-        accumulator_ = std::min(wanted, cap);
-    }
     Bindings simulation{};
     simulation.read[0] = environment_;
     simulation.read[1] = classes_.get();
@@ -135,9 +113,9 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_e
     constexpr auto light_first = particle_layout::light_list_first;
     const std::uint32_t records = units ? pool_records : capacity;
     const std::uint32_t counted = units ? units->units : active_effects;
-    const DrawConstants parameters{steps, counted, records, tick_};
+    const DrawConstants parameters{steps, counted, records, tick};
     const std::uint32_t flags = listing.measure ? particle_layout::listing_measure : 0u;
-    const DrawConstants scan_parameters{dispatched, tick_ + steps, layered ? 1u : 0u, flags};
+    const DrawConstants scan_parameters{dispatched, tick + steps, layered ? 1u : 0u, flags};
     const auto lod_pixels = std::bit_cast<std::uint32_t>(listing.lod_pixels);
     const auto faint_floor = std::bit_cast<std::uint32_t>(listing.faint_floor);
     const DrawConstants scatter_parameters = listing.measure ? DrawConstants{counted, layered ? 1u : 0u, records, lod_pixels, faint_floor} :
@@ -150,25 +128,22 @@ ParticleWork ParticleSystem::plan(double elapsed_seconds, std::uint32_t active_e
     const DrawConstants every_layer = lod ? DrawConstants{records, 0, records, std::max(offscreen_divisor, 1u), lod_pixels, faint_floor} :
         DrawConstants{records, 0, records, std::max(offscreen_divisor, 1u)};
     const DrawConstants debris_list{capacity, particle_layout::debris_list_first, capacity};
-    const bool rotor = units && units->rotor;
-    const auto& realism_pipeline = rotor ? *rotor_graphics_ : *realism_graphics_;
-    const auto& realism_lod_pipeline = rotor ? *rotor_lod_graphics_ : *realism_lod_graphics_;
-    const auto& realism_offscreen = rotor ? *rotor_offscreen_graphics_ : *realism_offscreen_graphics_;
-    const auto& realism_lod_offscreen = rotor ? *rotor_lod_offscreen_graphics_ : *realism_lod_offscreen_graphics_;
-    const auto& particle_pipeline = units ? (lod ? realism_lod_pipeline : realism_pipeline) : (lod ? *lod_graphics_ : *graphics_);
-    const auto& offscreen_pipeline = units ? (lod ? realism_lod_offscreen : realism_offscreen) : (lod ? *lod_offscreen_graphics_ : *offscreen_graphics_);
-    const auto& units_measure = rotor ? *rotor_scatter_measure_ : *units_scatter_measure_;
-    const auto& scatter_pipeline = units ? (listing.measure ? units_measure : *units_scatter_) : (listing.measure ? *scatter_measure_ : *scatter_);
+    const auto model = !units ? ParticleModel::legacy : units->rotor ? ParticleModel::rotor : ParticleModel::realism;
+    const auto& draw = draws_[static_cast<std::size_t>(model)];
+    const auto& compute = computes_[static_cast<std::size_t>(model)];
+    const auto& particle_pipeline = lod ? *draw.lod_scene : *draw.scene;
+    const auto& offscreen_pipeline = lod ? *draw.lod_offscreen : *draw.offscreen;
+    const auto& scatter_pipeline = listing.measure ? *compute.scatter_measure : *compute.scatter;
     const bool whole_record = listing.measure || units;
     return {
-        {{{units ? (rotor ? *rotor_compute_ : *realism_compute_) : *compute_, simulation, parameters, {groups, 1, 1}, "Particle simulation"},
-            {units ? *units_scan_ : *scan_, scan, scan_parameters, {1, 1, 1}, "Particle scan"},
+        {{{*compute.simulation, simulation, parameters, {groups, 1, 1}, "Particle simulation"},
+            {*compute.scan, scan, scan_parameters, {1, 1, 1}, "Particle scan"},
             {scatter_pipeline, scatter, scatter_parameters, {groups, 1, 1}, "Particle scatter"}}},
         {particle_pipeline, drawing, both_layers, 0, 0, "Particles", arguments_.get(), particle_layout::particle_arguments_offset},
         {offscreen_pipeline, drawing, smoke_layer, 0, 0, "Smoke", arguments_.get(), particle_layout::smoke_arguments_offset},
-        {units ? realism_pipeline : *graphics_, drawing, light_layer, 0, 0, "Light", arguments_.get(), particle_layout::light_arguments_offset},
+        {*draw.scene, drawing, light_layer, 0, 0, "Light", arguments_.get(), particle_layout::light_arguments_offset},
         {offscreen_pipeline, drawing, every_layer, 0, 0, "Smoke and light", arguments_.get(), particle_layout::particle_arguments_offset},
-        {*debris_graphics_, drawing, debris_list, 0, 0, "Debris", arguments_.get(), particle_layout::debris_arguments_offset},
+        {*debris_, drawing, debris_list, 0, 0, "Debris", arguments_.get(), particle_layout::debris_arguments_offset},
         {arguments_.get(), particle_layout::counters_offset, whole_record ? particle_layout::counters_bytes : particle_layout::counters_basic_bytes},
         steps, active_effects, units ? units->units : 0};
 }
@@ -189,49 +164,5 @@ std::optional<ParticleCounters> ParticleSystem::counters(const ReadbackData& dat
     counters.measured = data.size == particle_layout::counters_bytes &&
         (counters.flags == 0 || (counters.flags & realism_layout::counter_flag_measured) != 0);
     return counters;
-}
-
-void ParticleSystem::commit(const ParticleWork& work)
-{
-    tick_ += work.steps;
-    if (paused_) pending_steps_ -= std::min(pending_steps_, work.steps);
-    else if (!fixed_ticks_) accumulator_ = std::max(0.0, accumulator_ - work.steps * fixed_step);
-}
-
-void ParticleSystem::prepare_profile(std::uint32_t tick)
-{
-    assert(particles_ && tick_ == 0);
-    paused_ = true;
-    accumulator_ = 0;
-    pending_steps_ = tick;
-}
-
-void ParticleSystem::discard_pending()
-{
-    pending_steps_ = 0;
-    accumulator_ = 0;
-}
-
-void ParticleSystem::set_time_scale(double scale)
-{
-    assert(scale == 1.0 || scale == 0.25);
-    time_scale_ = scale;
-    SDL_Log("Simulation speed: %gx", scale);
-}
-
-void ParticleSystem::toggle_pause()
-{
-    paused_ = !paused_;
-    pending_steps_ = 0;
-    accumulator_ = 0;
-    SDL_Log("Particle simulation: %s", paused_ ? "paused" : "running");
-}
-
-void ParticleSystem::step()
-{
-    if (paused_ && pending_steps_ < 600)
-    {
-        ++pending_steps_;
-    }
 }
 }

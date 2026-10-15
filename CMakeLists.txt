@@ -60,6 +60,7 @@ target_link_libraries(pyroclast_rhi PUBLIC pyroclast_core pyroclast_shader_list)
 
 add_library(pyroclast_simulation STATIC
     src/simulation/particle_system.cpp
+    src/simulation/simulation_clock.cpp
     src/simulation/explosion_system.cpp
     src/simulation/residual_pool.cpp
     src/simulation/rotorcraft.cpp

@@ -7,6 +7,7 @@
 #include "test_range.hpp"
 #include "../simulation/explosion_system.hpp"
 #include "../simulation/particle_system.hpp"
+#include "../simulation/simulation_clock.hpp"
 #include "../simulation/wind.hpp"
 #include "../tools/debug_ui.hpp"
 
@@ -21,6 +22,7 @@ struct Sandbox
 {
     TestRange range;
     ParticleSystem particles;
+    SimulationClock clock;
     ExplosionSystem effects{ParticleSystem::effect_slots};
     ExplosionRenderer renderer;
     std::vector<ExplosionEvent> group;

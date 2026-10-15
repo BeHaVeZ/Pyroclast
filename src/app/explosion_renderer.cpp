@@ -36,16 +36,16 @@ bool ExplosionRenderer::initialize(GraphicsDevice& device, TargetFormat scene_fo
     return smoke_target_ && composite_;
 }
 
-RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& particles, ExplosionSystem& effects,
+RenderResult ExplosionRenderer::render(GraphicsDevice& device, const ParticleSystem& particles, SimulationClock& clock, ExplosionSystem& effects,
     const TestRange& range, const Camera& camera, int width, int height, double elapsed_seconds, const FrameOptions& options)
 {
     assert(width > 0 && height > 0);
     const bool realism = realism_enabled(options.layer_mask);
     const bool gusts = ((options.layer_mask >> particle_layout::gusts_mask_bit) & 1) != 0;
-    const auto tick = particles.tick();
+    const auto tick = clock.tick();
     const RealismStart realism_start{options.layer_mask, options.linger, drift_.at(tick, options.wind, gusts)};
     auto* rotorcraft = realism ? options.rotorcraft : nullptr;
-    const bool stepping = !particles.paused() || particles.has_pending_steps();
+    const bool stepping = clock.stepping();
     if (rotorcraft && rotorcraft->helicopter() && rotorcraft->request_pending() && stepping && tick >= rotorcraft->helicopter()->plan.list_tick)
     {
         const auto& helicopter = *rotorcraft->helicopter();
@@ -69,7 +69,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     const bool half = scalability.smoke_resolution == SmokeResolution::half ||
         (automatic && smoke_policy_.decide(options.counters, scalability.smoke_budget, screen_pixels));
     const bool half_light = half && scalability.half_light;
-    const auto work = particles.plan(elapsed_seconds, static_cast<std::uint32_t>(active.size()),
+    const auto work = particles.plan(tick, clock.advance(elapsed_seconds), static_cast<std::uint32_t>(active.size()),
         half ? smoke_target_->description().divisor : 0,
         {scalability.coverage || automatic, half_light, scalability.smoke_lod, scalability.faint_floor}, realism ? &units : nullptr);
 
@@ -96,7 +96,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
         constants.effect_states[index] = {slot.seed, slot.generation, slot.start_tick, slot.effect_class};
     }
     std::vector<std::uint32_t> order(active.begin(), active.end());
-    const auto key_tick = particles.tick() + work.steps;
+    const auto key_tick = tick + work.steps;
     const auto effect_order = options.scalability.effect_order;
     const auto distance = [&slots, &camera, key_tick, effect_order](std::uint32_t slot) {
         auto centre = slots[slot].origin;
@@ -115,7 +115,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     for (std::size_t rank = 0; rank < order.size(); ++rank) constants.effect_order[rank / 4][rank % 4] = order[rank];
     std::array<PointLight, particle_layout::maximum_lights> lights;
     const bool lit = ((options.layer_mask >> particle_layout::lights_mask_bit) & 1) != 0;
-    const auto light_count = lit ? select_lights(slots, active, particles.tick() + work.steps, lights, realism) : 0;
+    const auto light_count = lit ? select_lights(slots, active, tick + work.steps, lights, realism) : 0;
     for (std::uint32_t index = 0; index < light_count; ++index)
     {
         const auto& light = lights[index];
@@ -124,7 +124,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     }
     constants.light_state = {light_count, options.layer_mask, 0, 0};
     lights_ = light_count;
-    const auto drawn_tick = particles.tick() + work.steps;
+    const auto drawn_tick = tick + work.steps;
     constants.clock = {drawn_tick, 0, 0, 0};
     const auto wind = wind_velocity(options.wind, drawn_tick, gusts);
     constants.wind = {wind.x, wind.y, wind.z, 0};
@@ -228,8 +228,8 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
     const auto result = device.render(frame);
     if (result == RenderResult::submitted)
     {
-        particles.commit(work);
-        drift_.advance(particles.tick(), options.wind, gusts);
+        clock.commit(work.steps);
+        drift_.advance(clock.tick(), options.wind, gusts);
         if (automatic) smoke_policy_.commit(half);
         else smoke_policy_.follow(half);
         half_smoke_ = half;

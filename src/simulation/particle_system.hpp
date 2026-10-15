@@ -85,6 +85,9 @@ struct ParticleTargets
     TargetFormat offscreen;
 };
 
+enum class ParticleModel : std::uint8_t { legacy, realism, rotor };
+inline constexpr std::size_t particle_model_count = 3;
+
 class ParticleSystem final
 {
 public:
@@ -98,24 +101,26 @@ public:
 
     bool initialize(GraphicsDevice& device, const Buffer& environment, ParticleTargets targets, std::span<const EffectClass> classes);
     const Buffer& particles() const { return *particles_; }
-    std::uint32_t tick() const { return tick_; }
-    ParticleWork plan(double elapsed_seconds, std::uint32_t active_effects, std::uint32_t offscreen_divisor = 0,
-        ParticleListing listing = {}, const FrameUnits* units = nullptr);
-    std::uint32_t upcoming_steps(double elapsed_seconds) const;
+    ParticleWork plan(std::uint32_t tick, std::uint32_t steps, std::uint32_t active_effects, std::uint32_t offscreen_divisor = 0,
+        ParticleListing listing = {}, const FrameUnits* units = nullptr) const;
     static std::optional<ParticleCounters> counters(const ReadbackData& data);
-    void commit(const ParticleWork& work);
-    void set_fixed_ticks(bool fixed) { fixed_ticks_ = fixed; }
-    void prepare_profile(std::uint32_t tick);
-    bool has_pending_steps() const { return pending_steps_ != 0; }
-    void discard_pending();
-    bool paused() const { return paused_; }
-    void toggle_pause();
-    void step();
-    void set_time_scale(double scale);
-    double time_scale() const { return time_scale_; }
-    std::uint64_t capped_frames() const { return capped_frames_; }
 
 private:
+    struct DrawPipelines
+    {
+        std::unique_ptr<GraphicsPipeline> scene;
+        std::unique_ptr<GraphicsPipeline> offscreen;
+        std::unique_ptr<GraphicsPipeline> lod_scene;
+        std::unique_ptr<GraphicsPipeline> lod_offscreen;
+    };
+    struct ComputePipelines
+    {
+        std::unique_ptr<ComputePipeline> simulation;
+        std::unique_ptr<ComputePipeline> scan;
+        std::unique_ptr<ComputePipeline> scatter;
+        std::unique_ptr<ComputePipeline> scatter_measure;
+    };
+
     std::unique_ptr<Buffer> particles_;
     std::unique_ptr<Buffer> alive_masks_;
     std::unique_ptr<Buffer> offsets_;
@@ -123,35 +128,8 @@ private:
     std::unique_ptr<Buffer> arguments_;
     std::unique_ptr<Buffer> classes_;
     const Buffer* environment_ = nullptr;
-    std::unique_ptr<GraphicsPipeline> graphics_;
-    std::unique_ptr<GraphicsPipeline> offscreen_graphics_;
-    std::unique_ptr<GraphicsPipeline> debris_graphics_;
-    std::unique_ptr<GraphicsPipeline> lod_graphics_;
-    std::unique_ptr<GraphicsPipeline> lod_offscreen_graphics_;
-    std::unique_ptr<ComputePipeline> compute_;
-    std::unique_ptr<ComputePipeline> scan_;
-    std::unique_ptr<ComputePipeline> scatter_;
-    std::unique_ptr<ComputePipeline> scatter_measure_;
-    std::unique_ptr<ComputePipeline> realism_compute_;
-    std::unique_ptr<ComputePipeline> units_scan_;
-    std::unique_ptr<ComputePipeline> units_scatter_;
-    std::unique_ptr<ComputePipeline> units_scatter_measure_;
-    std::unique_ptr<GraphicsPipeline> realism_graphics_;
-    std::unique_ptr<GraphicsPipeline> realism_offscreen_graphics_;
-    std::unique_ptr<GraphicsPipeline> realism_lod_graphics_;
-    std::unique_ptr<GraphicsPipeline> realism_lod_offscreen_graphics_;
-    std::unique_ptr<ComputePipeline> rotor_compute_;
-    std::unique_ptr<ComputePipeline> rotor_scatter_measure_;
-    std::unique_ptr<GraphicsPipeline> rotor_graphics_;
-    std::unique_ptr<GraphicsPipeline> rotor_offscreen_graphics_;
-    std::unique_ptr<GraphicsPipeline> rotor_lod_graphics_;
-    std::unique_ptr<GraphicsPipeline> rotor_lod_offscreen_graphics_;
-    std::uint32_t tick_ = 0;
-    std::uint32_t pending_steps_ = 0;
-    double accumulator_ = 0;
-    double time_scale_ = 1;
-    std::uint64_t capped_frames_ = 0;
-    bool paused_ = false;
-    bool fixed_ticks_ = false;
+    std::array<DrawPipelines, particle_model_count> draws_;
+    std::array<ComputePipelines, particle_model_count> computes_;
+    std::unique_ptr<GraphicsPipeline> debris_;
 };
 }

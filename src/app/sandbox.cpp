@@ -25,7 +25,7 @@ void Sandbox::start_group()
 {
     effects.clear();
     for (const auto& event : group) effects.submit(event);
-    particles.discard_pending();
+    clock.discard_pending();
 }
 
 void Sandbox::trigger_group()
@@ -44,7 +44,7 @@ void Sandbox::trigger_group()
 void Sandbox::clear()
 {
     effects.clear();
-    particles.discard_pending();
+    clock.discard_pending();
     rotorcraft.clear();
     jetcraft.clear();
     pilot.reset();
@@ -77,7 +77,7 @@ void Sandbox::send_jet()
         SDL_Log("Nothing to fly over.");
         return;
     }
-    const auto tick = particles.tick();
+    const auto tick = clock.tick();
     const bool replacing = jetcraft.flight() && listed_pass(*jetcraft.flight(), tick);
     pilot.drop_jet();
     const std::uint32_t listed = jetcraft.end_passes(tick, 120);
@@ -115,7 +115,7 @@ void Sandbox::send_helicopter()
         SDL_Log("Nothing to hover over.");
         return;
     }
-    const auto tick = particles.tick();
+    const auto tick = clock.tick();
     const auto& environment = range.environment();
     const double hover = target->y + 1.5 * rotor::radius;
     const auto& helicopter = rotorcraft.helicopter();
@@ -208,7 +208,7 @@ JetOrbit jet_orbit(const Sandbox& sandbox)
     orbit.height = surface + pilot::orbit_least_height;
     if (const auto& flight = sandbox.jetcraft.flight(); flight && !flight->passes.empty())
     {
-        orbit.height = std::clamp(flight_state(flight->passes.back(), sandbox.particles.tick()).position.y, surface + pilot::orbit_least_height,
+        orbit.height = std::clamp(flight_state(flight->passes.back(), sandbox.clock.tick()).position.y, surface + pilot::orbit_least_height,
             surface + pilot::orbit_greatest_height);
     }
     return orbit;
@@ -227,7 +227,7 @@ void Sandbox::pilot_helicopter()
         SDL_Log("The helicopter needs the realism model.");
         return;
     }
-    const auto tick = particles.tick();
+    const auto tick = clock.tick();
     const auto& helicopter = rotorcraft.helicopter();
     const bool listed = helicopter && tick >= helicopter->plan.list_tick && tick < helicopter->plan.unlist_tick;
     FlightKnot knot;
@@ -284,7 +284,7 @@ void Sandbox::pilot_jet()
         SDL_Log("The jet needs the realism model.");
         return;
     }
-    const auto tick = particles.tick();
+    const auto tick = clock.tick();
     JetControl control;
     if (jetcraft.take_over(tick))
     {
@@ -354,13 +354,13 @@ void Sandbox::fly_pilot(const CameraInput& input, double elapsed)
     const bool chasing = pilot.controlling() && pilot.chase().attached();
     if (chasing) pilot.chase().orbit(input.look);
     const float heading = chasing ? pilot.chase().heading() : view_heading(camera.camera());
-    const auto tick = particles.tick();
+    const auto tick = clock.tick();
     if (pilot.advance(tick, input, heading, pilot_scene(*this), rotorcraft, jetcraft, range.environment(), props_shown()))
     {
         SDL_Log("Pilot: back over the scene.");
     }
     if (!chasing) return;
-    const auto drawn = tick + particles.upcoming_steps(elapsed);
+    const auto drawn = tick + clock.upcoming_steps(elapsed);
     const auto& terrain = range.environment().terrain();
     if (pilot.helicopter() == HelicopterPiloting::piloted)
     {
@@ -404,11 +404,11 @@ void Sandbox::build_marks()
 
 void Sandbox::fill_snapshot(DiagnosticsSnapshot& snapshot) const
 {
-    const auto tick = particles.tick();
+    const auto tick = clock.tick();
     snapshot.clock.tick = tick;
-    snapshot.clock.paused = particles.paused();
-    snapshot.clock.time_scale = static_cast<float>(particles.time_scale());
-    snapshot.clock.capped_frames = particles.capped_frames();
+    snapshot.clock.paused = clock.paused();
+    snapshot.clock.time_scale = static_cast<float>(clock.time_scale());
+    snapshot.clock.capped_frames = clock.capped_frames();
 
     auto& load = snapshot.load;
     load.explosions = static_cast<std::uint32_t>(group.size());
@@ -551,7 +551,7 @@ void Sandbox::fill_snapshot(DiagnosticsSnapshot& snapshot) const
 
 void Sandbox::release_due()
 {
-    showcase.release_due(particles.tick(), range.environment(), props_shown(), effects);
+    showcase.release_due(clock.tick(), range.environment(), props_shown(), effects);
 }
 
 namespace
@@ -578,8 +578,8 @@ void apply(UiCommand command, Sandbox& sandbox)
         if (const auto report = sandbox.pressure.clear(sandbox.effects.dropped())) sandbox.report_drops(*report, true);
         sandbox.clear();
         break;
-    case Kind::toggle_pause: sandbox.particles.toggle_pause(); break;
-    case Kind::step: sandbox.particles.step(); break;
+    case Kind::toggle_pause: sandbox.clock.toggle_pause(); break;
+    case Kind::step: sandbox.clock.step(); break;
     case Kind::toggle_debug_lines:
     {
         const bool on = !(sandbox.views.effect_bounds || sandbox.views.collision_boxes);
@@ -613,7 +613,7 @@ void apply(UiCommand command, Sandbox& sandbox)
     case Kind::set_wind:
         if (const auto wind = validated(command.wind)) sandbox.wind = *wind;
         break;
-    case Kind::toggle_slow_motion: sandbox.particles.set_time_scale(sandbox.particles.time_scale() == 1 ? 0.25 : 1); break;
+    case Kind::toggle_slow_motion: sandbox.clock.set_time_scale(sandbox.clock.time_scale() == 1 ? 0.25 : 1); break;
     case Kind::toggle_walk:
         if (!sandbox.camera.toggle_walk(sandbox.range.environment(), sandbox.props_shown()))
         {
@@ -676,13 +676,13 @@ void apply(UiCommand command, Sandbox& sandbox)
         SDL_Log("Pilot settings reset.");
         break;
     case Kind::barrage:
-        sandbox.showcase.start_barrage(sandbox.range.environment(), sandbox.props_shown(), sandbox.camera.camera(), sandbox.particles.tick());
+        sandbox.showcase.start_barrage(sandbox.range.environment(), sandbox.props_shown(), sandbox.camera.camera(), sandbox.clock.tick());
         break;
     case Kind::toggle_bombardment:
         sandbox.showcase.toggle_bombardment(sandbox.range.environment(), sandbox.props_shown(), sandbox.camera.camera(),
-            sandbox.particles.tick());
+            sandbox.clock.tick());
         break;
-    case Kind::set_bombardment: sandbox.showcase.set_bombardment(command.value, command.scalar, sandbox.particles.tick()); break;
+    case Kind::set_bombardment: sandbox.showcase.set_bombardment(command.value, command.scalar, sandbox.clock.tick()); break;
     case Kind::set_smoke_resolution:
         if (command.value <= 2)
         {

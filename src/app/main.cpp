@@ -158,7 +158,7 @@ public:
     {
     }
     explicit ScenarioRun(pyroclast::Scenario scenario) : ScenarioRun(std::move(scenario), {}, 0) {}
-    bool finished(const Sandbox& sandbox) const { return sandbox.particles.tick() >= scenario_.duration_ticks; }
+    bool finished(const Sandbox& sandbox) const { return sandbox.clock.tick() >= scenario_.duration_ticks; }
     void invalidate(const char* reason)
     {
         if (valid_)
@@ -188,7 +188,7 @@ public:
     void set_vertical_fov(float radians) { vertical_fov_ = radians; }
     void submit_due(Sandbox& sandbox)
     {
-        while (next_ < scenario_.events.size() && scenario_.events[next_].tick <= sandbox.particles.tick())
+        while (next_ < scenario_.events.size() && scenario_.events[next_].tick <= sandbox.clock.tick())
         {
             sandbox.effects.submit(scenario_.events[next_++].event);
         }
@@ -410,7 +410,6 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
     const pyroclast::ApplicationOptions& options, std::optional<ScenarioRun> scenario, pyroclast::CounterLog* counter_log)
 {
     const auto window_id = SDL_GetWindowID(window);
-    auto& demo = sandbox.particles;
     {
         std::array<pyroclast::Camera, pyroclast::CameraRig::bookmark_count> views;
         std::array<std::string_view, pyroclast::CameraRig::bookmark_count> names;
@@ -694,7 +693,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     if (!unattended) for (const auto command : commands) pyroclast::apply(command, sandbox);
                 }
                 const auto release_start = SDL_GetPerformanceCounter();
-                if (scenario && (!frozen || demo.has_pending_steps()) && !scenario->warming()) scenario->submit_due(sandbox);
+                if (scenario && (!frozen || sandbox.clock.has_pending_steps()) && !scenario->warming()) scenario->submit_due(sandbox);
                 else if (!unattended)
                 {
                     sandbox.release_due();
@@ -703,25 +702,25 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                 sandbox.build_marks();
                 showcase_ticks += SDL_GetPerformanceCounter() - release_start;
                 showcase_ms = 1000.0 * static_cast<double>(showcase_ticks) / static_cast<double>(SDL_GetPerformanceFrequency());
-                const auto tick_before = demo.tick();
+                const auto tick_before = sandbox.clock.tick();
                 const auto started_before = sandbox.effects.started();
                 const auto dropped_before = sandbox.effects.dropped();
                 const auto evicted_before = sandbox.effects.evicted();
                 const bool warming = scenario && scenario->warming();
-                const bool sequence_frame = !options.capture_sequence.empty() && !warming && demo.tick() + 1 >= sequence_first &&
-                    demo.tick() + 1 <= sequence_last;
+                const bool sequence_frame = !options.capture_sequence.empty() && !warming && sandbox.clock.tick() + 1 >= sequence_first &&
+                    sandbox.clock.tick() + 1 <= sequence_last;
                 const bool capture = sequence_frame || (!options.capture_path.empty() && !warming &&
-                    (options.capture_tick ? demo.tick() + 1 == *options.capture_tick : !demo.has_pending_steps()));
+                    (options.capture_tick ? sandbox.clock.tick() + 1 == *options.capture_tick : !sandbox.clock.has_pending_steps()));
                 auto drawn = sandbox.camera.camera();
                 if (!unattended && !profile_tick && pyroclast::realism_enabled(sandbox.layer_mask) &&
                     ((sandbox.layer_mask >> pyroclast::realism_layout::shake_mask_bit) & 1) != 0)
                 {
-                    const float angle = pyroclast::shake_angle(sandbox.effects, sandbox.renderer.blast_classes(), drawn.position, demo.tick());
+                    const float angle = pyroclast::shake_angle(sandbox.effects, sandbox.renderer.blast_classes(), drawn.position, sandbox.clock.tick());
                     drawn.pitch = std::clamp(drawn.pitch + angle, -1.55f, 1.55f);
                     drawn.yaw += 0.6f * angle;
                 }
                 const auto submit_begin = SDL_GetPerformanceCounter();
-                const auto result = sandbox.renderer.render(renderer, demo, sandbox.effects, sandbox.range, drawn, width, height, elapsed,
+                const auto result = sandbox.renderer.render(renderer, sandbox.particles, sandbox.clock, sandbox.effects, sandbox.range, drawn, width, height, elapsed,
                     {capture, overlay, sandbox.views, sandbox.layer_mask, sandbox.wind, sandbox.marks, sandbox.scalability, sandbox.counters,
                         sandbox.linger, sandbox.humidity, &sandbox.rotorcraft, &sandbox.jetcraft});
                 const auto submit_end = SDL_GetPerformanceCounter();
@@ -735,10 +734,10 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                         sandbox.report_drops(*report);
                     }
                 }
-                last_steps = demo.tick() - tick_before;
+                last_steps = sandbox.clock.tick() - tick_before;
                 if (counter_log && result == pyroclast::RenderResult::submitted)
                 {
-                    counter_log->add_frame({demo.tick(), last_steps, static_cast<std::uint32_t>(sandbox.effects.explosions()),
+                    counter_log->add_frame({sandbox.clock.tick(), last_steps, static_cast<std::uint32_t>(sandbox.effects.explosions()),
                         sandbox.effects.started() - started_before, sandbox.effects.dropped() - dropped_before, sandbox.renderer.particles_drawn(),
                         sandbox.renderer.half_smoke(), sandbox.effects.evicted() - evicted_before,
                         warming ? pyroclast::FramePhase::warmup : pyroclast::FramePhase::measured,
@@ -770,11 +769,11 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     {
                         const std::uint32_t rotor_records = rotor.slot ? rotor.census.alive + (rotor.listed ? pyroclast::rotor_layout::rotor_disc_records : 0u) : 0u;
                         const std::uint32_t jet_records = jet.slot ? jet.census.dust : 0u;
-                        rotor_expected.push_back({demo.tick(), rotor_records + jet_records});
+                        rotor_expected.push_back({sandbox.clock.tick(), rotor_records + jet_records});
                     }
                 }
                 const double wall = static_cast<double>(SDL_GetPerformanceCounter()) / static_cast<double>(SDL_GetPerformanceFrequency());
-                tick_rate.add(wall, demo.tick());
+                tick_rate.add(wall, sandbox.clock.tick());
                 if (const auto gpu = renderer.completed_gpu_timings(); gpu && gpu->sample_id != last_gpu_sample)
                 {
                     last_gpu_sample = gpu->sample_id;
@@ -825,7 +824,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     {
                         if (scenario->end_warmup_frame())
                         {
-                            demo.toggle_pause();
+                            sandbox.clock.toggle_pause();
                             memory_start = renderer.memory_usage();
                             focused = (SDL_GetWindowFlags(window) & SDL_WINDOW_INPUT_FOCUS) != 0;
                             if (const auto* mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window)); mode && mode->refresh_rate > 0)
@@ -843,7 +842,7 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                         baseline.disable();
                         SDL_Log("Startup sample stopped: the group retired before the sample completed; use --profile-tick or --scenario.");
                     }
-                    if (!profile_tick || !demo.has_pending_steps())
+                    if (!profile_tick || !sandbox.clock.has_pending_steps())
                         baseline.record(milliseconds, renderer.completed_gpu_timings(), !sandbox.renderer.particles_drawn() ?
                             std::optional<std::uint32_t>(0) : sandbox.counters ? std::optional(sandbox.counters->alive) : std::nullopt);
                     if (sequence_frame)
@@ -854,10 +853,10 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                             return 1;
                         }
                         char name[32];
-                        std::snprintf(name, sizeof(name), "/tick-%06u.png", demo.tick());
+                        std::snprintf(name, sizeof(name), "/tick-%06u.png", sandbox.clock.tick());
                         if (save_capture(renderer, options.capture_sequence + name, false) != 0) return 1;
                         ++sequence_frames;
-                        if (demo.tick() >= sequence_last)
+                        if (sandbox.clock.tick() >= sequence_last)
                         {
                             SDL_Log("Capture sequence: %u frames, ticks %u-%u, in %s.", sequence_frames, sequence_first, sequence_last,
                                 options.capture_sequence.c_str());
@@ -1055,8 +1054,8 @@ int run_application(const pyroclast::ApplicationOptions& options)
             }
         }
         scenario.emplace(std::move(*script), options.benchmark, benchmark ? pyroclast::benchmark_warmup_frames : 0);
-        if (!options.profile_tick) sandbox->particles.set_fixed_ticks(true);
-        if (benchmark) sandbox->particles.toggle_pause();
+        if (!options.profile_tick) sandbox->clock.set_fixed_ticks(true);
+        if (benchmark) sandbox->clock.toggle_pause();
     }
     else
     {
@@ -1065,7 +1064,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
     }
     if (options.profile_tick)
     {
-        sandbox->particles.prepare_profile(*options.profile_tick);
+        sandbox->clock.prepare_profile(*options.profile_tick);
         SDL_Log("Fixed-state profile: tick=%u; VSync off; timestamps on; zero integration steps after preparation.", *options.profile_tick);
     }
     const std::string title = "Pyroclast | " + std::string(pyroclast::controls_summary()) + (ui ? " | F1: overlay" : "");
