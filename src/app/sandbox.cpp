@@ -575,6 +575,110 @@ void log_views(const DebugViews& views)
 }
 }
 
+namespace
+{
+void apply_camera(UiCommand command, Sandbox& sandbox)
+{
+    using Kind = UiCommand::Kind;
+    switch (command.kind)
+    {
+    case Kind::toggle_walk:
+        if (!sandbox.camera.toggle_walk(sandbox.range.environment(), sandbox.props_shown()))
+        {
+            SDL_Log("Camera: cannot walk here, nothing below.");
+        }
+        else if (sandbox.camera.mode() == CameraMode::walk)
+        {
+            SDL_Log("Camera: walk (%.0f m/s, eye %.1f m).", static_cast<double>(sandbox.camera.speed()), static_cast<double>(walk_eye_height));
+        }
+        else SDL_Log("Camera: fly (%.0f m/s).", static_cast<double>(sandbox.camera.speed()));
+        break;
+    case Kind::recall_bookmark:
+        if (sandbox.camera.recall(command.value))
+        {
+            if (sandbox.pilot.controlling()) sandbox.pilot.chase().set_attached(false);
+            const auto& bookmark = sandbox.camera.bookmarks()[command.value];
+            SDL_Log("Camera bookmark %u (%.*s) recalled: %s.", command.value + 1,
+                static_cast<int>(bookmark.stored ? 6 : bookmark.name.size()), bookmark.stored ? "stored" : bookmark.name.data(),
+                bookmark.mode == CameraMode::walk ? "walk" : "fly");
+        }
+        break;
+    case Kind::store_bookmark:
+        if (sandbox.camera.store(command.value))
+        {
+            const auto& camera = sandbox.camera.camera();
+            SDL_Log("Camera bookmark %u stored: position (%.2f, %.2f, %.2f), heading %.2f deg, elevation %.2f deg, %s.",
+                command.value + 1, static_cast<double>(camera.position.x), static_cast<double>(camera.position.y),
+                static_cast<double>(camera.position.z), static_cast<double>(camera.yaw * 57.29578f),
+                static_cast<double>(camera.pitch * 57.29578f), sandbox.camera.mode() == CameraMode::walk ? "walk" : "fly");
+        }
+        break;
+    case Kind::set_camera_speed: sandbox.camera.set_speed(command.scalar); break;
+    default: break;
+    }
+}
+
+void apply_scalability(UiCommand command, ScalabilitySettings& settings, bool realism)
+{
+    using Kind = UiCommand::Kind;
+    switch (command.kind)
+    {
+    case Kind::set_smoke_resolution:
+        if (command.value <= 2)
+        {
+            settings.smoke_resolution = static_cast<SmokeResolution>(command.value);
+            SDL_Log("Smoke resolution: %s.", smoke_resolution_name(settings.smoke_resolution));
+        }
+        break;
+    case Kind::set_smoke_budget:
+        if (std::isfinite(command.scalar) && command.scalar > 0)
+        {
+            settings.smoke_budget = {command.value != 0, command.scalar};
+            SDL_Log("Smoke budget: %s %.0f.", command.value != 0 ? "count" : "coverage", static_cast<double>(command.scalar));
+        }
+        break;
+    case Kind::toggle_half_light:
+        settings.half_light = !settings.half_light;
+        SDL_Log("Half-resolution light: %s.", settings.half_light ? "on" : "off");
+        break;
+    case Kind::set_smoke_lod:
+        if (std::isfinite(command.scalar) && command.scalar >= 0 && command.scalar <= 4096)
+        {
+            settings.smoke_lod = command.scalar;
+            SDL_Log("Smoke thinning above %.0f pixels (0: off).", static_cast<double>(command.scalar));
+        }
+        break;
+    case Kind::set_faint_floor:
+        if (std::isfinite(command.scalar) && command.scalar >= 0 && command.scalar < 1)
+        {
+            settings.faint_floor = command.scalar;
+            SDL_Log("Faint smoke floor: %g.", static_cast<double>(command.scalar));
+        }
+        break;
+    case Kind::set_slot_policy:
+        if (command.value <= 2 && (command.value != 1 || !realism) &&
+            (command.value != 2 || realism))
+        {
+            settings.slot_policy = static_cast<SlotPolicy>(command.value);
+            SDL_Log("Slot policy: %s.", slot_policy_name(settings.slot_policy));
+        }
+        break;
+    case Kind::set_effect_order:
+        if (command.value <= 2)
+        {
+            settings.effect_order = static_cast<EffectOrder>(command.value);
+            SDL_Log("Effect order: %s.", effect_order_name(settings.effect_order));
+        }
+        break;
+    case Kind::toggle_coverage:
+        settings.coverage = !settings.coverage;
+        SDL_Log("Coverage counters: %s.", settings.coverage ? "on" : "off");
+        break;
+    default: break;
+    }
+}
+}
+
 void apply(UiCommand command, Sandbox& sandbox)
 {
     using Kind = UiCommand::Kind;
@@ -626,37 +730,9 @@ void apply(UiCommand command, Sandbox& sandbox)
         break;
     case Kind::toggle_slow_motion: sandbox.clock.set_time_scale(sandbox.clock.time_scale() == 1 ? 0.25 : 1); break;
     case Kind::toggle_walk:
-        if (!sandbox.camera.toggle_walk(sandbox.range.environment(), sandbox.props_shown()))
-        {
-            SDL_Log("Camera: cannot walk here, nothing below.");
-        }
-        else if (sandbox.camera.mode() == CameraMode::walk)
-        {
-            SDL_Log("Camera: walk (%.0f m/s, eye %.1f m).", static_cast<double>(sandbox.camera.speed()), static_cast<double>(walk_eye_height));
-        }
-        else SDL_Log("Camera: fly (%.0f m/s).", static_cast<double>(sandbox.camera.speed()));
-        break;
     case Kind::recall_bookmark:
-        if (sandbox.camera.recall(command.value))
-        {
-            if (sandbox.pilot.controlling()) sandbox.pilot.chase().set_attached(false);
-            const auto& bookmark = sandbox.camera.bookmarks()[command.value];
-            SDL_Log("Camera bookmark %u (%.*s) recalled: %s.", command.value + 1,
-                static_cast<int>(bookmark.stored ? 6 : bookmark.name.size()), bookmark.stored ? "stored" : bookmark.name.data(),
-                bookmark.mode == CameraMode::walk ? "walk" : "fly");
-        }
-        break;
     case Kind::store_bookmark:
-        if (sandbox.camera.store(command.value))
-        {
-            const auto& camera = sandbox.camera.camera();
-            SDL_Log("Camera bookmark %u stored: position (%.2f, %.2f, %.2f), heading %.2f deg, elevation %.2f deg, %s.",
-                command.value + 1, static_cast<double>(camera.position.x), static_cast<double>(camera.position.y),
-                static_cast<double>(camera.position.z), static_cast<double>(camera.yaw * 57.29578f),
-                static_cast<double>(camera.pitch * 57.29578f), sandbox.camera.mode() == CameraMode::walk ? "walk" : "fly");
-        }
-        break;
-    case Kind::set_camera_speed: sandbox.camera.set_speed(command.scalar); break;
+    case Kind::set_camera_speed: apply_camera(command, sandbox); break;
     case Kind::set_count:
     {
         const auto& counts = Showcase::counts;
@@ -695,56 +771,13 @@ void apply(UiCommand command, Sandbox& sandbox)
         break;
     case Kind::set_bombardment: sandbox.showcase.set_bombardment(command.value, command.scalar, sandbox.clock.tick()); break;
     case Kind::set_smoke_resolution:
-        if (command.value <= 2)
-        {
-            sandbox.scalability.smoke_resolution = static_cast<SmokeResolution>(command.value);
-            SDL_Log("Smoke resolution: %s.", smoke_resolution_name(sandbox.scalability.smoke_resolution));
-        }
-        break;
     case Kind::set_smoke_budget:
-        if (std::isfinite(command.scalar) && command.scalar > 0)
-        {
-            sandbox.scalability.smoke_budget = {command.value != 0, command.scalar};
-            SDL_Log("Smoke budget: %s %.0f.", command.value != 0 ? "count" : "coverage", static_cast<double>(command.scalar));
-        }
-        break;
     case Kind::toggle_half_light:
-        sandbox.scalability.half_light = !sandbox.scalability.half_light;
-        SDL_Log("Half-resolution light: %s.", sandbox.scalability.half_light ? "on" : "off");
-        break;
     case Kind::set_smoke_lod:
-        if (std::isfinite(command.scalar) && command.scalar >= 0 && command.scalar <= 4096)
-        {
-            sandbox.scalability.smoke_lod = command.scalar;
-            SDL_Log("Smoke thinning above %.0f pixels (0: off).", static_cast<double>(command.scalar));
-        }
-        break;
     case Kind::set_faint_floor:
-        if (std::isfinite(command.scalar) && command.scalar >= 0 && command.scalar < 1)
-        {
-            sandbox.scalability.faint_floor = command.scalar;
-            SDL_Log("Faint smoke floor: %g.", static_cast<double>(command.scalar));
-        }
-        break;
     case Kind::set_slot_policy:
-        if (command.value <= 2 && (command.value != 1 || !realism_enabled(sandbox.layer_mask)) &&
-            (command.value != 2 || realism_enabled(sandbox.layer_mask)))
-        {
-            sandbox.scalability.slot_policy = static_cast<SlotPolicy>(command.value);
-            SDL_Log("Slot policy: %s.", slot_policy_name(sandbox.scalability.slot_policy));
-        }
-        break;
     case Kind::set_effect_order:
-        if (command.value <= 2)
-        {
-            sandbox.scalability.effect_order = static_cast<EffectOrder>(command.value);
-            SDL_Log("Effect order: %s.", effect_order_name(sandbox.scalability.effect_order));
-        }
-        break;
-    case Kind::toggle_coverage:
-        sandbox.scalability.coverage = !sandbox.scalability.coverage;
-        SDL_Log("Coverage counters: %s.", sandbox.scalability.coverage ? "on" : "off");
-        break;
+    case Kind::toggle_coverage: apply_scalability(command, sandbox.scalability, realism_enabled(sandbox.layer_mask)); break;
     case Kind::toggle_debug_view:
     {
         bool* const views[] = {&sandbox.views.effect_bounds, &sandbox.views.collision_boxes, &sandbox.views.spawn_regions,
