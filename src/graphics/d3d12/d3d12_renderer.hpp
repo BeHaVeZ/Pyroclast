@@ -104,6 +104,9 @@ private:
     bool size_target(class D3D12RenderTarget& target);
     void bind(const Bindings& bindings, bool graphics);
     void draw(const Draw& draw);
+    void record_dispatches(const Frame& frame, D3D12_GPU_VIRTUAL_ADDRESS frame_constants);
+    void transition_frame_reads(const Frame& frame);
+    void record_pass(const Pass& pass, const Frame& frame, ID3D12Resource* backbuffer, D3D12_CPU_DESCRIPTOR_HANDLE backbuffer_view, UINT query);
     void set_target(D3D12_CPU_DESCRIPTOR_HANDLE rtv, const D3D12_CPU_DESCRIPTOR_HANDLE* dsv, int width, int height);
     bool prepare_capture(ID3D12Resource* backbuffer);
     void record_capture(ID3D12Resource* backbuffer);

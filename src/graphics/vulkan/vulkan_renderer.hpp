@@ -167,6 +167,11 @@ private:
     void push_bindings(VkCommandBuffer command, VkPipelineBindPoint point, const Bindings& bindings,
         const VulkanFrameSlot& slot, std::span<const RenderTarget* const> inputs);
     void set_viewport(VkCommandBuffer command, VkExtent2D extent);
+    void record_dispatches(VkCommandBuffer command, const Frame& frame, const VulkanFrameSlot& slot);
+    void record_readback(VkCommandBuffer command, const Frame::Readback& readback, VulkanFrameSlot& slot);
+    void record_pass(VkCommandBuffer command, const Pass& pass, const std::array<float, 4>& frame_clear_color, const VulkanFrameSlot& slot,
+        const VulkanSwapchain::Image& image);
+    bool submit_frame(VkCommandBuffer command, VulkanFrameSlot& slot, VulkanSwapchain::Image& image);
     void begin_label(VkCommandBuffer command, const char* label) const;
     void end_label(VkCommandBuffer command, const char* label) const;
     // Records commands into a one-off command buffer and waits for them; startup and resize only.

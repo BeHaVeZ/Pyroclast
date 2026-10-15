@@ -11,6 +11,13 @@
 
 namespace pyroclast
 {
+namespace
+{
+constexpr VkShaderStageFlags constant_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+constexpr std::uint32_t constant_bytes = binding_layout::draw_constant_words * sizeof(std::uint32_t);
+constexpr VkPipelineStageFlags2 depth_stages = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+}
+
 VulkanContext::~VulkanContext()
 {
     if (device)
@@ -154,6 +161,175 @@ void memory_barrier(VkCommandBuffer command,
     vkCmdPipelineBarrier2(command, &dependency);
 }
 
+void VulkanRenderer::record_dispatches(VkCommandBuffer command, const Frame& frame, const VulkanFrameSlot& slot)
+{
+    constexpr VkPipelineStageFlags2 shader_stages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT |
+        VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+    for (std::size_t index = 0; index < frame.dispatches.size(); ++index)
+    {
+        const auto& dispatch = frame.dispatches[index];
+        const auto region = begin_region(command, dispatch.label, "Dispatch");
+        if (index == 0)
+        {
+            memory_barrier(command, shader_stages | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_COPY_BIT,
+                VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+        }
+        else
+        {
+            memory_barrier(command, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+        }
+        begin_label(command, dispatch.label);
+        vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, static_cast<const VulkanComputePipeline&>(dispatch.pipeline).pipeline);
+        vkCmdPushConstants(command, bindings_.layout, constant_stages, 0, constant_bytes, dispatch.constants.data());
+        push_bindings(command, VK_PIPELINE_BIND_POINT_COMPUTE, dispatch.bindings, slot, {});
+        vkCmdDispatch(command, dispatch.groups[0], dispatch.groups[1], dispatch.groups[2]);
+        end_label(command, dispatch.label);
+        end_region(command, region);
+    }
+    if (!frame.dispatches.empty())
+    {
+        memory_barrier(command, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+            VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT |
+                VK_PIPELINE_STAGE_2_COPY_BIT,
+            VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_TRANSFER_READ_BIT);
+    }
+}
+
+void VulkanRenderer::record_readback(VkCommandBuffer command, const Frame::Readback& readback, VulkanFrameSlot& slot)
+{
+    const VkBufferCopy region{readback.offset, 0, readback.size};
+    vkCmdCopyBuffer(command, static_cast<const VulkanBuffer*>(readback.source)->buffer, slot.readback, 1, &region);
+    transition_buffer(command, slot.readback, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+        VK_PIPELINE_STAGE_2_HOST_BIT, VK_ACCESS_2_HOST_READ_BIT);
+    slot.readback_size = readback.size;
+}
+
+void VulkanRenderer::record_pass(VkCommandBuffer command, const Pass& pass, const std::array<float, 4>& frame_clear_color,
+    const VulkanFrameSlot& slot, const VulkanSwapchain::Image& image)
+{
+    const auto* target = static_cast<const VulkanRenderTarget*>(pass.target);
+    const auto* depth = static_cast<const VulkanRenderTarget*>(pass.depth);
+    const auto region = begin_region(command, pass.label, "Pass");
+    begin_label(command, pass.label);
+    if (target && pass.load)
+    {
+        transition_image(command, target->image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_NONE,
+            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+            VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+    }
+    else if (target)
+    {
+        transition_image(command, target->image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_NONE,
+            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+            VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+    }
+    else
+    {
+        transition_image(command, image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_NONE,
+            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+            VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+    }
+    if (depth && pass.depth_write)
+    {
+        transition_image(command, depth->image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            depth_stages | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_NONE,
+            depth_stages, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            VK_IMAGE_ASPECT_DEPTH_BIT);
+    }
+    const auto extent = target ? target->extent : swapchain_.extent;
+    const auto& clear_color = target ? target->description().clear_color : frame_clear_color;
+    VkRenderingAttachmentInfo color{};
+    color.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    color.imageView = target ? target->view : image.view;
+    color.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    color.loadOp = pass.load ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_CLEAR;
+    color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    std::copy(clear_color.begin(), clear_color.end(), color.clearValue.color.float32);
+    VkRenderingAttachmentInfo depth_attachment{};
+    depth_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    if (depth)
+    {
+        depth_attachment.imageView = depth->view;
+        depth_attachment.imageLayout = pass.depth_write ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL :
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+        depth_attachment.loadOp = pass.depth_write ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+        depth_attachment.storeOp = pass.depth_write ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_NONE;
+        depth_attachment.clearValue.depthStencil = {depth->description().clear_depth, 0};
+    }
+    VkRenderingInfo rendering{};
+    rendering.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    rendering.renderArea.extent = extent;
+    rendering.layerCount = 1;
+    rendering.colorAttachmentCount = 1;
+    rendering.pColorAttachments = &color;
+    rendering.pDepthAttachment = depth ? &depth_attachment : nullptr;
+    vkCmdBeginRendering(command, &rendering);
+    set_viewport(command, extent);
+    for (const auto& draw : pass.draws)
+    {
+        begin_label(command, draw.label);
+        vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, static_cast<const VulkanGraphicsPipeline&>(draw.pipeline).pipeline);
+        vkCmdPushConstants(command, bindings_.layout, constant_stages, 0, constant_bytes, draw.constants.data());
+        push_bindings(command, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.bindings, slot, pass.inputs);
+        if (draw.indirect)
+        {
+            vkCmdDrawIndirect(command, static_cast<const VulkanBuffer*>(draw.indirect)->buffer, draw.indirect_offset, 1, 0);
+        }
+        else
+        {
+            vkCmdDraw(command, draw.vertex_count, draw.instance_count, 0, 0);
+        }
+        end_label(command, draw.label);
+    }
+    vkCmdEndRendering(command);
+    end_region(command, region);
+    if (target)
+    {
+        transition_image(command, target->image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+            VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+    }
+    if (depth && pass.depth_write)
+    {
+        transition_image(command, depth->image, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL, depth_stages, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            depth_stages | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+            VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
+    }
+    end_label(command, pass.label);
+}
+
+bool VulkanRenderer::submit_frame(VkCommandBuffer command, VulkanFrameSlot& slot, VulkanSwapchain::Image& image)
+{
+    VkSemaphoreSubmitInfo wait{};
+    wait.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+    wait.semaphore = slot.acquired;
+    wait.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+    VkSemaphoreSubmitInfo signal{};
+    signal.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+    signal.semaphore = image.rendered;
+    signal.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+    VkCommandBufferSubmitInfo buffer{};
+    buffer.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+    buffer.commandBuffer = command;
+    VkSubmitInfo2 submit{};
+    submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+    submit.waitSemaphoreInfoCount = 1;
+    submit.pWaitSemaphoreInfos = &wait;
+    submit.commandBufferInfoCount = 1;
+    submit.pCommandBufferInfos = &buffer;
+    submit.signalSemaphoreInfoCount = 1;
+    submit.pSignalSemaphoreInfos = &signal;
+    return check(vkResetFences(vk_.device, 1, slot.submitted.address()), "Reset frame fence") &&
+        (!vk_.present_fences || check(vkResetFences(vk_.device, 1, image.presented.address()), "Reset presentation fence")) &&
+        check(vkQueueSubmit2(vk_.queue, 1, &submit, slot.submitted), "Submit Vulkan frame");
+}
+
 RenderResult VulkanRenderer::render(const Frame& frame)
 {
     const char* error = submission_error(frame, *this, capture_enabled_, overlay_);
@@ -232,8 +408,6 @@ RenderResult VulkanRenderer::render(const Frame& frame)
         return RenderResult::failed;
     }
     const auto command = slot.command;
-    constexpr VkShaderStageFlags constant_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-    constexpr std::uint32_t constant_bytes = binding_layout::draw_constant_words * sizeof(std::uint32_t);
     slot.regions = {};
     const auto query = static_cast<std::uint32_t>(frame_index_) * timestamp_queries_per_slot;
     if (timing_.pool)
@@ -242,149 +416,15 @@ RenderResult VulkanRenderer::render(const Frame& frame)
         vkCmdWriteTimestamp2(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, timing_.pool, query);
         memory_barrier(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_NONE);
     }
-    constexpr VkPipelineStageFlags2 shader_stages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT |
-        VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-    for (std::size_t index = 0; index < frame.dispatches.size(); ++index)
-    {
-        const auto& dispatch = frame.dispatches[index];
-        const auto region = begin_region(command, dispatch.label, "Dispatch");
-        if (index == 0)
-        {
-            memory_barrier(command, shader_stages | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_COPY_BIT,
-                VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
-        }
-        else
-        {
-            memory_barrier(command, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
-        }
-        begin_label(command, dispatch.label);
-        vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, static_cast<const VulkanComputePipeline&>(dispatch.pipeline).pipeline);
-        vkCmdPushConstants(command, bindings_.layout, constant_stages, 0, constant_bytes, dispatch.constants.data());
-        push_bindings(command, VK_PIPELINE_BIND_POINT_COMPUTE, dispatch.bindings, slot, {});
-        vkCmdDispatch(command, dispatch.groups[0], dispatch.groups[1], dispatch.groups[2]);
-        end_label(command, dispatch.label);
-        end_region(command, region);
-    }
-    if (!frame.dispatches.empty())
-    {
-        memory_barrier(command, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-            VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT |
-                VK_PIPELINE_STAGE_2_COPY_BIT,
-            VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_TRANSFER_READ_BIT);
-    }
+    record_dispatches(command, frame, slot);
     if (timing_.pool) vkCmdWriteTimestamp2(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, timing_.pool, query + 1);
-    if (frame.readback.source)
-    {
-        const VkBufferCopy region{frame.readback.offset, 0, frame.readback.size};
-        vkCmdCopyBuffer(command, static_cast<const VulkanBuffer*>(frame.readback.source)->buffer, slot.readback, 1, &region);
-        transition_buffer(command, slot.readback, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            VK_PIPELINE_STAGE_2_HOST_BIT, VK_ACCESS_2_HOST_READ_BIT);
-        slot.readback_size = frame.readback.size;
-    }
+    if (frame.readback.source) record_readback(command, frame.readback, slot);
     if (timing_.pool)
     {
         vkCmdWriteTimestamp2(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, timing_.pool, query + 2);
         memory_barrier(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_NONE);
     }
-    constexpr VkPipelineStageFlags2 depth_stages = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
-    for (const auto& pass : frame.passes)
-    {
-        const auto* target = static_cast<const VulkanRenderTarget*>(pass.target);
-        const auto* depth = static_cast<const VulkanRenderTarget*>(pass.depth);
-        const auto region = begin_region(command, pass.label, "Pass");
-        begin_label(command, pass.label);
-        if (target && pass.load)
-        {
-            transition_image(command, target->image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_NONE,
-                VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-                VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
-        }
-        else if (target)
-        {
-            transition_image(command, target->image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_NONE,
-                VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-                VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
-        }
-        else
-        {
-            transition_image(command, image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_NONE,
-                VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-                VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
-        }
-        if (depth && pass.depth_write)
-        {
-            transition_image(command, depth->image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-                depth_stages | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_NONE,
-                depth_stages, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-                VK_IMAGE_ASPECT_DEPTH_BIT);
-        }
-        const auto extent = target ? target->extent : swapchain_.extent;
-        const auto& clear_color = target ? target->description().clear_color : frame.clear_color;
-        VkRenderingAttachmentInfo color{};
-        color.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-        color.imageView = target ? target->view : image.view;
-        color.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        color.loadOp = pass.load ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_CLEAR;
-        color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-        std::copy(clear_color.begin(), clear_color.end(), color.clearValue.color.float32);
-        VkRenderingAttachmentInfo depth_attachment{};
-        depth_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-        if (depth)
-        {
-            depth_attachment.imageView = depth->view;
-            depth_attachment.imageLayout = pass.depth_write ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL :
-                VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-            depth_attachment.loadOp = pass.depth_write ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
-            depth_attachment.storeOp = pass.depth_write ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_NONE;
-            depth_attachment.clearValue.depthStencil = {depth->description().clear_depth, 0};
-        }
-        VkRenderingInfo rendering{};
-        rendering.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-        rendering.renderArea.extent = extent;
-        rendering.layerCount = 1;
-        rendering.colorAttachmentCount = 1;
-        rendering.pColorAttachments = &color;
-        rendering.pDepthAttachment = depth ? &depth_attachment : nullptr;
-        vkCmdBeginRendering(command, &rendering);
-        set_viewport(command, extent);
-        for (const auto& draw : pass.draws)
-        {
-            begin_label(command, draw.label);
-            vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, static_cast<const VulkanGraphicsPipeline&>(draw.pipeline).pipeline);
-            vkCmdPushConstants(command, bindings_.layout, constant_stages, 0, constant_bytes, draw.constants.data());
-            push_bindings(command, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.bindings, slot, pass.inputs);
-            if (draw.indirect)
-            {
-                vkCmdDrawIndirect(command, static_cast<const VulkanBuffer*>(draw.indirect)->buffer, draw.indirect_offset, 1, 0);
-            }
-            else
-            {
-                vkCmdDraw(command, draw.vertex_count, draw.instance_count, 0, 0);
-            }
-            end_label(command, draw.label);
-        }
-        vkCmdEndRendering(command);
-        end_region(command, region);
-        if (target)
-        {
-            transition_image(command, target->image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-                VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
-        }
-        if (depth && pass.depth_write)
-        {
-            transition_image(command, depth->image, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-                VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL, depth_stages, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-                depth_stages | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-                VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
-        }
-        end_label(command, pass.label);
-    }
+    for (const auto& pass : frame.passes) record_pass(command, pass, frame.clear_color, slot, image);
     if (frame.overlay)
     {
         if (timing_.pool) vkCmdWriteTimestamp2(command, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, timing_.pool, query + 3);
@@ -406,28 +446,7 @@ RenderResult VulkanRenderer::render(const Frame& frame)
     {
         return RenderResult::failed;
     }
-    VkSemaphoreSubmitInfo wait{};
-    wait.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-    wait.semaphore = slot.acquired;
-    wait.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-    VkSemaphoreSubmitInfo signal{};
-    signal.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-    signal.semaphore = image.rendered;
-    signal.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-    VkCommandBufferSubmitInfo buffer{};
-    buffer.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
-    buffer.commandBuffer = command;
-    VkSubmitInfo2 submit{};
-    submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
-    submit.waitSemaphoreInfoCount = 1;
-    submit.pWaitSemaphoreInfos = &wait;
-    submit.commandBufferInfoCount = 1;
-    submit.pCommandBufferInfos = &buffer;
-    submit.signalSemaphoreInfoCount = 1;
-    submit.pSignalSemaphoreInfos = &signal;
-    if (!check(vkResetFences(vk_.device, 1, slot.submitted.address()), "Reset frame fence") ||
-        (vk_.present_fences && !check(vkResetFences(vk_.device, 1, image.presented.address()), "Reset presentation fence")) ||
-        !check(vkQueueSubmit2(vk_.queue, 1, &submit, slot.submitted), "Submit Vulkan frame"))
+    if (!submit_frame(command, slot, image))
     {
         return RenderResult::failed;
     }
