@@ -15,6 +15,8 @@ static const uint push_mask_bit = 26;
 static const uint shake_mask_bit = 27;
 static const uint rotor_mask_bit = 28;
 static const uint brownout_mask_bit = 29;
+// realism_full_mask lives only in realism_layout.hpp: declaring its value here would reorder the SPIR-V constants of
+// shaders that use the same number.
 
 static const uint residual_groups = 1024;
 static const uint residual_records = residual_groups * simulation_group_size;

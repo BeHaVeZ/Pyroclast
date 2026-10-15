@@ -1,3 +1,4 @@
+// Shared by HLSL and C++ (src/simulation/terrain.hpp): only `static const` scalar declarations belong here.
 #pragma once
 
 static const uint terrain_resolution = 257;

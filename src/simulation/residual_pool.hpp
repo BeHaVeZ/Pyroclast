@@ -52,6 +52,7 @@ struct LingerSettings
     bool variation = false;
 };
 
+// clusters however ticks fall into frames.
 class ResidualPool final
 {
 public:

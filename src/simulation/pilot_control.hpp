@@ -51,6 +51,7 @@ enum class PilotSetting : std::uint32_t
 };
 inline constexpr std::uint32_t pilot_setting_count = static_cast<std::uint32_t>(PilotSetting::count);
 inline constexpr PilotSetting first_jet_setting = PilotSetting::jet_cruise_speed;
+// `format` is the slider's printf format, null-terminated.
 struct PilotSettingInfo
 {
     std::string_view label;
@@ -60,6 +61,7 @@ struct PilotSettingInfo
 };
 const PilotSettingInfo& pilot_setting_info(PilotSetting setting);
 double pilot_setting(const PilotSettings& settings, PilotSetting setting);
+// Clamped to its range; false for an index out of range or a value that is not finite.
 bool set_pilot_setting(PilotSettings& settings, PilotSetting setting, double value);
 
 namespace pilot
@@ -135,6 +137,7 @@ struct JetInput
     PilotScene scene;
     bool home = false;
 };
+// `load` is negative in a push; `tangential` is the acceleration along the path.
 struct JetControl
 {
     FlightKnot knot;

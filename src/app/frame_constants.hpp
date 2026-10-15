@@ -63,6 +63,7 @@ struct FrameConstants
     std::array<std::array<std::uint32_t, 4>, particle_layout::maximum_simulation_steps> jet_births;
     std::array<float4, particle_layout::maximum_simulation_steps> jet_dust_lines;
 };
+// A legacy frame uploads only the members before unit_state.
 inline constexpr std::size_t legacy_frame_constant_bytes = 400 + 52 * particle_layout::maximum_effects + 32 * particle_layout::maximum_lights;
 static_assert(particle_layout::maximum_effects % 4 == 0);
 static_assert(sizeof(float4x4) == 64 && sizeof(float4) == 16);

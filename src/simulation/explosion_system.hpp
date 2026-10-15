@@ -61,6 +61,7 @@ public:
     void clear();
     void start(std::uint32_t tick, SlotPolicy policy = SlotPolicy::drop_new, const RealismStart* realism = nullptr);
     std::span<const EffectSlot> slots() const { return slots_; }
+    // Ascending.
     std::span<const std::uint32_t> active() const { return active_; }
     std::uint64_t started() const { return started_; }
     std::uint64_t dropped() const { return dropped_; }

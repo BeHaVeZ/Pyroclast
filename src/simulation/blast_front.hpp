@@ -18,6 +18,8 @@ double particle_velocity(double overpressure);
 std::array<BlastKnot, realism_layout::blast_knots> make_blast_knots(double kilograms);
 double integrated_arrival_ticks(double kilograms, double metres);
 
+// Must match shaders/blast.hlsli. The radius is linear in time between knots, the overpressure a power law between knots.
+// The arrival tick uses integer arithmetic only, so the GPU's skirt births fall on the same ticks on every API.
 float blast_radius(const BlastParameters& blast, float ticks);
 float blast_overpressure(const BlastParameters& blast, float metres);
 std::uint32_t blast_arrival_tick(const BlastParameters& blast, std::uint32_t radius_cm);

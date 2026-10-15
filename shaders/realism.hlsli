@@ -1,5 +1,6 @@
 #pragma once
 
+// Included only by the realism entries, each with PYROCLAST_REALISM defined before frame_constants.hlsli.
 #include "realism_layout.hlsli"
 #include "effect_classes.hlsli"
 #include "frame_constants.hlsli"
@@ -55,6 +56,7 @@ float load_late_dilution(ByteAddressBuffer classes, uint effect_class)
     return asfloat(classes.Load(realism_address(effect_class) + 12));
 }
 
+// C++ twin: event_variation in explosion_presets.cpp.
 uint variation_key(uint seed)
 {
     return realism_hash(seed ^ 0xa5a5a5a5) & 0xff;
@@ -414,6 +416,7 @@ bool lingering_record(EffectResidual link, RealismLayer lingering, uint layer_in
     return link.linger && layer_index <= layer_plume && lingering.survivor_stride != 0;
 }
 
+// C++ twin: wind_at_height in wind.cpp.
 float3 lingering_wind(float height, uint mask)
 {
     if (!mask_enabled(mask, shear_mask_bit) || height <= 15) return frame.wind.xyz * (0.35 + 0.65 * saturate(height / 15));

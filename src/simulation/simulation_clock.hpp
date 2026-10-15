@@ -4,6 +4,7 @@
 
 namespace pyroclast
 {
+// The shaders keep their own 60s; this is the C++ side's one copy.
 inline constexpr std::uint32_t ticks_per_second = 60;
 inline constexpr double tick_seconds = 1.0 / ticks_per_second;
 

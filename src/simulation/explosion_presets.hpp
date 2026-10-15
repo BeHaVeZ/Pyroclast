@@ -28,6 +28,7 @@ enum class ExplosionPreset : std::uint32_t
 };
 inline constexpr std::uint32_t preset_count = 7;
 
+// In draw order within an effect (particle_layout::layer_*).
 enum class EffectLayer : std::uint32_t { ground_dust, blast_smoke, plume, flash, fireball, sparks, debris };
 inline constexpr std::uint32_t layer_count = particle_layout::layer_count;
 
@@ -188,6 +189,7 @@ struct EventVariation
     std::uint32_t life = 1024;
 };
 EventVariation event_variation(std::uint32_t seed);
+// Must match particle_hash in shaders/explosion.hlsli.
 std::uint32_t particle_hash(std::uint32_t value);
 float charge_kilograms(ExplosionPreset preset);
 float stabilization_height(ExplosionPreset preset);
@@ -212,6 +214,7 @@ std::optional<ExplosionPreset> preset_from_name(std::string_view name);
 std::string_view surface_name(SurfaceType surface);
 std::string_view layer_name(EffectLayer layer);
 
+// Also the index in the GPU class buffer.
 constexpr std::uint32_t effect_class_index(ExplosionPreset preset, SurfaceType surface)
 {
     return static_cast<std::uint32_t>(preset) * surface_type_count + static_cast<std::uint32_t>(surface);

@@ -28,6 +28,7 @@ PixelInput vs_main(uint vertex : SV_VertexID)
     return output;
 }
 
+// Fine derivatives on both APIs, as in terrain.hlsl.
 float stripe(float coordinate, float spacing)
 {
     float value = coordinate / spacing;

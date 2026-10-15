@@ -31,6 +31,7 @@ struct ScriptedEvent
     ExplosionEvent event;
 };
 
+// --scenario: events in tick order. The flight and the jet's passes are flown from the run's start.
 struct Scenario
 {
     std::string_view name;

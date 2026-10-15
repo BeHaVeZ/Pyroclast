@@ -7,6 +7,7 @@
 
 namespace pyroclast
 {
+// As the frame constants carry it: linear HDR intensity at its position, falling off as 1 / (1 + d^2), half at one metre.
 struct PointLight
 {
     float3 position;

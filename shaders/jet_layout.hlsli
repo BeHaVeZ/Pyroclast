@@ -1,3 +1,4 @@
+// Jet constants shared with C++ (src/graphics/jet_layout.hpp): only `static const` scalars belong here.
 #pragma once
 
 static const float jet_mass = 12000.0f;

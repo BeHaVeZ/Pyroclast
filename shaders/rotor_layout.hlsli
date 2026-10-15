@@ -1,3 +1,4 @@
+// Helicopter constants shared with C++ (src/graphics/rotor_layout.hpp): only `static const` scalars belong here.
 #pragma once
 
 static const float rotor_radius = 8.0f;

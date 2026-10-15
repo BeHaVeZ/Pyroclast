@@ -142,6 +142,7 @@ PixelInput vs_main(uint vertex : SV_VertexID, uint instance : SV_InstanceID)
     return output;
 }
 
+// Premultiplied, so one blend state draws both: smoke covers, light (zero alpha) adds.
 float4 ps_main(PixelInput input) : SV_Target
 {
     float radius = dot(input.uv, input.uv);

@@ -12,6 +12,7 @@ namespace
 {
 constexpr std::uint32_t largest_fade_code = 7;
 constexpr std::uint32_t rate_window_ticks = 600;
+// The per-event variation's largest factor, in 1/1024.
 constexpr std::uint32_t largest_variation = 1229;
 
 bool overlapping(const ResidualCluster& a, const ResidualCluster& b)
