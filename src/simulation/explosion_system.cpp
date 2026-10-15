@@ -40,6 +40,27 @@ void ExplosionSystem::clear()
     waiting_.clear();
     residual_.clear();
     rotor_request_.reset();
+    jet_request_.reset();
+}
+
+void ExplosionSystem::request_jet(std::uint32_t seed, float3 origin, std::uint32_t end_tick)
+{
+    if (const auto slot = jet_slot())
+    {
+        auto& jet = slots_[*slot];
+        jet.lifetime_ticks = end_tick > jet.start_tick ? end_tick - jet.start_tick : 1;
+        return;
+    }
+    jet_request_ = RotorRequest{seed, origin, end_tick};
+}
+
+std::optional<std::uint32_t> ExplosionSystem::jet_slot() const
+{
+    for (const auto index : active_)
+    {
+        if (slots_[index].kind == EffectKind::jet) return index;
+    }
+    return std::nullopt;
 }
 
 void ExplosionSystem::request_rotor(std::uint32_t seed, float3 origin, std::uint32_t end_tick)
@@ -138,6 +159,21 @@ void ExplosionSystem::start(std::uint32_t tick, SlotPolicy policy, const Realism
             rotor_request_.reset();
         }
         else if (found == 1) held = free[0];
+    }
+    if (jet_request_)
+    {
+        assert(realism && !jet_slot());
+        for (std::uint32_t index = 0; index < slots_.size(); ++index)
+        {
+            if (slots_[index].active || held == index) continue;
+            auto& slot = slots_[index];
+            slot = EffectSlot{EffectKind::jet, jet_request_->origin, {0, 1, 0}, jet_request_->seed, slot.generation, tick, ExplosionPreset::small_impact,
+                jet_class_index, jet_request_->end_tick > tick ? jet_request_->end_tick - tick : 1, true, started_, 0, realism->drift, std::nullopt, false};
+            slot.generation = slot.generation == 0xffffffffu ? 1 : slot.generation + 1;
+            active_.insert(std::lower_bound(active_.begin(), active_.end(), index), index);
+            jet_request_.reset();
+            break;
+        }
     }
     std::vector<ExplosionEvent> queue(waiting_.begin(), waiting_.end());
     const std::size_t promised = waiting_.size();

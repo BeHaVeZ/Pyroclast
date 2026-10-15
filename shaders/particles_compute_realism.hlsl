@@ -378,6 +378,7 @@ bool simulate_residual(uint cluster_index, uint group_in_cluster, uint thread)
 
 #ifdef PYROCLAST_ROTOR
 #include "rotor_compute.hlsli"
+#include "jet_compute.hlsli"
 #endif
 
 bool simulate_slab(uint slot, uint local)
@@ -388,6 +389,7 @@ bool simulate_slab(uint slot, uint local)
     uint layer_index = group_layer(classes, effect_class, local / simulation_group_size);
     EffectResidual link = load_effect_residual(slot);
 #ifdef PYROCLAST_ROTOR
+    if (link.jet) return simulate_jet(slot, local);
     if (link.rotor) return simulate_rotor(slot, local);
 #endif
     if (link.linger && layer_index <= layer_plume)

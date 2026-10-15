@@ -58,6 +58,7 @@ constexpr bool is_scenario_name(std::string_view name)
 }
 
 inline constexpr std::uint32_t jet_vapor_humidity_percent = 95;
+inline constexpr std::uint32_t jet_seed = 28000;
 JetFlight jet_flight(std::string_view name, const Environment& environment);
 
 inline constexpr std::uint32_t helicopter_seed = 26000;

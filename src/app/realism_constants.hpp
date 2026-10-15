@@ -15,7 +15,7 @@ struct RealismUnits
 };
 
 RealismUnits fill_realism_constants(FrameConstants& constants, const ExplosionSystem& effects, std::uint32_t tick, std::uint32_t key_tick,
-    const Camera& camera, EffectOrder order, float3 drift, const LingerSettings& linger, std::optional<float3> rotor_key = std::nullopt,
+    const Camera& camera, EffectOrder order, float3 drift, const LingerSettings& linger, std::optional<float3> jet_key = std::nullopt, std::optional<float3> rotor_key = std::nullopt,
     std::optional<float3> disc_key = std::nullopt);
 inline constexpr std::uint32_t pall_ease_in_ticks = 600;
 inline constexpr std::uint32_t pall_ease_out_ticks = 1200;

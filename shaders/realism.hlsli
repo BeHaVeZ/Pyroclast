@@ -342,6 +342,7 @@ struct EffectResidual
 #ifdef PYROCLAST_ROTOR
     bool rotor;
     bool rotor_disc;
+    bool jet;
     uint end;
 #endif
 };
@@ -362,6 +363,7 @@ EffectResidual load_effect_residual(uint slot)
 #ifdef PYROCLAST_ROTOR
     link.rotor = (words.z & latched_rotor) != 0;
     link.rotor_disc = link.rotor && words.x == 1;
+    link.jet = link.rotor && words.x == 2;
     link.end = words.w;
 #endif
     return link;

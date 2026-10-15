@@ -1,4 +1,6 @@
 #include "jet.hpp"
+#include "explosion_presets.hpp"
+#include "../graphics/particle_layout.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -399,28 +401,167 @@ double3 jet_air(const JetWake& wake, const JetHead& head, double3 point)
     return air;
 }
 
-void Jetcraft::fly(JetFlight flight)
+JetEmission jet_emission(const JetFlight& flight, std::uint32_t tick, const Terrain& terrain, const WindSettings& wind, bool gusts, std::uint32_t mask,
+    JetHistory& history)
+{
+    JetEmission emission;
+    const auto pose = jet_pose(flight, tick, terrain, wind, gusts, mask);
+    if (pose.listed && pose.fade > 0)
+    {
+        const double3 nozzle = pose.centre - normalize(pose.velocity) * jet::nozzle_aft;
+        if (std::abs(nozzle.x) <= jet::range_box && std::abs(nozzle.z) <= jet::range_box)
+        {
+            emission.exhaust = static_cast<std::uint32_t>(std::lround(jet_layout::jet_exhaust_emission * pose.fade));
+        }
+    }
+    const auto wake = jet_wake(flight, tick, terrain, wind, gusts, mask, history);
+    const double threshold = jet_layout::jet_saltation;
+    double total = 0;
+    double spread = 0;
+    double weight = 0;
+    bool found = false;
+    for (std::uint32_t knot = 0; knot + 1 < wake.count; ++knot)
+    {
+        const auto& newer = wake.knots[knot];
+        const auto& older = wake.knots[knot + 1];
+        if (newer.words[3].x == 0) continue;
+        const double3 centre = (to_double3(newer.words[0]) + to_double3(newer.words[1])) * 0.5;
+        const double3 previous = (to_double3(older.words[0]) + to_double3(older.words[1])) * 0.5;
+        const double ground = newer.words[2].x;
+        const double height = std::max(centre.y - ground, 0.5);
+        const double vortex = newer.words[0].w / (jet::pi * height);
+        const double radius = std::max(static_cast<double>(newer.words[2].w), jet::nozzle_radius);
+        const double exhaust = newer.words[2].z * std::exp(-height * height / (radius * radius));
+        const double u = std::max(vortex, exhaust);
+        if (u <= threshold) continue;
+        const double track = std::hypot(centre.x - previous.x, centre.z - previous.z);
+        const double flux = u * (u * u - threshold * threshold) * track;
+        total += flux;
+        spread += 0.5 * length(to_double3(newer.words[1]) - to_double3(newer.words[0])) * flux;
+        weight += flux;
+        const float2 point{static_cast<float>(centre.x), static_cast<float>(centre.z)};
+        if (!found) emission.dust_from = point;
+        emission.dust_to = point;
+        found = true;
+    }
+    if (found && total > 0)
+    {
+        emission.dust = static_cast<std::uint32_t>(std::lround(1024 * std::min(1.0, total / jet_layout::jet_reference_flux)));
+        emission.half_width = static_cast<float>(spread / weight);
+    }
+    return emission;
+}
+
+DustCycle jet_cycle(std::uint32_t seed, std::uint32_t local)
+{
+    const std::uint32_t id = seed * particle_layout::explosion_particles + local;
+    DustCycle cycle;
+    cycle.length = jet_layout::jet_cycle_min_ticks + particle_hash(id ^ jet_layout::jet_salt_cycle) % jet_layout::jet_cycle_range_ticks;
+    cycle.phase = particle_hash(id ^ jet_layout::jet_salt_phase) % cycle.length;
+    return cycle;
+}
+
+bool jet_born(std::uint32_t seed, std::uint32_t local, std::uint32_t cycle, std::uint32_t emission)
+{
+    const std::uint32_t id = seed * particle_layout::explosion_particles + local;
+    return (particle_hash(id ^ particle_hash(cycle ^ jet_layout::jet_salt_birth)) & 1023u) < emission;
+}
+
+const JetEmissionHistory::Entry* JetEmissionHistory::find(std::uint32_t tick) const
+{
+    const auto& entry = entries_[tick % length];
+    return entry.tick == tick ? &entry : nullptr;
+}
+
+void JetEmissionHistory::store(std::uint32_t tick, const JetEmission& emission, float3 point)
+{
+    auto& entry = entries_[tick % length];
+    entry.tick = tick;
+    entry.exhaust = emission.exhaust;
+    entry.dust = emission.dust;
+    entry.point = point;
+}
+
+void JetEmissionHistory::clear()
+{
+    entries_.fill({});
+}
+
+JetCensus jet_census(const JetEmissionHistory& history, std::uint32_t seed, std::uint32_t start_tick, std::uint32_t end_tick, std::uint32_t tick,
+    bool smoke_drawn, bool dust_drawn)
+{
+    JetCensus census;
+    if (tick >= end_tick) return census;
+    double3 point;
+    for (std::uint32_t local = 0; local < particle_layout::explosion_particles; ++local)
+    {
+        const bool exhaust = local < jet_layout::jet_exhaust_records;
+        if (exhaust ? !smoke_drawn : !dust_drawn) continue;
+        const auto cycle = jet_cycle(seed, local);
+        const std::uint32_t first = start_tick + 1 + cycle.phase;
+        if (tick < first) continue;
+        const std::uint32_t index = (tick - first) / cycle.length;
+        const std::uint32_t begun = first + index * cycle.length;
+        const auto* entry = history.find(begun);
+        if (!entry || !jet_born(seed, local, index, exhaust ? entry->exhaust : entry->dust)) continue;
+        ++(exhaust ? census.exhaust : census.dust);
+        point = point + to_double3(entry->point);
+    }
+    const std::uint32_t alive = census.exhaust + census.dust;
+    if (alive != 0) census.mean_point = point * (1.0 / alive);
+    return census;
+}
+
+void Jetcraft::fly(JetFlight flight, std::uint32_t seed)
 {
     flight_ = std::move(flight);
     variants_ = true;
+    request_pending_ = true;
+    seed_ = seed;
     history_.clear();
+    emissions_.clear();
 }
 
-void Jetcraft::add_pass(JetPass pass)
+void Jetcraft::add_pass(JetPass pass, std::uint32_t seed)
 {
     if (!flight_)
     {
-        fly({"sandbox", {std::move(pass)}});
+        fly({"sandbox", {std::move(pass)}}, seed);
         return;
     }
     flight_->passes.push_back(std::move(pass));
+    request_pending_ = true;
 }
 
 void Jetcraft::clear()
 {
     flight_.reset();
     variants_ = false;
+    request_pending_ = false;
     history_.clear();
+    emissions_.clear();
+}
+
+std::uint32_t Jetcraft::first_list_tick() const
+{
+    std::uint32_t first = never;
+    if (flight_)
+    {
+        for (const auto& pass : flight_->passes) first = std::min(first, pass.list_tick);
+    }
+    return first;
+}
+
+std::uint32_t Jetcraft::slot_end() const
+{
+    if (!flight_ || flight_->passes.empty()) return never;
+    std::uint32_t last = 0;
+    for (const auto& pass : flight_->passes)
+    {
+        if (pass.unlist_tick == never) return never;
+        last = std::max(last, pass.unlist_tick);
+    }
+    return last + JetEmissionHistory::length;
 }
 
 JetPass straight_pass(std::string name, double3 over, double3 heading, double speed, std::uint32_t centre_tick, double lead)

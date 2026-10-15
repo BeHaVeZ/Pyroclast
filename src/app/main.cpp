@@ -460,8 +460,12 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
     std::int32_t lowest_hub_cm = std::numeric_limits<std::int32_t>::max();
     std::pair<std::uint32_t, std::uint32_t> rotor_slot{pyroclast::never, pyroclast::never};
     std::uint32_t peak_knots = 0;
+    std::pair<std::uint32_t, std::uint32_t> jet_slot{pyroclast::never, pyroclast::never};
+    std::uint32_t peak_exhaust = 0;
+    std::uint32_t peak_jet_dust = 0;
     const auto scalability_json = [&coverage, &sandbox, automatic, realism, &peak_clusters, &peak_residual, &ghosts, &rotor_mismatches, &peak_dust,
-                                      &lowest_hub_cm, &rotor_slot, &peak_knots]() {
+                                      &lowest_hub_cm, &rotor_slot, &peak_knots, &jet_slot,
+                                      &peak_exhaust, &peak_jet_dust]() {
         std::string text = coverage.json();
         if (automatic)
         {
@@ -520,9 +524,10 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
             }
             if (const auto& jet = sandbox.jetcraft.flight())
             {
-                char passes[160];
-                std::snprintf(passes, sizeof(passes), ",\"jet\":{\"flight\":\"%s\",\"passes\":%zu,\"peak_knots\":%u}", jet->name.c_str(),
-                    jet->passes.size(), peak_knots);
+                char passes[256];
+                std::snprintf(passes, sizeof(passes),
+                    ",\"jet\":{\"flight\":\"%s\",\"passes\":%zu,\"peak_knots\":%u,\"jet_slot\":[%u,%u],\"peak_exhaust\":%u,\"peak_dust\":%u,\"mismatches\":%u}",
+                    jet->name.c_str(), jet->passes.size(), peak_knots, jet_slot.first, jet_slot.second, peak_exhaust, peak_jet_dust, rotor_mismatches);
                 text += passes;
             }
         }
@@ -738,15 +743,25 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& renderer, Sand
                     const auto& rotor = sandbox.renderer.rotor_frame();
                     if (rotor.exists && rotor.listed) lowest_hub_cm = std::min(lowest_hub_cm, rotor.hub_height_cm);
                     peak_dust = std::max(peak_dust, rotor.census.alive);
-                    peak_knots = std::max(peak_knots, sandbox.renderer.jet_frame().wake.count);
+                    const auto& jet = sandbox.renderer.jet_frame();
+                    peak_knots = std::max(peak_knots, jet.wake.count);
+                    peak_exhaust = std::max(peak_exhaust, jet.census.exhaust);
+                    peak_jet_dust = std::max(peak_jet_dust, jet.census.dust);
+                    if (jet.slot)
+                    {
+                        const auto& slot = sandbox.effects.slots()[*jet.slot];
+                        jet_slot = {slot.start_tick, slot.start_tick + slot.lifetime_ticks};
+                    }
                     if (rotor.slot)
                     {
                         const auto& slot = sandbox.effects.slots()[*rotor.slot];
                         rotor_slot = {slot.start_tick, slot.start_tick + slot.lifetime_ticks};
-                        if (sandbox.effects.explosions() == 0 && sandbox.renderer.particles_drawn())
-                        {
-                            rotor_expected.push_back({demo.tick(), rotor.census.alive + (rotor.listed ? pyroclast::rotor_layout::rotor_disc_records : 0u)});
-                        }
+                    }
+                    if ((rotor.slot || jet.slot) && sandbox.effects.explosions() == 0 && sandbox.renderer.particles_drawn())
+                    {
+                        const std::uint32_t rotor_records = rotor.slot ? rotor.census.alive + (rotor.listed ? pyroclast::rotor_layout::rotor_disc_records : 0u) : 0u;
+                        const std::uint32_t jet_records = jet.slot ? jet.census.exhaust + jet.census.dust : 0u;
+                        rotor_expected.push_back({demo.tick(), rotor_records + jet_records});
                     }
                 }
                 const double wall = static_cast<double>(SDL_GetPerformanceCounter()) / static_cast<double>(SDL_GetPerformanceFrequency());
@@ -1022,7 +1037,7 @@ int run_application(const pyroclast::ApplicationOptions& options)
         if (script->flight) sandbox->rotorcraft.fly(*script->flight, pyroclast::helicopter_seed);
         if (script->jet)
         {
-            sandbox->jetcraft.fly(*script->jet);
+            sandbox->jetcraft.fly(*script->jet, pyroclast::jet_seed);
             for (const auto& pass : script->jet->passes)
             {
                 const auto over = pyroclast::flight_state(pass, (pass.list_tick + pass.unlist_tick) / 2).position;

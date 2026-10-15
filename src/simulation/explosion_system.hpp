@@ -22,7 +22,7 @@ struct ExplosionEvent
     SurfaceType surface = SurfaceType::dirt;
 };
 
-enum class EffectKind { explosion, rotor, rotor_disc };
+enum class EffectKind { explosion, rotor, rotor_disc, jet };
 
 struct EffectSlot
 {
@@ -66,11 +66,14 @@ public:
     std::uint64_t dropped() const { return dropped_; }
     std::uint64_t evicted() const { return evicted_; }
     std::uint64_t deferred() const { return deferred_; }
-    std::size_t explosions() const { return active_.size() - (rotor_slot() ? 1 : 0) - (rotor_disc_slot() ? 1 : 0); }
+    std::size_t explosions() const { return active_.size() - (rotor_slot() ? 1 : 0) - (rotor_disc_slot() ? 1 : 0) - (jet_slot() ? 1 : 0); }
     void request_rotor(std::uint32_t seed, float3 origin, std::uint32_t end_tick);
     std::optional<std::uint32_t> rotor_slot() const;
     std::optional<std::uint32_t> rotor_disc_slot() const;
     bool rotor_requested() const { return rotor_request_.has_value(); }
+    void request_jet(std::uint32_t seed, float3 origin, std::uint32_t end_tick);
+    std::optional<std::uint32_t> jet_slot() const;
+    bool jet_requested() const { return jet_request_.has_value(); }
     std::size_t waiting() const { return waiting_.size(); }
     std::size_t pending() const { return pending_.size() + waiting_.size(); }
     const ResidualPool& residual() const { return residual_; }
@@ -93,6 +96,7 @@ private:
         std::uint32_t end_tick = 0;
     };
     std::optional<RotorRequest> rotor_request_;
+    std::optional<RotorRequest> jet_request_;
     std::uint64_t started_ = 0;
     std::uint64_t dropped_ = 0;
     std::uint64_t evicted_ = 0;

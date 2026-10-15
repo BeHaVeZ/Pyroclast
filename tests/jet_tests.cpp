@@ -1,4 +1,5 @@
 #include "simulation/jet.hpp"
+#include "graphics/particle_layout.hpp"
 #include "graphics/realism_layout.hpp"
 
 #include <algorithm>
@@ -23,6 +24,7 @@ using namespace pyroclast;
 
 const std::uint32_t all_bits = realism_layout::realism_full_mask;
 const WindSettings still{0, 0, 0};
+const std::uint32_t jet_seed_for_tests = 28000;
 
 JetFlight one_pass(double height, std::uint32_t crossing = 600, double speed = jet::pass_speed)
 {
@@ -184,6 +186,43 @@ int main()
         JetHistory late;
         const auto after = wake_at(flight, 1300, terrain, late);
         check(after.head.words[0].w == 0 && after.wake.count > 0, "after its listing the wake stays, the head goes");
+    }
+
+    {
+        bool cycles = true;
+        for (std::uint32_t local = 0; local < particle_layout::explosion_particles; ++local)
+        {
+            const auto cycle = jet_cycle(jet_seed_for_tests, local);
+            cycles = cycles && cycle.length >= 300 && cycle.length <= 720 && cycle.phase < cycle.length;
+        }
+        check(cycles, "the jet's records live 5-12 s cycles");
+        const auto flight = one_pass(60, 600);
+        JetHistory history;
+        const auto high = jet_emission(flight, 600, terrain, still, false, all_bits, history);
+        check(high.exhaust == jet_layout::jet_exhaust_emission && high.dust == 0, "a pass at 60 m trails exhaust and raises no dust");
+        check(jet_emission(flight, 300, terrain, still, false, all_bits, history).exhaust == 0, "no exhaust before the range");
+        const auto low = one_pass(8, 600);
+        JetHistory low_history;
+        std::uint32_t most = 0;
+        float width = 0;
+        for (std::uint32_t tick = 600; tick <= 1500; tick += 30)
+        {
+            const auto emission = jet_emission(low, tick, terrain, still, false, all_bits, low_history);
+            if (emission.dust > most)
+            {
+                most = emission.dust;
+                width = emission.half_width;
+            }
+        }
+        check(most > 100 && width > 2, "a pass at 8 m raises dust under its pair");
+        JetEmissionHistory emissions;
+        JetEmission steady;
+        steady.exhaust = jet_layout::jet_exhaust_emission;
+        for (std::uint32_t tick = 0; tick <= 2000; ++tick) emissions.store(tick, steady, {0, 0, 0});
+        const auto census = jet_census(emissions, jet_seed_for_tests, 0, never, 2000, true, true);
+        const double expected = jet_layout::jet_exhaust_records * jet_layout::jet_exhaust_emission / 1024.0;
+        check(census.dust == 0 && std::abs(census.exhaust - expected) < 0.08 * expected, "the census counts the steady exhaust's records");
+        check(jet_census(emissions, jet_seed_for_tests, 0, never, 2000, false, true).exhaust == 0, "a hidden layer counts nothing");
     }
 
     if (failures == 0) std::printf("All jet tests passed.\n");

@@ -147,20 +147,72 @@ void include_head(JetWake& wake, const JetHead& head);
 
 double3 jet_air(const JetWake& wake, const JetHead& head, double3 point);
 
+struct JetEmission
+{
+    std::uint32_t exhaust = 0;
+    std::uint32_t dust = 0;
+    float2 dust_from;
+    float2 dust_to;
+    float half_width = 0;
+};
+JetEmission jet_emission(const JetFlight& flight, std::uint32_t tick, const Terrain& terrain, const WindSettings& wind, bool gusts, std::uint32_t mask,
+    JetHistory& history);
+
+DustCycle jet_cycle(std::uint32_t seed, std::uint32_t local);
+bool jet_born(std::uint32_t seed, std::uint32_t local, std::uint32_t cycle, std::uint32_t emission);
+
+class JetEmissionHistory final
+{
+public:
+    static constexpr std::uint32_t length = 721;
+    struct Entry
+    {
+        std::uint32_t tick = never;
+        std::uint32_t exhaust = 0;
+        std::uint32_t dust = 0;
+        float3 point;
+    };
+    const Entry* find(std::uint32_t tick) const;
+    void store(std::uint32_t tick, const JetEmission& emission, float3 point);
+    void clear();
+
+private:
+    std::array<Entry, length> entries_{};
+};
+
+struct JetCensus
+{
+    std::uint32_t exhaust = 0;
+    std::uint32_t dust = 0;
+    double3 mean_point;
+};
+JetCensus jet_census(const JetEmissionHistory& history, std::uint32_t seed, std::uint32_t start_tick, std::uint32_t end_tick, std::uint32_t tick,
+    bool smoke_drawn, bool dust_drawn);
+
 class Jetcraft final
 {
 public:
     const std::optional<JetFlight>& flight() const { return flight_; }
     bool variants() const { return variants_; }
-    void fly(JetFlight flight);
-    void add_pass(JetPass pass);
+    void fly(JetFlight flight, std::uint32_t seed);
+    void add_pass(JetPass pass, std::uint32_t seed);
     void clear();
     JetHistory& history() { return history_; }
+    JetEmissionHistory& emissions() { return emissions_; }
+    const JetEmissionHistory& emissions() const { return emissions_; }
+    std::uint32_t seed() const { return seed_; }
+    bool request_pending() const { return request_pending_; }
+    void requested() { request_pending_ = false; }
+    std::uint32_t first_list_tick() const;
+    std::uint32_t slot_end() const;
 
 private:
     std::optional<JetFlight> flight_;
     bool variants_ = false;
+    bool request_pending_ = false;
+    std::uint32_t seed_ = 0;
     JetHistory history_;
+    JetEmissionHistory emissions_;
 };
 
 JetPass straight_pass(std::string name, double3 over, double3 heading, double speed, std::uint32_t centre_tick, double lead);

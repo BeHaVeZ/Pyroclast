@@ -52,9 +52,15 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
         effects.request_rotor(helicopter.seed, to_float3(flight_state(helicopter.plan, tick).position), rotorcraft->slot_end());
         rotorcraft->requested();
     }
+    auto* jetcraft = realism ? options.jetcraft : nullptr;
+    if (jetcraft && jetcraft->flight() && jetcraft->request_pending() && stepping && tick >= jetcraft->first_list_tick())
+    {
+        const auto& first = jetcraft->flight()->passes.front();
+        effects.request_jet(jetcraft->seed(), to_float3(flight_state(first, first.list_tick).position), jetcraft->slot_end());
+        jetcraft->requested();
+    }
     effects.start(tick, options.scalability.slot_policy, realism ? &realism_start : nullptr);
     const auto active = effects.active();
-    auto* jetcraft = realism ? options.jetcraft : nullptr;
     auto units = realism ? count_units(effects, tick) : FrameUnits{};
     units.rotor = (rotorcraft && rotorcraft->variants()) || (jetcraft && jetcraft->variants());
     const auto& scalability = options.scalability;
@@ -160,8 +166,13 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
             const auto drift_at = [this, &options, gusts](std::uint32_t at) { return drift_.at(at, options.wind, gusts); };
             rotor_frame_ = prepare_rotor(*rotorcraft, effects, range.terrain(), options.wind, gusts, options.layer_mask, tick, work.steps, key_tick, drift_at);
         }
+        if (jetcraft)
+        {
+            jet_frame_ = prepare_jet(*jetcraft, effects, range.terrain(), options.wind, gusts, options.layer_mask, tick, work.steps, key_tick);
+        }
         const auto filled = fill_realism_constants(constants, effects, tick, key_tick, camera, effect_order, drift_.at(key_tick, options.wind, gusts),
-            options.linger, rotor_frame_.slot ? std::optional<float3>(rotor_frame_.key) : std::nullopt,
+            options.linger, jet_frame_.slot ? std::optional<float3>(jet_frame_.key) : std::nullopt,
+            rotor_frame_.slot ? std::optional<float3>(rotor_frame_.key) : std::nullopt,
             rotor_frame_.exists ? std::optional<float3>(rotor_frame_.disc_key) : std::nullopt);
         assert(filled.units.units == units.units && filled.units.groups == units.groups);
         listed_clusters_ = filled.clusters;
@@ -169,11 +180,7 @@ RenderResult ExplosionRenderer::render(GraphicsDevice& device, ParticleSystem& p
         {
             fill_rotor_constants(constants, *rotorcraft, rotor_frame_);
         }
-        if (jetcraft)
-        {
-            jet_frame_ = prepare_jet(*jetcraft, range.terrain(), options.wind, gusts, options.layer_mask, tick, work.steps, key_tick);
-            fill_jet_constants(constants, jet_frame_);
-        }
+        if (jetcraft) fill_jet_constants(constants, jet_frame_);
     }
     const bool simulate = realism ? work.units != 0 : work.effects != 0;
     particles_drawn_ = simulate;

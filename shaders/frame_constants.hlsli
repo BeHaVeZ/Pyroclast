@@ -59,6 +59,8 @@ struct FrameConstants
     float4 jet_box[2];
     float4 jet_heads[maximum_simulation_steps * 4];
     float4 jet_knots[jet_knot_limit * 4];
+    uint4 jet_births[maximum_simulation_steps];
+    float4 jet_dust_lines[maximum_simulation_steps];
 #endif
 #endif
 };

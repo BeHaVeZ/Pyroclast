@@ -58,7 +58,8 @@ FrameUnits count_units(const ExplosionSystem& effects, std::uint32_t tick)
 }
 
 RealismUnits fill_realism_constants(FrameConstants& constants, const ExplosionSystem& effects, std::uint32_t tick, std::uint32_t key_tick,
-    const Camera& camera, EffectOrder order, float3 drift, const LingerSettings& linger, std::optional<float3> rotor_key, std::optional<float3> disc_key)
+    const Camera& camera, EffectOrder order, float3 drift, const LingerSettings& linger, std::optional<float3> jet_key, std::optional<float3> rotor_key,
+    std::optional<float3> disc_key)
 {
     const auto forward = camera.forward();
     const auto depth = [&camera, forward, key_tick, order, drift](float3 origin, float3 drift_start, ExplosionPreset preset, std::uint32_t start) {
@@ -77,6 +78,13 @@ RealismUnits fill_realism_constants(FrameConstants& constants, const ExplosionSy
     for (const auto index : effects.active())
     {
         const auto& slot = slots[index];
+        if (slot.kind == EffectKind::jet)
+        {
+            const float3 point = jet_key.value_or(slot.origin);
+            keys.push_back({index, particle_layout::slab_groups, dot(point - camera.position, forward), slot.serial, false});
+            constants.effect_residual[index] = {2u, realism_layout::no_fade, layout::latched_rotor, slot.start_tick + slot.lifetime_ticks};
+            continue;
+        }
         if (slot.kind != EffectKind::explosion)
         {
             const bool discs = slot.kind == EffectKind::rotor_disc;

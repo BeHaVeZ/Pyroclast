@@ -83,7 +83,8 @@ void Sandbox::send_jet()
     {
         crossing = std::max(crossing, flight->passes.back().unlist_tick + 1200);
     }
-    jetcraft.add_pass(straight_pass("sandbox", double3{target->x, target->y + 40.0, target->z}, across, jet::pass_speed, crossing, 10));
+    jetcraft.add_pass(straight_pass("sandbox", double3{target->x, target->y + 40.0, target->z}, across, jet::pass_speed, crossing, 10), jet_seed + flights);
+    ++flights;
     SDL_Log("Jet: a pass over (%.1f, %.1f, %.1f) at tick %u.", static_cast<double>(target->x), static_cast<double>(target->y),
         static_cast<double>(target->z), crossing);
 }
@@ -233,6 +234,7 @@ void Sandbox::fill_snapshot(DiagnosticsSnapshot& snapshot) const
         }
         if (effects.rotor_slot()) load.simulated_records += ParticleSystem::slab_records;
         if (effects.rotor_disc_slot()) load.simulated_records += particle_layout::simulation_group_size;
+        if (effects.jet_slot()) load.simulated_records += ParticleSystem::slab_records;
         load.pool_capacity = ParticleSystem::pool_records;
     }
     if (renderer.particles_drawn()) load.particles = counters;

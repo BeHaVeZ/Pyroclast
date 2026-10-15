@@ -5,8 +5,65 @@ bool rotor_record(uint record)
     return record < residual_first && load_effect_residual(record / explosion_particles).rotor;
 }
 
+RealismFootprint jet_footprint(ByteAddressBuffer particles, ByteAddressBuffer classes, uint record)
+{
+    RealismFootprint result = (RealismFootprint)0;
+    uint slot = record / explosion_particles;
+    uint local = record % explosion_particles;
+    uint4 state = frame.effect_states[slot];
+    uint layer_index = local < jet_exhaust_records ? layer_blast_smoke : layer_ground_dust;
+    result.realism = true;
+    result.residual = true;
+    result.slot = slot;
+    result.effect_class = state.w;
+    result.layer_index = layer_index;
+    result.survivor_index = local;
+    result.stretch = 1;
+    result.stretch_axis = float2(1, 0);
+    result.shadow = 1;
+    uint address = record * particle_stride;
+    float4 position = asfloat(particles.Load4(address + particle_position_offset));
+    uint4 words = particles.Load4(address + particle_size_offset);
+    float spawn_size = asfloat(words.x);
+    uint flags = words.z;
+    uint death = words.w;
+    Layer layer = load_layer(classes, state.w, layer_index);
+    RealismLayer lingering = load_realism_layer(classes, state.w, layer_index);
+    float age = max(position.w, 0);
+    float size = min(spawn_size * sqrt(1 + age / max(lingering.diffusion_seconds, 1e-3)), lingering.size_cap);
+    float depth = lingering.optical_depth * saturate(age * layer.fade_in_rate) * pow(saturate(spawn_size / max(size, 1e-4)), lingering.dilution);
+    uint id = state.x * explosion_particles + local;
+    uint cycle_length = jet_cycle_min_ticks + realism_hash(id ^ jet_salt_cycle) % jet_cycle_range_ticks;
+    uint clock = frame.clock.x;
+    float left = float(death > clock ? death - clock : 0);
+    depth *= smoothstep(0, 1, left / (lingering.end_share * float(cycle_length)));
+    if ((flags & rotor_flag_born) == 0 || (flags & rotor_flag_phantom) != 0) depth = 0;
+    float3 jet = jet_draw_air(position.xyz, size);
+    result.age = age;
+    result.id = id;
+    result.spawn_size = spawn_size;
+    result.pattern = realism_hash(id ^ 0x2545f491u);
+    result.albedo = layer.first_color.rgb;
+    result.softness = max(size, 0.1);
+    Footprint footprint;
+    footprint.trail_pixels = 0;
+    footprint.position = position.xyz;
+    footprint.distance = max(mul(frame.view_projection, float4(position.xyz, 1)).w, frame.camera_position.w);
+    footprint.pixels = size * frame.projection.x / footprint.distance;
+    footprint.flat = footprint.pixels > 0 && footprint.pixels < 0.5;
+    if (footprint.flat) size *= 0.5 / footprint.pixels;
+    footprint.size = size;
+    footprint.bound = 1.4142136 * size + footprint.distance / max(frame.projection.x, 1e-6);
+    float coverage = footprint.flat ? 1.5707963 * footprint.pixels * footprint.pixels : 1;
+    footprint.opacity = (1 - exp(-depth)) * coverage;
+    result.footprint = footprint;
+    rotor_stretch(result, jet + rotor_draw_air(position.xyz, 0));
+    return result;
+}
+
 RealismFootprint rotor_footprint(ByteAddressBuffer particles, ByteAddressBuffer classes, uint record)
 {
+    if (load_effect_residual(record / explosion_particles).jet) return jet_footprint(particles, classes, record);
     RealismFootprint result = (RealismFootprint)0;
     uint slot = record / explosion_particles;
     uint local = record % explosion_particles;

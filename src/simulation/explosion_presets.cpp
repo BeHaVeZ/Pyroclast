@@ -1,5 +1,6 @@
 #include "explosion_presets.hpp"
 #include "blast_front.hpp"
+#include "../graphics/jet_layout.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -641,10 +642,52 @@ EffectClass make_rotor_class()
     return effect;
 }
 
+EffectClass make_jet_class()
+{
+    const auto rotor = make_rotor_class();
+    EffectClass effect;
+    effect.group_layers.fill(static_cast<std::uint8_t>(particle_layout::no_layer));
+    constexpr std::uint32_t exhaust_groups = jet_layout::jet_exhaust_records / particle_layout::simulation_group_size;
+    for (std::uint32_t group = 0; group < particle_layout::slab_groups; ++group)
+    {
+        effect.group_layers[group] = static_cast<std::uint8_t>(group < exhaust_groups ? particle_layout::layer_blast_smoke : particle_layout::layer_ground_dust);
+    }
+    auto& dust = effect.layers[particle_layout::layer_ground_dust];
+    dust = rotor.layers[particle_layout::layer_ground_dust];
+    dust.first_group = exhaust_groups;
+    dust.groups = particle_layout::slab_groups - exhaust_groups;
+    dust.count = particle_layout::explosion_particles - jet_layout::jet_exhaust_records;
+    dust.strength = 0.16f;
+    effect.realism.layers[particle_layout::layer_ground_dust] = rotor.realism.layers[particle_layout::layer_ground_dust];
+    effect.realism.layers[particle_layout::layer_ground_dust].optical_depth = -std::log(1 - dust.strength);
+    auto& smoke = effect.layers[particle_layout::layer_blast_smoke];
+    smoke = dust;
+    smoke.first_group = 0;
+    smoke.groups = exhaust_groups;
+    smoke.count = jet_layout::jet_exhaust_records;
+    smoke.size_min = 0.8f;
+    smoke.size_range = 0.8f;
+    smoke.fade_in_rate = 30;
+    smoke.strength = 0.2f;
+    smoke.first_color = {0.42f, 0.42f, 0.43f, smoke.first_color.w};
+    smoke.second_color = smoke.first_color;
+    auto& lingering = effect.realism.layers[particle_layout::layer_blast_smoke];
+    lingering = effect.realism.layers[particle_layout::layer_ground_dust];
+    lingering.diffusion_seconds = 3;
+    lingering.size_cap = 4;
+    lingering.optical_depth = -std::log(1 - smoke.strength);
+    lingering.settling = 0;
+    lingering.residual_turbulence = 0.3f;
+    lingering.albedo = {smoke.first_color.x, smoke.first_color.y, smoke.first_color.z, 0};
+    effect.realism.graduation_ticks = rotor.realism.graduation_ticks;
+    return effect;
+}
+
 std::vector<EffectClass> gpu_effect_classes()
 {
     auto classes = effect_classes();
     classes.push_back(make_rotor_class());
+    classes.push_back(make_jet_class());
     return classes;
 }
 

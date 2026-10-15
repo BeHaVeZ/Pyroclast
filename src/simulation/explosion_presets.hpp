@@ -222,9 +222,12 @@ static_assert(effect_class_count <= particle_layout::maximum_effect_classes);
 EffectClass make_effect_class(ExplosionPreset preset, SurfaceType surface);
 std::vector<EffectClass> effect_classes();
 inline constexpr std::uint32_t rotor_class_index = effect_class_count;
-inline constexpr std::uint32_t gpu_class_count = effect_class_count + 1;
+inline constexpr std::uint32_t jet_class_index = effect_class_count + 1;
+inline constexpr std::uint32_t gpu_class_count = effect_class_count + 2;
 static_assert(gpu_class_count <= particle_layout::maximum_effect_classes);
 EffectClass make_rotor_class();
+EffectClass make_jet_class();
+// The contents of the GPU class buffer: effect_classes(), then the rotor class and the jet class.
 std::vector<EffectClass> gpu_effect_classes();
 
 float cloud_rise(ExplosionPreset preset, float seconds);

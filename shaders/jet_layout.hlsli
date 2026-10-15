@@ -7,7 +7,7 @@ static const float jet_nozzle_aft = 7.4f;
 static const float jet_nozzle_radius = 0.45f;
 
 static const uint jet_knot_ticks = 6;
-static const uint jet_knot_limit = 96;
+static const uint jet_knot_limit = 160;
 static const float jet_window = 30.0f;
 static const float jet_body_window = 25.0f;
 static const float jet_body_radius = 2.2f;
@@ -30,3 +30,18 @@ static const float jet_humidity_per_kelvin = 0.06f;
 static const float jet_air_heat_capacity = 1005.0f;
 static const float jet_condensation_humidity = 0.95f;
 static const float jet_condensation_seconds = 1.5f;
+
+static const uint jet_exhaust_records = 1280;
+static const uint jet_cycle_min_ticks = 300;
+static const uint jet_cycle_range_ticks = 421;
+static const uint jet_salt_cycle = 0x68e31da4u;
+static const uint jet_salt_phase = 0xb5297a4du;
+static const uint jet_salt_birth = 0x1b56c4e9u;
+static const uint jet_salt_place = 0x7fb5d329u;
+static const uint jet_salt_side = 0xd2a98b26u;
+static const uint jet_salt_size = 0x3c2b1a0fu;
+static const uint jet_salt_kick = 0x94d049bbu;
+static const uint jet_exhaust_emission = 1024;
+static const float jet_exhaust_kick = 8.0f;
+static const float jet_saltation = 4.0f;
+static const float jet_reference_flux = 75000.0f;

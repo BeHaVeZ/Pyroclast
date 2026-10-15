@@ -60,6 +60,8 @@ struct FrameConstants
     std::array<float4, 2> jet_box;
     std::array<float4, particle_layout::maximum_simulation_steps * 4> jet_heads;
     std::array<float4, jet_layout::jet_knot_limit * 4> jet_knots;
+    std::array<std::array<std::uint32_t, 4>, particle_layout::maximum_simulation_steps> jet_births;
+    std::array<float4, particle_layout::maximum_simulation_steps> jet_dust_lines;
 };
 inline constexpr std::size_t legacy_frame_constant_bytes = 400 + 52 * particle_layout::maximum_effects + 32 * particle_layout::maximum_lights;
 static_assert(particle_layout::maximum_effects % 4 == 0);
@@ -88,7 +90,9 @@ static_assert(offsetof(FrameConstants, residual) == 7584 && offsetof(FrameConsta
     offsetof(FrameConstants, rotor_jets) == 15712 && offsetof(FrameConstants, rotor_births) == 15776 && offsetof(FrameConstants, rotor_draw) == 15840 &&
     offsetof(FrameConstants, rotor_discs) == 15888 && offsetof(FrameConstants, rotor_dust_shadow) == 15984 && offsetof(FrameConstants, jet_state) == 16016 &&
     offsetof(FrameConstants, jet_box) == 16032 && offsetof(FrameConstants, jet_heads) == 16064 && offsetof(FrameConstants, jet_knots) == 16320 &&
-    sizeof(FrameConstants) == 16320 + 64 * jet_layout::jet_knot_limit &&
+    offsetof(FrameConstants, jet_births) == 16320 + 64 * jet_layout::jet_knot_limit &&
+    offsetof(FrameConstants, jet_dust_lines) == offsetof(FrameConstants, jet_births) + 64 &&
+    sizeof(FrameConstants) == offsetof(FrameConstants, jet_dust_lines) + 64 &&
     particle_layout::maximum_simulation_steps == 4 &&
     realism_layout::maximum_units % 4 == 0 && realism_layout::maximum_clusters % 2 == 0 && sizeof(FrameConstants) <= 32768);
 }
