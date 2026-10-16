@@ -72,6 +72,7 @@ bool jet_in_box(float3 position)
         all(position >= frame.jet_box[0].xyz - jet_window) && all(position <= frame.jet_box[1].xyz + jet_window);
 }
 
+// Kept in step with jet_air in src/simulation/jet.cpp.
 float3 jet_air(float3 position, uint step)
 {
     if (!jet_in_box(position)) return 0;

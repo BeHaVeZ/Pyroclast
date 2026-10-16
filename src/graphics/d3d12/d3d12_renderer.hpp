@@ -57,6 +57,7 @@ private:
         return format == TargetFormat::rgba16_float ? DXGI_FORMAT_R16G16B16A16_FLOAT :
             format == TargetFormat::r11g11b10_float ? DXGI_FORMAT_R11G11B10_FLOAT : backbuffer_format;
     }
+    // Depth targets rest where a pass can both test them read-only and sample them.
     static constexpr D3D12_RESOURCE_STATES color_resting_state = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     static constexpr D3D12_RESOURCE_STATES depth_resting_state =
         D3D12_RESOURCE_STATE_DEPTH_READ | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
@@ -88,9 +89,11 @@ private:
         bool readback_pending = false;
     };
 
+    // Buffer states within one command list; every list starts with its buffers in COMMON.
     class BufferStates
     {
     public:
+        // Staying in UNORDERED_ACCESS adds a UAV barrier; read states accumulate (shader, indirect and copy reads at once).
         void require(ID3D12Resource* buffer, D3D12_RESOURCE_STATES state);
         void flush(ID3D12GraphicsCommandList* commands);
         void reset() { states_.clear(); }

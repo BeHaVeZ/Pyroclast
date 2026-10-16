@@ -12,6 +12,7 @@
 
 namespace pyroclast
 {
+// emission in 1/1024.
 struct RotorFrame
 {
     bool exists = false;
@@ -28,6 +29,8 @@ struct RotorFrame
     std::int32_t hub_height_cm = 0;
 };
 
+// Overwrites the history at each step tick, over whatever a skipped frame left, so the census counts what the GPU
+// is given.
 template <typename DriftAt>
 RotorFrame prepare_rotor(Rotorcraft& rotorcraft, const ExplosionSystem& effects, const Terrain& terrain, const WindSettings& wind, bool gusts,
     std::uint32_t mask, std::uint32_t tick, std::uint32_t steps, std::uint32_t drawn_tick, const DriftAt& drift_at)

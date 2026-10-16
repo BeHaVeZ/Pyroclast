@@ -71,7 +71,10 @@ inline constexpr std::uint32_t linger_saturation_key = 15000;
 inline constexpr std::uint32_t accumulation_hold_ticks = 1800;
 inline constexpr std::uint32_t accumulation_key = 12000;
 inline constexpr std::uint32_t accumulation_first_seed = 5000;
+// ceil(L / 128) for the preset's longest life L, so no accumulation impact is dropped or evicted.
 std::uint32_t accumulation_interval(ExplosionPreset preset);
+// Each script runs until its last effect has ended (the realism scripts have fixed durations); with `linger_ticks`,
+// until its last event's lingering smoke could have died.
 std::optional<Scenario> make_scenario(std::string_view name, const Environment& environment,
     ExplosionPreset preset = ExplosionPreset::small_he, std::uint32_t linger_ticks = 0);
 }

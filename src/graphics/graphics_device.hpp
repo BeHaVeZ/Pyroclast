@@ -24,8 +24,10 @@ class GraphicsDevice;
 
 enum class BlendMode { opaque, additive, premultiplied_alpha };
 
+// none: passes without a depth target only. test: reverse Z, greater or equal. test_write needs a writable depth target.
 enum class DepthMode { none, ignore, test, test_write };
 
+// Resources record the device that created them (null in tests), so backends downcast without RTTI.
 class Buffer
 {
 public:
@@ -41,6 +43,7 @@ private:
 
 enum class Topology { triangles, lines };
 
+// color is the backbuffer's 8-bit UNORM format; depth is 32-bit float, sampled as its red channel.
 enum class TargetFormat { color, rgba16_float, r11g11b10_float, depth };
 
 class GraphicsPipeline
@@ -83,6 +86,7 @@ struct GraphicsPipelineDescription
     Topology topology = Topology::triangles;
 };
 
+// The extent is the backbuffer's divided by `divisor`, rounded up; reverse Z clears depth to 0, the far end.
 struct RenderTargetDescription
 {
     std::uint32_t divisor = 1;
@@ -110,6 +114,7 @@ private:
     const GraphicsDevice* owner_;
 };
 
+// Slots of shaders/binding_layout.hlsli: read t0-t7, write u0-u5 (dispatches only); null slots are unbound.
 struct Bindings
 {
     std::array<const Buffer*, binding_layout::read_buffer_slots> read{};
@@ -118,6 +123,7 @@ struct Bindings
 
 using DrawConstants = std::array<std::uint32_t, binding_layout::draw_constant_words>;
 
+// Labels name work in GPU captures and must be string literals.
 struct Dispatch
 {
     const ComputePipeline& pipeline;
@@ -127,6 +133,7 @@ struct Dispatch
     const char* label = nullptr;
 };
 
+// With `indirect`, the counts are four GPU-written words {vertex count, instance count, 0, 0} at indirect_offset.
 struct Draw
 {
     const GraphicsPipeline& pipeline;
@@ -139,6 +146,8 @@ struct Draw
     std::uint32_t indirect_offset = 0;
 };
 
+// A null target is the backbuffer. A target is cleared unless `load`; inputs (t8, t9) come from earlier passes.
+// A writable depth target is cleared and written; a read-only one holds an earlier pass's depth and may be an input.
 struct Pass
 {
     RenderTarget* target = nullptr;
@@ -150,6 +159,8 @@ struct Pass
     bool depth_write = false;
 };
 
+// Dispatches, then passes (only the last draws to the backbuffer), then present; barriers come from the bindings.
+// The readback is copied between the compute and draw intervals; constants are b1, at most frame_constant_bytes.
 struct Frame
 {
     std::span<const Dispatch> dispatches;
@@ -168,6 +179,7 @@ struct Frame
 
 inline constexpr std::uint32_t max_readback_bytes = 256;
 
+// Published by the render call that reuses the frame's slot; sample_id grows with each readback.
 struct ReadbackData
 {
     std::array<std::byte, max_readback_bytes> bytes{};
@@ -175,6 +187,7 @@ struct ReadbackData
     std::uint64_t sample_id = 0;
 };
 
+// RGBA bytes, rows top to bottom; alpha is always 255.
 struct CapturedImage
 {
     std::uint32_t width = 0;
@@ -192,6 +205,7 @@ struct GpuRegion
     double milliseconds = 0;
 };
 
+// compute_ms: the dispatches; draw_ms: the passes, ending before the overlay; frame_ms: first dispatch to draw end.
 struct GpuTimings
 {
     double compute_ms = 0;
@@ -202,18 +216,21 @@ struct GpuTimings
     double frame_ms = 0;
 };
 
+// CPU blocking in the last submitted render call: waiting for its frame slot, and presenting.
 struct SubmitTimings
 {
     double wait_ms = 0;
     double present_ms = 0;
 };
 
+// `mode` is a string literal.
 struct PresentInfo
 {
     std::string_view mode;
     std::uint32_t images = 0;
 };
 
+// Bytes as the driver estimates them; the APIs count differently, so they are not comparable across them.
 struct GpuMemory
 {
     std::uint64_t local_usage = 0;
@@ -226,6 +243,8 @@ class GraphicsDevice
 {
 public:
     virtual ~GraphicsDevice() = default;
+    // Returned resources belong to this device. Size: a nonzero multiple of 4; an empty `initial` zero-fills
+    // on the GPU, otherwise it holds exactly `size` bytes.
     virtual std::unique_ptr<Buffer> create_buffer(std::uint32_t size, std::span<const std::byte> initial) = 0;
     virtual std::unique_ptr<GraphicsPipeline> create_graphics_pipeline(
         const GraphicsPipelineDescription& description) = 0;
@@ -235,6 +254,7 @@ public:
     virtual RenderResult render(const Frame& frame) = 0;
     virtual bool wait_idle() = 0;
     virtual std::optional<GpuTimings> completed_gpu_timings() const = 0;
+    // Each submitted readback arrives once, in order, when its frame slot is reused (a later render call).
     virtual std::optional<ReadbackData> completed_readback() const = 0;
     // Waits for the GPU and returns the image copied by the last submitted frame that requested a capture.
     virtual std::optional<CapturedImage> read_capture() = 0;
@@ -252,6 +272,8 @@ struct GraphicsDeviceCreation
     std::string error;
 };
 
+// gpu_regions implies gpu_timing and serializes Vulkan GPU work. With debug_overlay, the ImGui context must
+// exist from device creation until the device is destroyed.
 struct GraphicsDeviceOptions
 {
     bool gpu_timing = false;

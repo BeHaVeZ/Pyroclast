@@ -1,3 +1,4 @@
+// Shared by HLSL and C++ (src/graphics/realism_layout.hpp): only `static const uint` declarations belong here.
 #pragma once
 
 #include "particle_layout.hlsli"
@@ -30,6 +31,7 @@ static const uint unit_cluster_first = maximum_effects;
 static const uint unit_id_bits = 9;
 static const uint unit_id_mask = (1u << unit_id_bits) - 1;
 
+// clusters, two words each: first ring group (0-10), record count (11-19), fade code (20-22), tag (23-31); fade end tick.
 static const uint ring_group_bits = 11;
 static const uint record_count_shift = 11;
 static const uint record_count_bits = 9;
@@ -39,6 +41,8 @@ static const uint tag_shift = 23;
 static const uint tag_bits = 9;
 static const uint no_fade = 0xffffffff;
 
+// effect_residual: x ring group (0-10), cluster (11-19), tag (20-28); y graduation tick; z longest life (0-14), latched
+// bits (15 linger, 16 variation, 17 skirt); w drift x, z as halves. Rotor slots: {0 dust or 1 discs, ~0, latched_rotor, end}.
 static const uint effect_cluster_shift = 11;
 static const uint effect_tag_shift = 20;
 static const uint effect_longest_bits = 15;
@@ -48,6 +52,8 @@ static const uint latched_skirt = 1u << 17;
 static const uint latched_rotor = 1u << 18;
 static const uint scale_one = 1024;
 
+// A residual record: float3 position, age | float3 velocity, age at graduation | spawn size, packed (class 0-3, layer
+// 4-5, cluster 6-14, sun share 15-22 in 1/255, tag 23-31) | death tick | rise (half 0-15, direction 16-22, varied 23, key 24-31).
 static const uint residual_packed_offset = 36;
 static const uint residual_death_offset = 40;
 static const uint residual_rise_offset = 44;

@@ -104,6 +104,7 @@ RealismPixelInput realism_vertex(uint vertex, RealismFootprint realism)
     return result;
 }
 
+// Flash timing kept in step with realism_light_curve in explosion_presets.cpp.
 PixelInput realism_light(PixelInput output, uint record)
 {
     if (record >= residual_first || record >= draw.record_count) return output;

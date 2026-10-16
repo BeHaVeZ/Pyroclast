@@ -71,6 +71,7 @@ std::unique_ptr<GraphicsPipeline> D3D12Renderer::create_graphics_pipeline(
     return pipeline;
 }
 
+// The upload's copy promotes the buffer from COMMON to COPY_DEST implicitly; it decays back afterwards.
 std::unique_ptr<Buffer> D3D12Renderer::create_buffer(std::uint32_t size, std::span<const std::byte> initial)
 {
     if (size == 0 || size % 4 != 0 || (!initial.empty() && initial.size() != size))

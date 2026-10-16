@@ -42,6 +42,7 @@ bool VulkanRenderer::read_timestamps(std::size_t frame)
     return true;
 }
 
+// The barrier after the timestamp keeps the region's own work from starting before it.
 std::uint32_t VulkanRenderer::begin_region(VkCommandBuffer command, const char* label, const char* fallback)
 {
     if (!regions_ || !timing_.pool) return no_region;

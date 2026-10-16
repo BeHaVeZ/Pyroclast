@@ -76,6 +76,7 @@ double3 required_thrust(double3 acceleration, double3 air)
     return acceleration * rotor::mass + double3{0, rotor::thrust, 0} + air * (0.5 * rotor::density * rotor::drag_area * speed);
 }
 
+// Kept in step with rotor_flow.hlsli.
 double contraction(double z)
 {
     return std::clamp(z / std::sqrt(z * z + rotor::radius * rotor::radius), static_cast<double>(rotor_layout::rotor_contraction_floor), 1.0);
@@ -580,6 +581,8 @@ FrameVelocity rotor_frame_velocity(const RotorStep& step, double s, double z, do
     return velocity;
 }
 
+// The induced air alone: the free stream already carries the wake along its skew, so the frame's shear adds no
+// horizontal air (it would count the airspeed twice).
 double3 rotor_air(const RotorStep& step, double3 point, double terrain_height)
 {
     if (!(step.inflow > 0)) return {};

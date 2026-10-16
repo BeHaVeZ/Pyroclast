@@ -4,36 +4,14 @@
   python tools/counter_log.py peaks <log.csv> [more.csv ...] [--percentile 95] [--metric draw_ms]
   python tools/counter_log.py fit <log.csv> [more.csv ...] --x alive[,coverage_smoke] [--y draw_ms]
 
-A log has one row per submitted frame: frame,tick,steps,active,started,dropped (the frame's schedule),
-counter_tick,alive,smoke,light,debris (the GPU counter record that frame produced; empty without active
-effects (or, with the realism model, without listed clusters) and for the last frames, whose readbacks were still in
-flight), draw_ms,compute_ms (its GPU
-intervals, empty when they never arrived) and cpu_ms. Later builds append columns; unknown ones are
-carried along and can be named in --columns, --metric, --x and --y. A --benchmark log starts with its warm-up
-rows (phase warmup, tick 0) before the measured rows (phase measured) and appends the benchmark group
-phase,frame_ms,submit_ms,wait_ms,present_ms,gpu_frame_ms,dispatches,passes,draws (and region:<label> columns
-with --gpu-regions).
+Columns unknown to this tool are carried along and can be named in --columns, --metric, --x and --y.
 
-diff compares the deterministic columns row by row, every log against the first: the columns above up to
-debris, plus the appended columns offscreen, thinned, faint, half, evicted, the realism group (residual, ghosts,
-clusters, forced, linger_scale, deferred; the helicopter's rotor_dust, emission and agl_cm, M26), phase, dispatches, passes
-and draws when every log has them (--columns replaces the whole set). With --measured it drops the warm-up rows (phase
-warmup) and ignores the frame column (which counts the warm-up rows too), so the logs are compared from their
-first measured row and a benchmark's log can be compared with the plain --scenario log of the same script,
-preset and pose (a log without a phase column has only measured rows). Two runs of one build, API and
-argument list must match. It prints "identical (N rows)", or for each differing log the first differing row
-and column and how many rows differ per column; logs of different lengths are compared over the rows both
-have and the length difference counts as a difference. Exits 1 on any difference.
-
-peaks reports, per log, the --percentile (default 95) of --metric (default draw_ms) over the rows that have
-it, every row at or above that threshold (frame, tick, active, alive, the metric), those rows' ticks merged
-into ranges, and the row of the maximum. With several logs it also lists the peak ticks common to all.
-
-fit fits the least-squares line y = a + b * x for each --x column (comma-separated, so predictors can be
-compared) against --y (default draw_ms) over the rows that have both, printing a, b, R^2 and N for every
-log and, with several logs, for all their rows together.
-
-peaks and fit exit 1 when a log has no usable rows (or, for fit, an x column is constant).
+diff compares the deterministic columns row by row, every log against the first (--columns replaces the set).
+--measured drops a benchmark's warm-up rows and ignores the frame column, so a benchmark log can be compared with
+the plain --scenario log of the same workload. Exits 1 on any difference, a length difference included.
+peaks lists the rows at or above the --percentile of --metric, merged into tick ranges.
+fit fits y = a + b * x for each --x column against --y, printing a, b, R^2 and N.
+peaks and fit exit 1 when a log has no usable rows.
 """
 import argparse
 import csv

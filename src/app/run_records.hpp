@@ -24,6 +24,7 @@ std::string statistics_json(const std::optional<FrameStatistics>& statistics);
 
 const char* pose_name(const ApplicationOptions& options);
 
+// Each key with a leading comma.
 std::string view_keys(float vertical_fov, bool borderless);
 
 class ScenarioRun final
@@ -95,6 +96,7 @@ public:
         alive_sum_ += counters.alive;
         checksum_ = counter_checksum(checksum_, counters);
     }
+    // Returns the process exit code: 1 when the measurement was invalidated.
     int report(const Sandbox& sandbox, const ApplicationOptions& options, std::string_view gpu_name, int width, int height,
         bool overlay, const std::string& extra, const CounterLog::Summary* summary = nullptr, const std::string& tail = {});
 
@@ -125,6 +127,7 @@ private:
     float vertical_fov_ = Camera{}.vertical_fov;
 };
 
+// Each key preceded by a comma.
 std::string benchmark_tail(const ScenarioRun& run, const CounterLog::Summary& summary, const GraphicsDevice& device,
     Renderer renderer, bool gpu_validation, std::optional<float> display_hz, bool focused,
     const std::optional<GpuMemory>& memory_start, const std::optional<GpuMemory>& memory_end);

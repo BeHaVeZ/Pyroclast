@@ -1,6 +1,8 @@
 // Shared by HLSL and C++ (src/graphics/particle_layout.hpp): only `static const uint` declarations belong here.
 #pragma once
 
+// A 48-byte record: float3 position, age (< 0 before birth) | float3 velocity, lifetime (0: dead) | size, generation,
+// spin, reserved. A generation that differs from its slot's respawns the record.
 static const uint particle_stride = 48;
 static const uint particle_position_offset = 0;
 static const uint particle_velocity_offset = 16;
@@ -16,9 +18,12 @@ static const uint simulation_group_size = 64;
 static const uint maximum_simulation_steps = 4;
 
 static const uint slab_groups = explosion_particles / simulation_group_size;
+// The scan's group-shared memory (4 bytes per group of every slot plus 12 per thread) must stay within D3D12's 32 KB.
 static const uint scan_threads = 512;
 static const uint particle_vertices = 6;
 static const uint debris_vertices = 36;
+// Indirect draw arguments {vertex count, instance count, 0, 0} for all translucent particles, smoke, light and debris,
+// then the 16-word counter record; a frame that does not measure reads back only its first 32 bytes.
 static const uint particle_arguments_offset = 0;
 static const uint smoke_arguments_offset = 16;
 static const uint light_arguments_offset = 32;

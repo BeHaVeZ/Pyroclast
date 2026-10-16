@@ -9,6 +9,7 @@
 
 namespace pyroclast
 {
+// The pool starts zeroed: a dead record of generation zero, which no effect has, so a slot's first effect respawns its slab.
 bool ParticleSystem::initialize(GraphicsDevice& device, const Buffer& environment, ParticleTargets targets,
     std::span<const EffectClass> classes)
 {
@@ -76,6 +77,8 @@ bool ParticleSystem::initialize(GraphicsDevice& device, const Buffer& environmen
     return true;
 }
 
+// Constant word order kept in step with Parameters in particles_compute.hlsl, particle_scan.hlsl, particle_scatter.hlsl
+// and DrawConstants in particles.hlsl; LOD draws add the radius and floor after vs_main's four words.
 ParticleWork ParticleSystem::plan(std::uint32_t tick, std::uint32_t steps, std::uint32_t active_effects, std::uint32_t offscreen_divisor,
     ParticleListing listing, const FrameUnits* units) const
 {

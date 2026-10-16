@@ -27,6 +27,7 @@ BlastKnot load_blast_knot(ByteAddressBuffer classes, uint effect_class, uint ind
     return knot;
 }
 
+// Inner and outer radius (m), the share of the air's speed it is thrown at, the up-kick (m/s).
 float4 load_blast_skirt(ByteAddressBuffer classes, uint effect_class)
 {
     return asfloat(classes.Load4(blast_address(effect_class) + 272));
@@ -42,6 +43,7 @@ uint blast_segment(ByteAddressBuffer classes, uint effect_class, uint radius_cm)
     return index;
 }
 
+// Kept in step with blast_arrival_tick in blast_front.cpp; integer-only, so births land on the same tick on every API.
 uint blast_arrival_tick(ByteAddressBuffer classes, uint effect_class, uint radius_cm)
 {
     BlastKnot first = load_blast_knot(classes, effect_class, 0);
@@ -51,6 +53,7 @@ uint blast_arrival_tick(ByteAddressBuffer classes, uint effect_class, uint radiu
     return (arrival_q16 + 0xffff) >> 16;
 }
 
+// Kept in step with blast_overpressure in blast_front.cpp.
 float blast_overpressure(ByteAddressBuffer classes, uint effect_class, float metres)
 {
     float centimetres = metres * 100;
@@ -63,6 +66,7 @@ float blast_overpressure(ByteAddressBuffer classes, uint effect_class, float met
     return near.overpressure * exp2(exponent * log2(clamped / near_radius));
 }
 
+// `age` in seconds. A front skips its own slot's slab; its return skips records younger than its lag.
 float3 blast_push(float3 position, uint mask, uint own_slot, float age)
 {
     float3 push = 0;

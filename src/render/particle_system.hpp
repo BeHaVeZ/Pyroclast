@@ -12,6 +12,7 @@
 
 namespace pyroclast
 {
+// spin is the debris tumbling angle in radians.
 struct Particle
 {
     float position[3];
@@ -32,6 +33,8 @@ static_assert(sizeof(Particle) == particle_layout::particle_stride &&
     offsetof(Particle, generation) == particle_layout::particle_generation_offset &&
     offsetof(Particle, spin) == particle_layout::particle_spin_offset);
 
+// Dispatches in order: simulation, scan, scatter; resources belong to the ParticleSystem that planned it. Draw
+// constants: {pool record count, list first, list count, depth scale}; debris reads only the first three.
 struct ParticleWork
 {
     std::array<Dispatch, 3> dispatches;
@@ -46,6 +49,7 @@ struct ParticleWork
     std::uint32_t units = 0;
 };
 
+// aircraft is latched for the run, so the kernel and draws never switch with rotor records on screen.
 struct FrameUnits
 {
     std::uint32_t units = 0;
@@ -53,6 +57,8 @@ struct FrameUnits
     bool aircraft = false;
 };
 
+// The words after debris are zero unless the listing measured (coverage in coverage_unit_pixels, saturating); residual,
+// flags and ghosts are zero in legacy frames. measured is set on the CPU, not read back.
 struct ParticleCounters
 {
     std::uint32_t tick = 0;
@@ -71,6 +77,7 @@ struct ParticleCounters
     bool measured = false;
 };
 
+// lod_pixels is in full-resolution pixels; it or faint_floor nonzero selects the LOD vertex shader.
 struct ParticleListing
 {
     bool measure = false;
@@ -85,6 +92,7 @@ struct ParticleTargets
     TargetFormat offscreen;
 };
 
+// aircraft: the PYROCLAST_ROTOR entries, which carry the jet too.
 enum class ParticleModel : std::uint8_t { legacy, realism, aircraft };
 inline constexpr std::size_t particle_model_count = 3;
 
@@ -99,10 +107,13 @@ public:
     static constexpr std::uint32_t groups_per_slab = particle_layout::slab_groups;
     static_assert(slab_records % particle_layout::simulation_group_size == 0);
 
+    // `environment` must outlive this system.
     bool initialize(GraphicsDevice& device, const Buffer& environment, ParticleTargets targets, std::span<const EffectClass> classes);
     const Buffer& particles() const { return *particles_; }
+    // offscreen_divisor 0 draws every layer into the scene; with `units` the frame is a realism frame.
     ParticleWork plan(std::uint32_t tick, std::uint32_t steps, std::uint32_t active_effects, std::uint32_t offscreen_divisor = 0,
         ParticleListing listing = {}, const FrameUnits* units = nullptr) const;
+    // 32 bytes, or 64 from a measuring or realism frame.
     static std::optional<ParticleCounters> counters(const ReadbackData& data);
 
 private:

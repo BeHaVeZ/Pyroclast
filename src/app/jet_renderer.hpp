@@ -10,6 +10,8 @@
 
 namespace pyroclast
 {
+// b0 of shaders/jet.hlsl and jet_shadow.hlsl: pose rows (body to world), then the dither level (0-16) and the glow,
+// afterburner (0-1) and vapor opacity as float bits; or for the shadow its first cell and the fade in 1/65,536.
 struct JetConstants
 {
     std::array<float4, 3> rows{};

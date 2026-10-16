@@ -29,6 +29,7 @@ double3 to_double3(float4 a)
     return {a.x, a.y, a.z};
 }
 
+// Rosenhead-regularised Biot-Savart segment; kept in step with jet_segment in jet_flow.hlsli.
 double3 segment_air(double3 point, double3 a, double3 b, double gamma, double core)
 {
     const double3 r0 = b - a;
@@ -141,6 +142,7 @@ double vapor_strength(const JetPose& pose, double humidity)
         std::clamp((humidity - jet_layout::jet_vapor_humidity) / (1 - jet_layout::jet_vapor_humidity), 0.0, 1.0) * pose.fade;
 }
 
+// The circulation takes |load|: the GPU's wake lists positive circulations only.
 std::optional<KnotBirth> knot_birth(const JetFlight& flight, std::uint32_t tick, const Terrain& terrain, const WindSettings& wind, bool gusts,
     std::uint32_t mask)
 {

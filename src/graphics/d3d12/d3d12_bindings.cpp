@@ -22,6 +22,7 @@ D3D12_STATIC_SAMPLER_DESC clamp_sampler(UINT shader_register, D3D12_FILTER filte
 }
 }
 
+// Buffer root descriptors are DATA_VOLATILE: a dispatch may write a buffer an earlier dispatch's descriptor points at.
 bool D3D12Renderer::create_bindings()
 {
     D3D12_FEATURE_DATA_ROOT_SIGNATURE version{D3D_ROOT_SIGNATURE_VERSION_1_1};

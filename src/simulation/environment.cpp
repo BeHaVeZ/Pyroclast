@@ -34,6 +34,7 @@ float2 footprint_half(const PropBox& box)
 }
 }
 
+// The same operations as load_prop_cell in shaders/environment.hlsli; the comparisons are false for NaN.
 std::optional<GridIndex> grid_index(float x, float z)
 {
     using namespace terrain_layout;
@@ -44,6 +45,7 @@ std::optional<GridIndex> grid_index(float x, float z)
     return GridIndex{static_cast<std::uint32_t>(column), static_cast<std::uint32_t>(row)};
 }
 
+// Each cell lists every box whose footprint, grown by environment_reach, overlaps it (edges included).
 Environment::Environment() : layout_(range_layout())
 {
     using namespace terrain_layout;

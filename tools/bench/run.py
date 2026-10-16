@@ -4,42 +4,19 @@
                             [--renderers d3d12,vulkan] [--variant NAME=ARGS ...] [--runs 5] [--timeout 900]
                             [--no-warmup] [--quick] [--no-report]
 
-A session is a directory out/bench/<UTC yyyymmdd-hhmmss>-<label>/ holding:
-  bin/Pyroclast.exe   a copy of the exe (statically linked, so the copy is the whole build; rebuilding the source
-                      cannot touch a running session)
-  session.json        tool version, arguments, exe {source, sha256, size, mtime}, git {head, branch, dirty}, host
-                      facts and the planned launch order
-  runs.jsonl          one line per launch: {benchmark, renderer, variant, run, role (warmup or timing), args,
-                      status, seconds, csv, log, record}
-  raw/<benchmark>-<renderer>-<variant>-run<k>.{csv,log}   the launch's per-frame CSV (--counter-log) and its
-                      stderr and stdout (the warm-up launches are named ...-warmup)
-  and the outputs of tools/bench/report.py (summary.md, summary.json, results.csv, traces/, charts/).
+A session is out/bench/<UTC yyyymmdd-hhmmss>-<label>/: bin/Pyroclast.exe (a copy, so a rebuild cannot touch it),
+session.json (arguments, exe, git, host facts, launch order), runs.jsonl (one line per launch), raw/<id>.{csv,log}
+and tools/bench/report.py's outputs.
 
-Preflight: the exe must exist, and the session refuses to start while Pyroclast.exe, MSBuild.exe, cl.exe or
-link.exe runs (one tasklist call; nothing may build or run during a measurement). A remote-desktop session is
-allowed but warned about, recorded (host.remote_session) and labelled (-remote is appended to the label):
-focus loss over remote desktop invalidates launches, which are then tried again.
+Refuses to start while Pyroclast.exe, MSBuild.exe, cl.exe or link.exe runs; a remote-desktop session is allowed and
+labelled -remote. One discarded warm-up launch per renderer (--no-warmup skips them), then --runs runs over every
+case (benchmark x renderer x variant), reversed on odd runs. A failed launch is recorded and the session continues;
+the script exits 1 at the end if any failed.
 
-Host facts are read once, before the first launch; a fact that cannot be read is null, with its reason under
-host.reasons: CPU (registry ProcessorNameString, os.cpu_count), RAM (GlobalMemoryStatusEx), OS (registry
-ProductName, DisplayVersion, CurrentBuild, UBR; named Windows 11 from build 22000, where ProductName still says
-Windows 10), every display adapter's driver (registry DriverDesc, DriverVersion, DriverDate), hardware-
-accelerated GPU scheduling (HwSchMode), the power plan (powercfg /getactivescheme), the remote session
-(GetSystemMetrics(SM_REMOTESESSION)), Python, and the git state of this repository.
-
-Order: one discarded warm-up launch per renderer (the first benchmark and variant; --no-warmup skips them),
-then --runs runs, each launching every case (benchmark x renderer x variant) once, in reverse order on odd runs,
-so slow drift affects every case alike. Each launch is
-  bin/Pyroclast.exe --renderer=R --benchmark=B <variant args> --counter-log=raw/<id>.csv
-through tools/ab.py's launch (an invalidated sample is tried up to 3 times in all; --timeout seconds per attempt; the
-invalidated attempts' reasons go to runs.jsonl as "invalidated").
-A failed launch is recorded and the session continues; the script exits 1 at the end if any launch failed.
-
---variant NAME=ARGS (repeatable) names an argument list appended to every launch, e.g.
-  --variant default=--smoke-resolution=full
+--variant NAME=ARGS (repeatable) appends ARGS to every launch, e.g.
   --variant "recommended=--smoke-resolution=auto --half-light --smoke-lod=16"
-The default is the single variant default=--smoke-resolution=full. --quick runs single and smoke-field once,
-default variant only, on the renderers given. The report is built at the end unless --no-report.
+The default is default=--smoke-resolution=full. --quick runs single and smoke-field once, default variant only.
+The report is built at the end unless --no-report.
 """
 import argparse
 import csv
@@ -59,10 +36,11 @@ from pathlib import Path
 
 BENCH = Path(__file__).resolve().parent
 sys.path.insert(0, str(BENCH.parent))
-import ab
+import ab  # noqa: E402
 
 ROOT = BENCH.parent.parent
 TOOL_VERSION = 1
+# Kept in step with `benchmark_workloads` in src/app/command_line.hpp: the names, in its order.
 BENCHMARKS = ("single", "simultaneous-10", "simultaneous-50", "simultaneous-100", "sustained-barrage", "smoke-field",
               "accumulation", "linger-barrage", "linger-far", "linger-ground", "heli-hover", "heli-ground")
 RENDERERS = ("d3d12", "vulkan")
@@ -149,12 +127,12 @@ def ram_fact():
     return {"bytes": status.total_physical}
 
 
+# ProductName still says Windows 10 on Windows 11 (build 22000 and later).
 def os_fact():
     values = registry_values(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", ["ProductName", "DisplayVersion", "CurrentBuild", "UBR"],
                              optional=("DisplayVersion", "UBR"))
     build = int(values["CurrentBuild"])
     name = str(values["ProductName"])
-    # ProductName still says Windows 10 on Windows 11 (build 22000 and later).
     if build >= 22000 and name.startswith("Windows 10"):
         name = "Windows 11" + name[len("Windows 10"):]
     version = sys.getwindowsversion()
@@ -164,8 +142,7 @@ def os_fact():
 
 
 def nvidia_version(driver_version):
-    """NVIDIA's own driver number from the Windows driver version (32.0.16.1714 -> 617.14): the last five digits of
-    the last two fields. Derived, for the environment block; the registry string is kept beside it."""
+    """NVIDIA's driver number from the Windows driver version: 32.0.16.1714 -> 617.14."""
     fields = driver_version.split(".")
     if len(fields) < 2 or not all(field.isdigit() for field in fields[-2:]):
         return None

@@ -271,6 +271,7 @@ void D3D12Renderer::record_pass(const Pass& pass, const Frame& frame, ID3D12Reso
     end_event(command_list_.Get(), pass.label);
 }
 
+// An occluded swapchain does not pace Present, so an occluded render sleeps and tests instead.
 RenderResult D3D12Renderer::render(const Frame& frame)
 {
     assert(swapchain_ && command_list_);

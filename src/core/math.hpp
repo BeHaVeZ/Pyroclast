@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 
+// Right-handed, Y up, metres; cameras look down -Z; D3D12 clip space with reverse Z (near plane 1, infinity 0).
 namespace pyroclast
 {
 struct float2
@@ -40,6 +41,7 @@ constexpr float dot(float3 a, float3 b) { return a.x * b.x + a.y * b.y + a.z * b
 constexpr float3 cross(float3 a, float3 b) { return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x}; }
 inline float length(float3 a) { return std::sqrt(dot(a, a)); }
 
+// Half-float bits as HLSL's f16tof32 reads them: round to nearest even, underflow to zero, overflow to the largest.
 inline std::uint32_t half_bits(float value)
 {
     const auto bits = std::bit_cast<std::uint32_t>(value);
@@ -57,6 +59,7 @@ inline float3 normalize(float3 a) { return a / length(a); }
 constexpr float4 operator*(float4 a, float s) { return {a.x * s, a.y * s, a.z * s, a.w * s}; }
 constexpr float4 operator+(float4 a, float4 b) { return {a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w}; }
 
+// Column-major, HLSL's default packing: mul(M, v) in a shader equals M * v here.
 struct float4x4
 {
     std::array<float4, 4> columns{};
@@ -78,15 +81,18 @@ constexpr float4x4 operator*(const float4x4& a, const float4x4& b)
 }
 
 float4x4 look_to(float3 eye, float3 forward, float3 up);
+// Infinite reverse Z: depth 1 at near_plane, 0 at infinity.
 float4x4 perspective_reverse_z(float vertical_fov_radians, float aspect_ratio, float near_plane);
 float4x4 inverse(const float4x4& m);
 
+// direction is unit length.
 struct Ray
 {
     float3 origin;
     float3 direction;
 };
 
+// Plane dot(normal, p) = offset, hit only in front of the origin.
 std::optional<float> intersect_plane(const Ray& ray, float3 normal, float offset);
 
 struct Box
@@ -95,6 +101,7 @@ struct Box
     float3 maximum;
 };
 
+// entry is 0 for a ray starting inside the box.
 struct Interval
 {
     float entry = 0;

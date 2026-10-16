@@ -26,6 +26,7 @@ struct SmokeBudget
     double limit = 0;
 };
 
+// smoke_lod and faint_floor: 0 is off.
 struct ScalabilitySettings
 {
     bool coverage = false;

@@ -101,6 +101,7 @@ void Pilot::reset()
     jet_tape_.clear();
 }
 
+// Plans one knot past maximum_simulation_steps: flight_state returns the last knot verbatim but blends the others.
 bool Pilot::advance(std::uint32_t tick, const CameraInput& input, float view_heading, const PilotScene& scene, Rotorcraft& rotorcraft,
     Jetcraft& jetcraft, const Environment& environment, bool props)
 {

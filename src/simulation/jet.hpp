@@ -8,8 +8,10 @@
 #include <optional>
 #include <vector>
 
+// Pure functions of absolute ticks (the passes' plans, wind, terrain), so a frozen frame equals the scenario's.
 namespace pyroclast
 {
+// Kept in step with jet_layout.hlsli (a test checks they agree).
 namespace jet
 {
 inline constexpr double pi = rotor::pi;
@@ -40,6 +42,7 @@ inline constexpr double attack_per_g = 3 * pi / 180;
 }
 static_assert(jet::mass == jet_layout::jet_mass && jet::span == jet_layout::jet_span);
 
+// Body frame: x forward, y up, z right; afterburner 0-1.
 struct JetPose
 {
     double3 centre;
@@ -59,14 +62,17 @@ double vapor_strength(const JetPose& pose, double humidity);
 
 using JetPass = FlightPlan;
 
+// Flown one after another: a pass's listing never overlaps the next's.
 struct JetFlight
 {
     std::string name;
     std::vector<JetPass> passes;
 };
 const JetPass* listed_pass(const JetFlight& flight, std::uint32_t tick);
+// A push (lift below the plane across the path) keeps the airframe upright at a negative load.
 JetPose jet_pose(const JetFlight& flight, std::uint32_t tick, const Terrain& terrain, const WindSettings& wind, bool gusts, std::uint32_t mask);
 
+// exhaust is the exhaust's momentum per metre of track (N s/m); knots of different passes never join.
 struct KnotBirth
 {
     std::uint32_t tick = never;
@@ -105,11 +111,13 @@ double knot_core(double age);
 double exhaust_radius(double age);
 double exhaust_speed(double exhaust, double age);
 
+// RK4 from each knot's birth, memoised, so a knot's state at a tick does not depend on how ticks fell into frames.
 class JetHistory final
 {
 public:
     static constexpr std::uint32_t length = 1024;
     KnotState state(const KnotBirth& birth, std::uint32_t age_ticks, const WindSettings& wind, bool gusts, std::uint32_t mask);
+    // The pilot rewrites the plan after `tick`, and a skipped frame may have memoised a knot it did not commit.
     void forget_after(std::uint32_t tick);
     void clear();
 
@@ -125,6 +133,7 @@ private:
     std::array<Entry, length> entries_{};
 };
 
+// FrameConstants::jet_* for the GPU: knots newest first.
 struct JetKnotRecord
 {
     std::array<float4, 4> words{};
@@ -147,8 +156,10 @@ JetWake jet_wake(const JetFlight& flight, std::uint32_t tick, const Terrain& ter
 JetHead jet_head(const JetPose& pose);
 void include_head(JetWake& wake, const JetHead& head);
 
+// jet_flow.hlsli's twin, without turbulence.
 double3 jet_air(const JetWake& wake, const JetHead& head, double3 point);
 
+// For FrameConstants::jet_births and jet_dust_lines: emission 0-1,024, half_width in metres.
 struct JetEmission
 {
     std::uint32_t dust = 0;
@@ -159,9 +170,11 @@ struct JetEmission
 JetEmission jet_emission(const JetFlight& flight, std::uint32_t tick, const Terrain& terrain, const WindSettings& wind, bool gusts, std::uint32_t mask,
     JetHistory& history);
 
+// jet_compute.hlsli's twin, for record `local` (0-2,559) of a jet slot seeded `seed`.
 DustCycle jet_cycle(std::uint32_t seed, std::uint32_t local);
 bool jet_born(std::uint32_t seed, std::uint32_t local, std::uint32_t cycle, std::uint32_t emission);
 
+// A memo of each step tick's emissions (as RotorHistory); 721 ticks cover every live cycle.
 class JetEmissionHistory final
 {
 public:
@@ -180,6 +193,7 @@ private:
     std::array<Entry, length> entries_{};
 };
 
+// The GPU's twin: the dust alive after `tick` (none while its layer is hidden) and its mean birth point.
 struct JetCensus
 {
     std::uint32_t dust = 0;
@@ -188,6 +202,7 @@ struct JetCensus
 JetCensus jet_census(const JetEmissionHistory& history, std::uint32_t seed, std::uint32_t start_tick, std::uint32_t end_tick, std::uint32_t tick,
     bool dust_drawn);
 
+// The aircraft shader variants latch as the helicopter's.
 class Jetcraft final
 {
 public:
@@ -197,6 +212,7 @@ public:
     void add_pass(JetPass pass, std::uint32_t seed);
     bool take_over(std::uint32_t tick);
     void steer(std::uint32_t tick, std::span<const FlightKnot> knots);
+    // Returns the tick a new pass may be listed from.
     std::uint32_t end_passes(std::uint32_t tick, std::uint32_t fade_ticks);
     void clear();
     JetHistory& history() { return history_; }

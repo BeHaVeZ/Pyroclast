@@ -8,12 +8,14 @@ namespace pyroclast
 inline constexpr std::uint32_t ticks_per_second = 60;
 inline constexpr double tick_seconds = 1.0 / ticks_per_second;
 
+// Steps are committed only when the GPU received the frame that runs them.
 class SimulationClock final
 {
 public:
     std::uint32_t tick() const { return tick_; }
     std::uint32_t upcoming_steps(double elapsed_seconds) const;
     std::uint32_t advance(double elapsed_seconds);
+    // Call only when the GPU received the work, so a skipped frame keeps its simulation time and queued steps.
     void commit(std::uint32_t steps);
     void set_fixed_ticks(bool fixed) { fixed_ticks_ = fixed; }
     void prepare_profile(std::uint32_t tick);
@@ -23,6 +25,7 @@ public:
     bool paused() const { return paused_; }
     void toggle_pause();
     void step();
+    // Powers of two, so the scaled time is exact.
     void set_time_scale(double scale);
     double time_scale() const { return time_scale_; }
     std::uint64_t capped_frames() const { return capped_frames_; }

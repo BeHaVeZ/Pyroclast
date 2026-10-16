@@ -32,6 +32,7 @@ inline constexpr std::uint32_t preset_count = 7;
 enum class EffectLayer : std::uint32_t { ground_dust, blast_smoke, plume, flash, fireball, sparks, debris };
 inline constexpr std::uint32_t layer_count = particle_layout::layer_count;
 
+// As the GPU reads it (Layer in shaders/effect_classes.hlsli).
 struct LayerParameters
 {
     std::uint32_t first_group = 0;
@@ -75,6 +76,7 @@ static_assert(sizeof(LayerParameters) == particle_layout::layer_stride && offset
     offsetof(LayerParameters, cooling) == 128 && offsetof(LayerParameters, emission) == 144 &&
     offsetof(LayerParameters, reserved_smoke) == realism_layout::layer_realism_offset);
 
+// As the GPU reads it (Flow in shaders/effect_classes.hlsli).
 struct FlowParameters
 {
     float strength = 0;
@@ -88,6 +90,8 @@ struct FlowParameters
 };
 static_assert(sizeof(FlowParameters) == 32);
 
+// As RealismLayer in shaders/realism.hlsli reads it; survivor_stride 0 keeps the legacy lifetimes, albedo.w is the
+// glow seconds.
 struct RealismLayer
 {
     std::uint32_t survivor_stride = 0;
@@ -106,6 +110,8 @@ struct RealismLayer
 };
 static_assert(sizeof(RealismLayer) == 64);
 
+// At realism_layout::class_realism_offset (load_realism in shaders/realism.hlsli); spread.w is the column's
+// self-shadow density.
 struct RealismParameters
 {
     std::uint32_t graduation_ticks = 0;
@@ -118,6 +124,7 @@ struct RealismParameters
 };
 static_assert(sizeof(RealismParameters) == 240 && offsetof(RealismParameters, layers) == 32 && offsetof(RealismParameters, spread) == 224);
 
+// arrival_q16 in 1/65536 tick after the start, ticks_per_cm_q24 in 1/2^24 tick, overpressure dp/p0.
 struct BlastKnot
 {
     std::uint32_t radius_cm = 0;
@@ -126,6 +133,7 @@ struct BlastKnot
     float overpressure = 0;
 };
 
+// At realism_layout::class_blast_offset (load_blast in shaders/blast.hlsli).
 struct BlastParameters
 {
     std::array<BlastKnot, realism_layout::blast_knots> knots{};
@@ -140,6 +148,7 @@ struct BlastParameters
 static_assert(sizeof(BlastKnot) == 16 && sizeof(BlastParameters) == 320 && offsetof(BlastParameters, wave) == 256 &&
     offsetof(BlastParameters, skirt) == 272 && offsetof(BlastParameters, wilson) == 288 && offsetof(BlastParameters, wave_ticks) == 304);
 
+// At realism_layout::class_look_offset (load_realism_look in shaders/realism.hlsli).
 struct RealismLook
 {
     float3 smoke_soot;
@@ -153,6 +162,7 @@ struct RealismLook
 };
 static_assert(sizeof(RealismLook) == 48);
 
+// In the blast-smoke layer's reserved words at layer_realism_offset (load_trail in shaders/realism.hlsli).
 struct TrailParameters
 {
     std::uint32_t jets_min = 0;
@@ -167,6 +177,7 @@ struct TrailParameters
     float knot_density = 0;
 };
 static_assert(sizeof(TrailParameters) == 40);
+// In the debris layer's reserved words (load_clods in shaders/realism.hlsli).
 struct ClodParameters
 {
     float size_exponent = 1;
@@ -183,6 +194,7 @@ ClodParameters clod_parameters(ExplosionPreset preset);
 TrailParameters trail_of(const LayerParameters& layer);
 ClodParameters clods_of(const LayerParameters& layer);
 
+// Must match variation_key and variation_life in shaders/realism.hlsli; life in 1/1024.
 struct EventVariation
 {
     std::uint32_t key = 0;
@@ -222,6 +234,7 @@ constexpr std::uint32_t effect_class_index(ExplosionPreset preset, SurfaceType s
 inline constexpr std::uint32_t effect_class_count = preset_count * surface_type_count;
 static_assert(effect_class_count <= particle_layout::maximum_effect_classes);
 
+// Each layer takes whole groups in draw order, so every group runs one layer.
 EffectClass make_effect_class(ExplosionPreset preset, SurfaceType surface);
 std::vector<EffectClass> effect_classes();
 inline constexpr std::uint32_t rotor_class_index = effect_class_count;
@@ -233,11 +246,14 @@ EffectClass make_jet_class();
 // The contents of the GPU class buffer: effect_classes(), then the rotor class and the jet class.
 std::vector<EffectClass> gpu_effect_classes();
 
+// Must match the rise term of ring_at in shaders/effect_classes.hlsli.
 float cloud_rise(ExplosionPreset preset, float seconds);
 std::uint32_t realism_effect_ticks(ExplosionPreset preset, SurfaceType surface);
+// Kept in step with the trail knots' births in particles_compute_realism.hlsl (explosion_preset_tests checks).
 std::uint32_t realism_early_ticks(ExplosionPreset preset, SurfaceType surface);
 std::uint32_t effect_ticks(ExplosionPreset preset, SurfaceType surface);
 
+// Intensities are linear HDR at the light, falling off as 1 / (1 + d^2).
 struct LightCurve
 {
     float flash_intensity = 0;
@@ -250,6 +266,7 @@ struct LightCurve
     float source_radius = 0;
 };
 LightCurve light_curve(ExplosionPreset preset);
+// Kept in step with realism_light and realism_point_lights in the realism shaders.
 LightCurve realism_light_curve(ExplosionPreset preset);
 float light_intensity(const LightCurve& curve, float seconds);
 }

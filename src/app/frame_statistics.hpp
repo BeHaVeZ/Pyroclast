@@ -20,6 +20,7 @@ struct FrameStatistics
     double worst_1_percent = 0;
 };
 
+// `samples` must be non-empty; sorted in place. Kept in step with tools/bench/stats.py.
 FrameStatistics summarize(std::span<double> samples);
 
 class CoverageStatistics final

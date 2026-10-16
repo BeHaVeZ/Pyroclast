@@ -36,6 +36,7 @@ std::uint32_t ResidualPool::death_tick(std::uint32_t start_tick, std::uint32_t g
     return graduation_tick + std::max(layout::crossfade_ticks + 60, life);
 }
 
+// A fade already under way continues from its current opacity, so a cluster never brightens or jumps.
 void ResidualPool::force_fade(ResidualCluster& cluster, std::uint32_t tick, std::uint32_t end)
 {
     if (cluster.visible_end() <= end) return;
@@ -60,6 +61,7 @@ void ResidualPool::force_fade(ResidualCluster& cluster, std::uint32_t tick, std:
     ++forced_fades_;
 }
 
+// The graduation frame may start up to 4 ticks early and writes the range, so nothing older may be listed then.
 std::optional<ResidualLink> ResidualPool::reserve(std::uint32_t tick, const RealismParameters& realism, const LingerSettings& settings,
     float3 origin, float3 drift_start, ExplosionPreset preset, std::uint64_t serial, std::uint32_t variation)
 {

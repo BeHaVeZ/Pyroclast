@@ -26,6 +26,7 @@ enum class PropShape : std::uint32_t
     rock,
 };
 
+// Upright, turned about +Y: local +x is (axis_cos, 0, axis_sin), as in shaders/environment.hlsli.
 struct PropBox
 {
     float3 centre;
@@ -53,6 +54,7 @@ struct RangeLayout
     std::vector<PropBox> boxes;
 };
 
+// Every prop stands at least 6 m from every scripted explosion but the range scenario's (environment_tests checks).
 RangeLayout range_layout();
 SurfaceType prop_surface(PropMaterial material);
 std::string_view material_name(PropMaterial material);

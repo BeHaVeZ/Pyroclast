@@ -15,8 +15,10 @@ namespace pyroclast
 class Showcase final
 {
 public:
+    // Above every scripted seed.
     static constexpr std::uint32_t first_seed = 100000;
     static constexpr std::array<std::uint32_t, 4> counts{1, 10, 50, 100};
+    // Intervals in ticks, radii in metres.
     static constexpr std::array<std::uint32_t, 9> bombardment_intervals{60, 30, 15, 10, 6, 4, 3, 2, 1};
     static constexpr float bombardment_radius_min = 5;
     static constexpr float bombardment_radius_max = 60;

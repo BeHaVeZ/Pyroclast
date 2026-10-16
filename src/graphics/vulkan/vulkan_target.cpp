@@ -28,6 +28,7 @@ std::unique_ptr<RenderTarget> VulkanRenderer::create_render_target(const RenderT
     return validation_ok() ? std::move(target) : nullptr;
 }
 
+// Waits for the GPU first: submitted frames may still sample the image being replaced.
 bool VulkanRenderer::size_target(VulkanRenderTarget& target)
 {
     const auto [width, height] = target.extent_for(swapchain_.extent.width, swapchain_.extent.height);

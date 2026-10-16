@@ -13,6 +13,7 @@
 
 namespace pyroclast
 {
+// `normal` is the unit surface normal; equal seeds give identical effects.
 struct ExplosionEvent
 {
     float3 position;
@@ -24,6 +25,7 @@ struct ExplosionEvent
 
 enum class EffectKind { explosion, rotor, rotor_disc, jet };
 
+// The generation changes whenever the slot starts an effect, which tells the GPU to respawn the slab.
 struct EffectSlot
 {
     EffectKind kind = EffectKind::explosion;
@@ -52,6 +54,7 @@ struct RealismStart
     float3 drift;
 };
 
+// Deterministic: the same events submitted before the same ticks give the same slots, generations and order.
 class ExplosionSystem final
 {
 public:
@@ -68,6 +71,7 @@ public:
     std::uint64_t evicted() const { return evicted_; }
     std::uint64_t deferred() const { return deferred_; }
     std::size_t explosions() const { return active_.size() - (rotor_slot() ? 1 : 0) - (rotor_disc_slot() ? 1 : 0) - (jet_slot() ? 1 : 0); }
+    // Idempotent; starts at the next start() in the two lowest free slots and never drops, defers or evicts an effect.
     void request_rotor(std::uint32_t seed, float3 origin, std::uint32_t end_tick);
     std::optional<std::uint32_t> rotor_slot() const;
     std::optional<std::uint32_t> rotor_disc_slot() const;

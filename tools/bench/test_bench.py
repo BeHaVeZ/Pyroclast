@@ -1,10 +1,8 @@
-"""Tests for tools/bench (and the M20 parts of tools/ab.py and tools/counter_log.py).
+"""Tests for tools/bench, tools/ab.py and tools/counter_log.py.
 
   python -m unittest discover -s tools/bench
 
-The statistics vectors are those of tests/frame_statistics_tests.cpp. The synthetic session is written by a
-small generator below in the formats of docs/PHASE20.md ("Per-frame CSV", "Benchmark JSON record"), with record
-statistics computed here independently of stats.py; nothing launches Pyroclast.
+The statistics vectors are those of tests/frame_statistics_tests.cpp; nothing launches Pyroclast.
 """
 import argparse
 import contextlib

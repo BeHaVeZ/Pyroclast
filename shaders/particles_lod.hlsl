@@ -1,3 +1,4 @@
+// The thinning radius and faint floor are draw constant words 4-5, after the four vs_main reads.
 #define PARTICLE_LOD_CONSTANTS
 #include "particles.hlsl"
 #include "particle_footprint.hlsli"

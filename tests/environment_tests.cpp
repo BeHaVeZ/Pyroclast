@@ -77,6 +77,7 @@ bool boxes_overlap(const PropBox& a, const PropBox& b, float margin)
     return std::min(top(a), top(b)) - std::max(bottom(a), bottom(b)) > margin && footprints_overlap(a, b, margin);
 }
 
+// A port of shaders/noise.hlsli's curl noise, kept in step with it, to bound its magnitude.
 std::uint32_t noise_hash(int x, int y, int z, std::uint32_t salt)
 {
     std::uint32_t value = static_cast<std::uint32_t>(x) * 73856093u ^ static_cast<std::uint32_t>(y) * 19349663u ^

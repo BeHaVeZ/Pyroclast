@@ -12,6 +12,7 @@
 
 namespace pyroclast
 {
+// The simulation moves on only through commit_frame_step.
 struct FrameStep
 {
     std::uint32_t tick = 0;
@@ -33,5 +34,6 @@ struct StepSettings
 FrameStep begin_frame_step(SimulationClock& clock, ExplosionSystem& effects, const WindDrift& drift, Rotorcraft* rotorcraft,
     Jetcraft* jetcraft, const Terrain& terrain, const StepSettings& settings, double elapsed_seconds);
 
+// Only for a frame the GPU received.
 void commit_frame_step(const FrameStep& step, SimulationClock& clock, WindDrift& drift, const StepSettings& settings);
 }

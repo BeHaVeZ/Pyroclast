@@ -28,6 +28,7 @@ Program program(pyroclast::Shader shader)
 
 namespace pyroclast
 {
+// The embedded bytes carry no uint32 alignment guarantee, so the SPIR-V is copied into aligned words.
 bool VulkanRenderer::create_shader_module(Shader shader, VulkanShaderModule& module)
 {
     const auto [bytes, entry] = program(shader);

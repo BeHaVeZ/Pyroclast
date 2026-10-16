@@ -21,6 +21,7 @@ class ExplosionRenderer final
 {
 public:
     static constexpr TargetFormat smoke_format = TargetFormat::rgba16_float;
+    // Creates every target and pipeline up front, so any frame can pick either smoke resolution.
     bool initialize(GraphicsDevice& device, TargetFormat scene_format);
     struct FrameOptions
     {
@@ -37,6 +38,7 @@ public:
         const Rotorcraft* rotorcraft = nullptr;
         const Jetcraft* jetcraft = nullptr;
     };
+    // Changes no simulation state: the caller commits `step` only when the result is `submitted`.
     RenderResult render(GraphicsDevice& device, const ParticleSystem& particles, const ExplosionSystem& effects, const WindDrift& drift,
         const TestRange& range, const Camera& camera, int width, int height, const FrameStep& step, const FrameOptions& options);
     std::uint32_t lights() const { return lights_; }

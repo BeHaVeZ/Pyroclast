@@ -28,6 +28,7 @@ PixelInput vs_main(uint vertex : SV_VertexID)
     return output;
 }
 
+// Fine derivatives: fwidth is coarse in DXIL but implementation-chosen in SPIR-V, which differed on lines seen edge-on.
 float grid_line(float2 xz, float spacing)
 {
     float2 coordinate = xz / spacing;

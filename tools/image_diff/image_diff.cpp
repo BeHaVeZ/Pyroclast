@@ -42,6 +42,7 @@ std::optional<Image> load(const char* path)
     return image;
 }
 
+// |a - b| per channel scaled by 40, so single-level differences are visible.
 bool save_difference(const Image& first, const Image& second, const std::string& path)
 {
     std::vector<std::uint8_t> pixels(first.rgba.size());
@@ -66,6 +67,7 @@ bool parse_option(std::string_view argument, std::string_view name, Number& valu
 }
 }
 
+// Exits 0 within tolerance, 1 beyond it, 2 when the images cannot be compared.
 int main(int argc, char** argv)
 {
     unsigned max_level = 0;

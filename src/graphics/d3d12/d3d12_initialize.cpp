@@ -131,6 +131,7 @@ bool D3D12Renderer::create_device([[maybe_unused]] bool gpu_validation, std::str
     return true;
 }
 
+// With tearing, the swapchain's ALLOW_TEARING flag must be given to ResizeBuffers too.
 bool D3D12Renderer::create_swapchain(SDL_Window* window)
 {
     const auto properties = SDL_GetWindowProperties(window);

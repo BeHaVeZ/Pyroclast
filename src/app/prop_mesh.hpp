@@ -7,6 +7,7 @@
 
 namespace pyroclast
 {
+// Kept in step with vs_main in shaders/props.hlsl; `material` holds a PropMaterial.
 struct PropVertex
 {
     float3 position;

@@ -21,6 +21,7 @@ RWByteAddressBuffer alive : register(u0);
 ByteAddressBuffer particles : register(t3);
 RWByteAddressBuffer arguments : register(u1);
 
+// `layered` must match the scan's. Root and push descriptors carry no size: never write past the lists.
 [numthreads(simulation_group_size, 1, 1)]
 void cs_main(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID)
 {
@@ -45,6 +46,7 @@ void cs_main(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID)
 static const uint measured_words = 8;
 groupshared uint measured[measured_words];
 
+// Adds to the counter words the scan zeroed; a word saturates rather than wraps.
 [numthreads(simulation_group_size, 1, 1)]
 void cs_measure(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID)
 {

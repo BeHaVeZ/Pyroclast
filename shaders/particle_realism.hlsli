@@ -74,6 +74,7 @@ void rotor_stretch(inout RealismFootprint result, float3 rotor)
 }
 #endif
 
+// A slab record and its residual copy must draw the same at graduation, so the move changes no pixel.
 RealismFootprint realism_footprint(ByteAddressBuffer particles, ByteAddressBuffer classes, uint record)
 {
     RealismFootprint result = (RealismFootprint)0;

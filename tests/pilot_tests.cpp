@@ -414,6 +414,7 @@ void takeover()
         "continue_plan drops knots older than plan_memory_ticks");
 }
 
+// Every committed tick must equal the law integrated with the keys of the frame that committed it, and stay so.
 void tape(const Terrain& terrain)
 {
     constexpr std::uint32_t steps = particle_layout::maximum_simulation_steps;

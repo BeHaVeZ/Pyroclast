@@ -36,6 +36,7 @@ float stripe(float coordinate, float spacing)
     return 1 - saturate(abs(frac(value - 0.5) - 0.5) / max(width, 1e-4));
 }
 
+// Derivatives are taken before any branch on the material.
 float4 ps_main(PixelInput input) : SV_Target
 {
     float3 normal = normalize(input.normal);

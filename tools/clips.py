@@ -4,13 +4,9 @@
     python tools/clips.py encode DIR OUT.webp|OUT.gif [--from T] [--to T] [--step N] [--ranges A-B:N,...]
                                  [--fps F] [--width W] [--crop X,Y,W,H] [--quality Q] [--dither none]
 
-Frames are DIR/tick-NNNNNN.png. A tick is 1/60 s: --step 2 at 30 fps plays in real time, --step 1 at 30 fps at
-half speed. --ranges replaces --from, --to and --step with ticks A to B every N ticks, range after range, so one
-clip can change speed. --crop is in the captured frame's pixels and applies before scaling to --width. WebP is lossy at
---quality (method 6); GIF uses one adaptive 256-colour palette for the whole clip (taken from 16 frames across it)
-with Floyd-Steinberg dithering
-(--dither none: banding, but a much smaller file where haze covers the frame).
-Needs Pillow.
+Frames are DIR/tick-NNNNNN.png, a tick 1/60 s: --step 2 at 30 fps plays in real time. --ranges replaces --from, --to
+and --step, so one clip can change speed. --crop is in captured pixels and applies before scaling to --width. GIF uses
+one adaptive palette with Floyd-Steinberg dithering (--dither none: banded but smaller). Needs Pillow.
 """
 
 import argparse

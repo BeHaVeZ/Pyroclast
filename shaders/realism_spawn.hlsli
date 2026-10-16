@@ -26,6 +26,7 @@ JetHead jet_head(uint seed, uint jet, uint jets, float3 origin, float3 normal, T
     return head;
 }
 
+// Kept in step with the debris step in particles_compute.hlsl: velocity first, then position, 60 Hz, no drag.
 float3 jet_head_at(JetHead head, uint ticks)
 {
     float t = float(ticks) / 60.0;

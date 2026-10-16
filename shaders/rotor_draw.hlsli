@@ -40,6 +40,7 @@ RealismPixelInput rotor_vertex(uint vertex, uint record)
     return result;
 }
 
+// Derivatives are taken before the discard.
 float4 rotor_disc_pixel(RealismPixelInput realism)
 {
     PixelInput input = realism.base;

@@ -3,6 +3,7 @@
 
 ByteAddressBuffer environment : register(t0);
 
+// JetConstants' shadow form: state.xy the block's first cell column and row, state.z the fade in 1/65536.
 struct ShadowConstants
 {
     float4 rows[3];

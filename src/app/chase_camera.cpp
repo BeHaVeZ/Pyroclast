@@ -7,6 +7,7 @@ namespace pyroclast
 {
 namespace
 {
+// Kept in step with camera.cpp's look sensitivity and pitch limit.
 constexpr float look_sensitivity = 0.0025f;
 constexpr float pitch_limit = 1.55f;
 }

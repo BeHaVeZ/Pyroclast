@@ -46,6 +46,7 @@ float smoothstep(float x)
     return x * x * (3 - 2 * x);
 }
 
+// A cluster's forced-fade factor as the draw applies it.
 float fade_factor(const pyroclast::ResidualCluster& cluster, std::uint32_t tick)
 {
     namespace layout = pyroclast::realism_layout;
@@ -88,6 +89,7 @@ struct Outcome
     std::map<std::uint64_t, Schedule> schedules;
 };
 
+// frames_only runs start() only at each frame's first tick, as the renderer does.
 Outcome run(const Stream& stream, pyroclast::SlotPolicy policy = pyroclast::SlotPolicy::drop_new, bool frames_only = false)
 {
     using namespace pyroclast;

@@ -8,6 +8,8 @@
 #endif
 #endif
 
+// Kept in step with src/app/frame_constants.hpp, whose static_asserts pin each offset; 16-byte members only.
+// Colours are linear HDR; camera_position.w is the near plane, light_state.y the mask, clock.x the tick drawn.
 struct FrameConstants
 {
     float4x4 view_projection;

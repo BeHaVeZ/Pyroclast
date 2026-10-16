@@ -7,6 +7,7 @@ namespace pyroclast
 {
 namespace
 {
+// Offsets along (x) and across (z) the prop's axis, length along it and width across it; bottom and top in world y.
 struct Part
 {
     float x = 0;
@@ -21,6 +22,7 @@ struct Part
 class LayoutBuilder
 {
 public:
+    // Centred on (x, z), turned `yaw` degrees from +x towards +z.
     void add(std::string_view name, PropShape shape, PropMaterial material, float x, float z, float yaw, float shade,
         std::initializer_list<Part> parts, std::uint32_t seed = 0)
     {
@@ -53,10 +55,10 @@ constexpr Part barrier_foot{0, 0, 3.0f, -0.2f, 0.255f, 0.61f};
 constexpr Part barrier_upper{0, 0, 3.0f, -0.2f, 0.81f, 0.43f};
 }
 
+// Grounded parts reach 0.2 m (rocks 0.3 m) below the flat range, so no particle meets their bottom.
 RangeLayout range_layout()
 {
     LayoutBuilder range;
-    // Grounded parts reach 0.2 m (rocks 0.3 m) below the flat range, so no particle meets their bottom.
     range.add("blast wall A", PropShape::box, PropMaterial::concrete, -14, -54, 0, 1, {{0, 0, 10.0f, -0.2f, 3.0f, 0.4f}});
     range.add("blast wall B", PropShape::box, PropMaterial::concrete, -19.2f, -51.0f, 0, 1, {{0, 0, 0.4f, -0.2f, 3.0f, 6.4f}});
     range.add("hut", PropShape::box, PropMaterial::concrete, 8, -54, 0, 1,

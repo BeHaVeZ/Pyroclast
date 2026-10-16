@@ -11,6 +11,7 @@
 
 namespace pyroclast
 {
+// Kinney-Graham at scaled distance Z = R / W^(1/3) (m/kg^(1/3)), for c0 = 340 m/s and gamma = 1.4.
 double overpressure_ratio(double scaled_distance);
 double front_speed(double overpressure);
 double particle_velocity(double overpressure);
@@ -26,6 +27,7 @@ std::uint32_t blast_arrival_tick(const BlastParameters& blast, std::uint32_t rad
 
 float push_speed(const BlastParameters& blast, float metres);
 
+// FrameConstants' blast_* lists (blast_list.hlsli); `tick_before` is the tick before the frame's first step.
 struct BlastList
 {
     std::uint32_t count = 0;
@@ -46,5 +48,6 @@ struct WilsonShell
 WilsonShell wilson_shell(const BlastParameters& blast, float ticks, float humidity);
 
 float blast_arrival_ticks(const BlastParameters& blast, float metres);
+// Interactive runs only; radians of pitch (and 0.6 of it of heading).
 float shake_angle(const ExplosionSystem& effects, std::span<const BlastParameters> classes, float3 camera, std::uint32_t tick);
 }

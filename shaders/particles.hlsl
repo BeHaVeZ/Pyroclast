@@ -3,6 +3,7 @@
 #include "frame_constants.hlsli"
 #include "lights.hlsli"
 
+// Kept in step with ParticleSystem::plan. depth_scale: scene depth texels per target pixel (2 for half resolution).
 struct DrawConstants
 {
     uint record_count;
@@ -50,6 +51,7 @@ float cloud_transmittance(Layer layer, Flow flow, float3 origin, float3 position
     return exp(-layer.shadow_density * chord);
 }
 
+// No base instance (its ID differs across APIs); an out-of-range index draws a degenerate quad (root and push descriptors carry no size).
 PixelInput vs_main(uint vertex : SV_VertexID, uint instance : SV_InstanceID)
 {
     const float2 corners[6] = {

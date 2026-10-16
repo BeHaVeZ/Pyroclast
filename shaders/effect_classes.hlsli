@@ -2,6 +2,7 @@
 
 #include "particle_layout.hlsli"
 
+// Twin of LayerParameters in explosion_presets.hpp. Seconds, metres, m/s; drag in 1/s.
 struct Layer
 {
     uint first_group;
@@ -38,6 +39,7 @@ struct Layer
     float shadow_density;
 };
 
+// Twin of FlowParameters in explosion_presets.hpp; `strength` is the ring's circulation over 2 pi (m^2/s).
 struct Flow
 {
     float strength;
@@ -125,6 +127,7 @@ Flow load_flow(ByteAddressBuffer classes, uint effect_class)
     return flow;
 }
 
+// CPU twin: cloud_rise in explosion_presets.cpp.
 float2 ring_at(Flow flow, float seconds)
 {
     float rise = 1 - exp(-seconds / max(flow.rise_time, 1e-3));

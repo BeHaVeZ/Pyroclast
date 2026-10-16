@@ -4,6 +4,7 @@
 #include "frame_constants.hlsli"
 #include "noise.hlsli"
 
+// Kept in step with ParticleSystem::plan; `tick` is the tick before the first step (step s reaches tick + s + 1).
 struct Parameters
 {
     uint steps;
@@ -52,6 +53,7 @@ float3 around_normal(float3 direction, float3 normal)
 #include "realism_spawn.hlsli"
 #endif
 
+// Returns whether the record is alive afterwards. Boxes are met in index order, each seeing where earlier ones put it.
 bool simulate(uint slot, uint local, uint record)
 {
     uint4 state = frame.effect_states[slot];
@@ -180,6 +182,7 @@ bool simulate(uint slot, uint local, uint record)
     return velocity.w > 0 && position.w >= 0 && layer_enabled(mask, layer_index);
 }
 
+// Exits are uniform over a group, before the barriers. Root and push descriptors carry no size: never touch a record outside the pool.
 [numthreads(simulation_group_size, 1, 1)]
 void cs_main(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID)
 {

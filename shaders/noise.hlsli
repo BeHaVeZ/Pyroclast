@@ -16,6 +16,7 @@ float3 noise_gradient(int3 cell, uint salt)
     return float3(uint3(value, value >> 10, value >> 20) & 1023u) * (2.0 / 1023.0) - 1.0;
 }
 
+// After Inigo Quilez. xyz: the gradient at `position`; w: the value.
 float4 gradient_noise(float3 position, uint salt)
 {
     float3 floor_position = floor(position);

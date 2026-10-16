@@ -16,6 +16,7 @@ using uint = std::uint32_t;
 #include "../../shaders/terrain_layout.hlsli"
 }
 
+// The terrain shader, the GPU particles and CPU ray casts all read these heights, so they agree by construction.
 class Terrain final
 {
 public:
@@ -25,6 +26,7 @@ public:
     static inline const float half_extent = (resolution - 1) * spacing * 0.5f;
 
     Terrain();
+    // Bilinear, clamped at the edges, as shaders/terrain.hlsli samples it.
     float height(float x, float z) const;
     float3 normal(float x, float z) const;
     static SurfaceType surface(float x, float z);

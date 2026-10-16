@@ -13,6 +13,7 @@ namespace layout = realism_layout;
 
 namespace
 {
+// `id`: a slot, or unit_cluster_first + a cluster slot.
 struct UnitKey
 {
     std::uint32_t id;

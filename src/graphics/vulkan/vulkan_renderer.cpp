@@ -18,6 +18,7 @@ constexpr std::uint32_t constant_bytes = binding_layout::draw_constant_words * s
 constexpr VkPipelineStageFlags2 depth_stages = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
 }
 
+// Logs the validation summary last so messages raised while destroying the device and instance are counted.
 VulkanContext::~VulkanContext()
 {
     if (device)
@@ -54,6 +55,7 @@ VulkanRenderer::~VulkanRenderer()
     destroy_overlay();
 }
 
+// Also waits for present fences: rendering fences do not prove presentation has released its resources.
 bool VulkanRenderer::wait_idle()
 {
     if (!vk_.device)
@@ -79,6 +81,7 @@ bool VulkanRenderer::wait_idle()
     return validation_ok();
 }
 
+// Negative height keeps D3D12's clip-space orientation for every shared shader.
 void VulkanRenderer::set_viewport(VkCommandBuffer command, VkExtent2D extent)
 {
     const VkViewport viewport{0, static_cast<float>(extent.height), static_cast<float>(extent.width),
@@ -161,6 +164,8 @@ void memory_barrier(VkCommandBuffer command,
     vkCmdPipelineBarrier2(command, &dependency);
 }
 
+// The first barrier waits for the previous frame's draws, indirect reads and readback copy; the last publishes
+// the writes to the draws, indirect arguments and readback copy of this frame or a later one.
 void VulkanRenderer::record_dispatches(VkCommandBuffer command, const Frame& frame, const VulkanFrameSlot& slot)
 {
     constexpr VkPipelineStageFlags2 shader_stages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT |
@@ -206,6 +211,8 @@ void VulkanRenderer::record_readback(VkCommandBuffer command, const Frame::Readb
     slot.readback_size = readback.size;
 }
 
+// The backbuffer's transition waits at colour output, where the acquire semaphore is waited. A read-only depth
+// attachment is neither cleared nor stored, so the same pass may sample it.
 void VulkanRenderer::record_pass(VkCommandBuffer command, const Pass& pass, const std::array<float, 4>& frame_clear_color,
     const VulkanFrameSlot& slot, const VulkanSwapchain::Image& image)
 {
@@ -304,6 +311,7 @@ void VulkanRenderer::record_pass(VkCommandBuffer command, const Pass& pass, cons
     end_label(command, pass.label);
 }
 
+// The fences are reset only when nothing but the submit stands between the reset and the signal.
 bool VulkanRenderer::submit_frame(VkCommandBuffer command, VulkanFrameSlot& slot, VulkanSwapchain::Image& image)
 {
     VkSemaphoreSubmitInfo wait{};
@@ -330,6 +338,8 @@ bool VulkanRenderer::submit_frame(VkCommandBuffer command, VulkanFrameSlot& slot
         check(vkQueueSubmit2(vk_.queue, 1, &submit, slot.submitted), "Submit Vulkan frame");
 }
 
+// An out-of-date acquire leaves the slot's fence signaled (nothing is submitted). Out-of-date and surface-lost
+// presents still enqueue synchronization, so their present fence is waited for.
 RenderResult VulkanRenderer::render(const Frame& frame)
 {
     const char* error = submission_error(frame, *this, capture_enabled_, overlay_);

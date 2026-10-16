@@ -205,6 +205,7 @@ struct JetCommand
     double speed = JetSettings{}.cruise_speed;
 };
 
+// The acceleration is the lift along the banked up (down in a push) less gravity across the path, as jet_pose reads it.
 JetControl advance(const JetControl& control, JetCommand command, double surface, const JetSettings& settings)
 {
     constexpr double dt = tick_seconds;
@@ -252,6 +253,7 @@ JetControl advance(const JetControl& control, JetCommand command, double surface
     return next;
 }
 
+// Radians, positive to the right.
 double heading_error(const FlightKnot& knot, double3 desired)
 {
     const double3 track = horizontal_direction(knot.velocity);
@@ -259,6 +261,7 @@ double heading_error(const FlightKnot& knot, double3 desired)
     return std::atan2(dot(desired, right), dot(desired, track));
 }
 
+// With the scene nearly behind, it keeps turning the way it is banked (the error's sign would flip each tick).
 double home_bank(const JetControl& control, const PilotScene& scene, const JetSettings& settings)
 {
     const auto& knot = control.knot;

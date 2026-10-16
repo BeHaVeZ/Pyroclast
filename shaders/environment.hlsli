@@ -21,6 +21,7 @@ PropBox load_prop_box(ByteAddressBuffer environment, uint index)
     return box;
 }
 
+// Twins of to_box/from_box in src/simulation/range_props.cpp.
 float3 to_box(PropBox box, float3 offset)
 {
     return float3(offset.x * box.axis.x + offset.z * box.axis.y, offset.y, offset.z * box.axis.x - offset.x * box.axis.y);
@@ -37,6 +38,7 @@ struct PropCell
     float ceiling;
 };
 
+// Kept in step with Environment::cell; empty outside the grid and for NaN.
 PropCell load_prop_cell(ByteAddressBuffer environment, float2 xz)
 {
     PropCell cell;
@@ -164,6 +166,7 @@ bool slab_entry(float3 start, float3 motion, float3 extent, out float enter, out
     return axis < 3 && enter >= 0 && enter <= 1 && enter <= leave;
 }
 
+// Returns the entered face's normal, or zero (an exact no-op) when the box is not touched.
 float3 prop_contact(PropBox box, bool open_bottom, float3 start, inout float3 end, inout float3 velocity, float radius,
     float restitution, float friction)
 {
@@ -202,6 +205,7 @@ float3 prop_contact(PropBox box, bool open_bottom, float3 start, inout float3 en
     return normal;
 }
 
+// -1e30 when `position` is not over the box's top grown by `radius`.
 float prop_support(PropBox box, float3 position, float radius)
 {
     float3 local = to_box(box, position - box.centre);
@@ -251,6 +255,7 @@ float3 prop_clip_spawn(ByteAddressBuffer environment, float3 origin, float3 spaw
     return earliest >= 1 ? spawn : origin + offset * max(earliest - prop_spawn_backoff / distance, 0);
 }
 
+// An exact no-op for a box beyond radius + deflection_band.
 float3 deflect_air(ByteAddressBuffer environment, uint2 boxes, float3 position, float radius, float3 air)
 {
     for (uint word = 0; word < 2; ++word)

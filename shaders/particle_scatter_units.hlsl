@@ -1,3 +1,4 @@
+// particle_scatter.hlsl over the frame's draw units; constants are particle_scatter.hlsl's.
 #define PYROCLAST_REALISM
 #include "particle_realism.hlsli"
 
@@ -79,6 +80,7 @@ void cs_main(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID)
 static const uint measured_words = 8;
 groupshared uint measured[measured_words];
 
+// Thinning pairs records as particles_realism_lod.hlsl does.
 [numthreads(simulation_group_size, 1, 1)]
 void cs_measure(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID)
 {

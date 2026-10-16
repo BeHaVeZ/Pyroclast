@@ -1,3 +1,4 @@
+// Constants are cs_main's, with the unit count as the effect count; groups follow FrameConstants::unit_order.
 #define PYROCLAST_REALISM
 #include "particles_compute.hlsl"
 #include "realism.hlsli"
@@ -9,6 +10,7 @@
 
 RWByteAddressBuffer arguments : register(u2);
 
+// The fastest a lingering record moves (m/s), so one step stays within the props' 2 m reach.
 static const float lingering_speed_limit = 114;
 static const float lingering_lifetime = 1e9;
 
@@ -150,6 +152,8 @@ void lingering_step(inout float4 position, inout float4 velocity, float size, La
 #endif
 }
 
+// Knot births are kept in step with realism_early_ticks (explosion_presets.cpp); ages start half a tick short so
+// counts agree on every API. A survivor is drawn from its slab in the frame it graduates, from its cluster after.
 bool simulate_lingering(uint slot, uint local, uint record, uint layer_index, Layer layer, RealismLayer lingering, EffectResidual link)
 {
     uint4 state = frame.effect_states[slot];
@@ -405,6 +409,7 @@ bool simulate_slab(uint slot, uint local)
     return simulate(slot, local, record);
 }
 
+// The unit is uniform over a group, so whole groups exit before the barriers.
 [numthreads(simulation_group_size, 1, 1)]
 void cs_realism(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID)
 {

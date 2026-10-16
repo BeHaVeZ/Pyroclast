@@ -7,6 +7,8 @@ static const float jet_vortex_spacing = 7.853982f;
 static const float jet_nozzle_aft = 7.4f;
 static const float jet_nozzle_radius = 0.45f;
 
+// FrameConstants::jet_knots, newest first, four float4s each: {left core, circulation}, {right core, core radius},
+// {ground height, image weight, exhaust speed, exhaust radius}, {joins the next older knot, age s}.
 static const uint jet_knot_ticks = 6;
 static const uint jet_knot_limit = 160;
 static const float jet_window = 30.0f;

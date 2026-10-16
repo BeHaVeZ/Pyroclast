@@ -1,20 +1,6 @@
-"""Deterministic SVG charts for tools/bench/report.py: hand-written markup, no ids, no randomness, no wall clock.
+"""Deterministic SVG charts for tools/bench/report.py: no ids, no randomness, no wall clock.
 
-Every chart has a viewBox, a light surface, hairline grid lines, axis labels with units, a legend and <title>
-tooltips on its marks (hover a dot, a bar or a column of a timeline). One colour per API, the same in every
-chart: D3D12 blue, Vulkan orange (a categorical pair that keeps its separation under colour-vision deficiency).
-A series that is not an API (alive particles when both APIs agree) is drawn in the secondary ink. Coordinates
-are printed with one decimal, so two renders of the same data are identical bytes.
-
-  timeline(benchmark, traces, variant)   x = tick: GPU frame and CPU frame (median across runs, min-max
-                                         envelope) per API, and alive particles; more than 960 ticks are bucketed
-                                         (bucket mean line, bucket min-max envelope) so spikes stay visible
-  percentiles(label, panels, variant)    per benchmark: average, median, p95, p99, worst 1% and max per API,
-                                         each the median across runs with the min-max range across runs
-  scaling(points, variant)               1, 10, 50 and 100 simultaneous effects: GPU frame average, CPU frame median
-  cpu_breakdown(rows, variant)           record, wait, present and wait + present medians per benchmark and API
-  variants(sections, headline)           each variant's relative difference against the headline variant
-  attribution(panels)                    GPU regions (R): average ms per region and API
+Coordinates are printed with one decimal, so the same data gives identical bytes.
 """
 import math
 from xml.sax.saxutils import escape
@@ -88,8 +74,6 @@ def bar_path(start, end, top, height):
 
 
 class Canvas:
-    """An SVG document built in drawing order."""
-
     def __init__(self, width, height, title, subtitle):
         self.width, self.height, self.title, self.subtitle = width, height, title, subtitle
         self.parts = []
@@ -132,7 +116,6 @@ class Canvas:
         self.add(f'<path d="{bar_path(start, end, top, height)}" fill="{fill}"{opacity_attribute}><title>{text_escape(tooltip)}</title></path>')
 
     def hover(self, x, y, width, height, tooltip):
-        """An invisible hit area carrying a tooltip."""
         self.add(f'<rect x="{number(x)}" y="{number(y)}" width="{number(width)}" height="{number(height)}" fill="#000" '
                  f'fill-opacity="0"><title>{text_escape(tooltip)}</title></rect>')
 
@@ -355,9 +338,8 @@ def scaling(points, variant):
 
 
 def bar_panels(canvas, top, label_width, rows, panels, symmetric=False, panel_width=220, gap=28):
-    """rows: [(row label, {api: {panel: (value, faded, tooltip)}})]; panels: [(key, title)]. Each panel has its own
-    scale: from 0 (milliseconds), or symmetric around 0 (`symmetric`: fractions shown as percent). Returns the
-    bottom y."""
+    """rows: [(row label, {api: {panel: (value, faded, tooltip)}})]; panels: [(key, title)], each scaled from 0,
+    or around 0 in percent when `symmetric`. Returns the bottom y."""
     apis = present_apis({api for _, per_api in rows for api in per_api})
     bar, inner, row_gap = 10, 2, 14
     row_height = len(apis) * bar + (len(apis) - 1) * inner + row_gap

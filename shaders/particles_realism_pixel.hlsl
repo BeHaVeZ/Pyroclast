@@ -35,6 +35,7 @@ float3 billow_noise(float2 position, uint salt)
     return float3(gradient, value);
 }
 
+// At zero amplitude exactly ps_main's profile.
 float4 billowed(RealismPixelInput realism)
 {
     PixelInput input = realism.base;

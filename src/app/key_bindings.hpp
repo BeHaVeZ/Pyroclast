@@ -17,6 +17,7 @@ struct KeyBinding
     UiCommand command{};
 };
 
+// controls_summary() is written by hand; update it with this table.
 std::span<const KeyBinding> key_bindings();
 
 std::string_view controls_summary();

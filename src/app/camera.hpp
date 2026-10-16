@@ -4,6 +4,7 @@
 
 namespace pyroclast
 {
+// Yaw about +Y (0 looks down -Z) and pitch (positive looks up), in radians.
 struct Camera
 {
     float3 position{0, 10, 40};
@@ -18,9 +19,11 @@ struct Camera
     float4x4 view() const { return look_to(position, forward(), {0, 1, 0}); }
     float4x4 projection(float aspect_ratio) const { return perspective_reverse_z(vertical_fov, aspect_ratio, near_plane); }
     void look_at(float3 target);
+    // `ndc_x` and `ndc_y` in -1..1, x right and y up.
     Ray ray_through(float ndc_x, float ndc_y, float aspect_ratio) const;
 };
 
+// `move`: -1..1 per axis (right, up, forward); `look`: mouse movement in pixels.
 struct CameraInput
 {
     float3 move;

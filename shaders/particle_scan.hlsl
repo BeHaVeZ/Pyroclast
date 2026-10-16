@@ -40,6 +40,7 @@ uint3 category_vector(uint category, uint count)
     return uint3(category == category_smoke ? count : 0, category == category_light ? count : 0, category == category_debris ? count : 0);
 }
 
+// A stable scan, so each list keeps the records' back-to-front order. Root and push descriptors carry no size: clamp every index.
 [numthreads(scan_threads, 1, 1)]
 void cs_main(uint thread : SV_GroupIndex)
 {

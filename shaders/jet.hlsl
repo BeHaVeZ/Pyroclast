@@ -5,6 +5,8 @@
 
 ByteAddressBuffer vertices : register(t0);
 
+// Twin of JetConstants in jet_renderer.hpp; state: x the dither level 0-16, then as float bits the nozzle glow,
+// the afterburner (0-1) and the vapor cone's opacity (0-1).
 struct JetConstants
 {
     float4 rows[3];
@@ -45,6 +47,7 @@ static const uint jet_canopy = 2;
 static const uint jet_metal = 3;
 static const uint jet_glow = 4;
 
+// The Bayer threshold is computed from its bits: WARP's shader compiler crashed on an indexed table.
 float4 ps_jet(JetPixelInput input) : SV_Target
 {
     float3 normal = normalize(input.normal);

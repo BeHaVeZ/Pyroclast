@@ -11,6 +11,7 @@
 
 namespace pyroclast
 {
+// VulkanRenderer declares its context (vk_) before every member holding Vulkan handles, so it is destroyed last.
 struct VulkanContext
 {
     VulkanContext() = default;
@@ -51,6 +52,7 @@ struct VulkanFrameSlot
     bool readback_pending = false;
 };
 
+// Without present fences, an image's semaphores are reused only once it is reacquired; resize and shutdown wait idle.
 struct VulkanSwapchain
 {
     struct Image

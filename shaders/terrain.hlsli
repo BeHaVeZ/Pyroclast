@@ -11,6 +11,7 @@ float terrain_sample(ByteAddressBuffer heights, uint column, uint row)
     return asfloat(heights.Load((row * terrain_resolution + column) * 4));
 }
 
+// Exactly like Terrain::height on the CPU.
 float terrain_height(ByteAddressBuffer heights, float2 xz)
 {
     float2 grid = clamp((xz + terrain_half_extent) / terrain_spacing, 0, float(terrain_resolution - 1));

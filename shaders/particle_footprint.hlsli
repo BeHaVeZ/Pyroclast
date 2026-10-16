@@ -3,6 +3,7 @@
 #include "effect_classes.hlsli"
 #include "frame_constants.hlsli"
 
+// Must stay in step with vs_main in particles.hlsl (growth, the sub-pixel rule, streaks), which does not include this file.
 struct Footprint
 {
     float3 position;

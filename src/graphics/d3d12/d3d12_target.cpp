@@ -27,6 +27,7 @@ std::unique_ptr<RenderTarget> D3D12Renderer::create_render_target(const RenderTa
     return check_validation() ? std::move(target) : nullptr;
 }
 
+// Waits for the GPU first: submitted frames may still sample the texture being replaced.
 bool D3D12Renderer::size_target(D3D12RenderTarget& target)
 {
     const auto extent = target.extent_for(static_cast<std::uint32_t>(width_), static_cast<std::uint32_t>(height_));

@@ -22,6 +22,7 @@ double ticks_per_log_radius(double radius, double scale)
     return radius / front_speed(overpressure_ratio(radius / scale)) * ticks_per_second;
 }
 
+// Simpson's rule in log radius; `steps` must be even.
 double ticks_between(double from, double to, double scale, int steps = 32)
 {
     const double span = std::log(to / from);

@@ -10,6 +10,8 @@
 
 namespace pyroclast
 {
+// b0 of shaders/helicopter.hlsl and helicopter_shadow.hlsl: pose rows (body to world), then the dither level (0-16),
+// or for the shadow its first cell column and row and the fade in 1/65536.
 struct HelicopterConstants
 {
     std::array<float4, 3> rows{};

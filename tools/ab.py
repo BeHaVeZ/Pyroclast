@@ -7,75 +7,23 @@
                      [--regions] [--tails] [--cpu] [--jsonl out/ab/latest.jsonl] [--counter-logs out/ab/counters]
   python tools/ab.py --measure --a <dir> [the same options without --b, --b-args and --b-smoke]
 
---cases replaces the matrix with fixed-state cases <explosions>@<tick> on every renderer and smoke
-resolution given (--smoke, default full), e.g. an early tick while the temporary lights are lit. A case
-<scenario>@<tick> (range@120) freezes that script at the tick instead (--scenario=range --profile-tick=120)
-and is measured like a fixed state.
+--cases replaces the matrix with fixed states <explosions>@<tick>, or <scenario>@<tick> (that script frozen at the
+tick). --scenarios and --benchmarks run named scripts and benchmarks instead (scenarios first; not with --cases).
+Every case runs on each renderer and --smoke resolution given (default full).
 
---scenarios runs the scripts named instead of a matrix, on every renderer and smoke resolution given
-(--smoke, default full), e.g. a script the A build does not know, when both sides are one build under two
-settings.
+--a-args and --b-args append flags to one side, so one build can be compared under two settings. Write them with "="
+(--a-args=--scene-format=rgba8): argparse reads a separate value that starts with "--" as an option. Builds that
+default to the realism model need --realism=off for a legacy-model A/B (--benchmarks refuse the flag). --a-smoke and
+--b-smoke replace that side's --smoke-resolution value.
 
---benchmarks runs the named benchmarks (--benchmark=NAME: a fixed script, preset and pose after 120 warm-up
-frames) as scripted cases, on every renderer and smoke resolution given (--smoke). Their workload is
-benchmark:NAME, which is what the CSV's scenario column and the case labels show. They combine with
---scenarios (both lists run, scenarios first) but not with --cases.
+--measure times --a alone: the median of the runs and their range. --regions (with --gpu-regions in the args),
+--tails and --cpu add metrics. --checksums same also requires A and B to agree. --jsonl appends one line per launch;
+--counter-logs DIR keeps every launch's counter log for tools/counter_log.py.
 
---a-args and --b-args append flags to every launch of that side, so one build can be compared
-under two settings (pass the same directory to --a and --b), e.g. a format or a feature toggle.
-Builds from M25 on run the realism model by default: a fixed-state or scenario A/B of the legacy
-model against them needs --realism=off on their side (builds before M22 do not know the flag, and
---benchmarks refuse it; the seven M20 benchmarks run the legacy model on every build).
-Write them with "=" (--a-args=--scene-format=rgba8): argparse reads a separate value that starts
-with "--" as another option. --a-smoke and --b-smoke replace that side's --smoke-resolution value
-(passed verbatim, e.g. auto); the case keeps its --smoke label and the CSV's smoke_arg records the value.
-
---measure times one build (--a) without a comparison: every case runs --runs times, the cases interleaved
-(each run launches every case once, in reverse order on odd runs), and each metric is reported as the
-median of the runs with the min-max range.
-
---regions adds a metric region:<label> per GPU region (its average ms); the launches need --gpu-regions
-in --a-args/--b-args. --tails adds gpu_draw_p99, gpu_draw_max, cpu_max (scenarios only) and cpu_p99.
---cpu adds cpu_frame_median, cpu_frame_p99, cpu_frame_worst_1_percent (the loop period, frame_ms),
-cpu_submit_median, cpu_wait_median and cpu_present_median (the render call, and the blocking inside it on the
-frame slot and in the present call), from the records that have them (benchmark records).
-
---checksums same also requires A and B to agree: a scenario's live-particle checksum, a fixed state's
-alive count (which must then also agree between a build's runs). The default, any, checks only that
-each build's scenario checksums agree between its runs.
-
---jsonl appends one JSON line per launch: {"case", "renderer", "smoke", "run", "build", "args" (the
-launch's arguments), "status", "record" (Pyroclast's JSON record or null)}. --counter-logs DIR gives every
-launch --counter-log=DIR/<renderer>-<smoke>-<case>-<build>-run<k>.csv ("@" written as "_"); compare
-them with tools/counter_log.py.
-
-Each case launches A and B alternately (ABAB, then BABA on odd runs) so slow drift between
-sessions affects both builds equally. The default and quick matrices use --profile-tick, which
-freezes the simulation, disables VSync and samples 600 frames after 120 warmup frames. The
-scenarios matrix runs --scenario=single|grid-100|barrage (one tick per frame, VSync off) and
-compares the averages of the GPU draw and compute intervals over the whole run, the draw p95 and
-the CPU median; its CSV also records each run's live-particle checksum, which must be the same for
-every run of a build. Results come from the JSON record Pyroclast prints.
-
-A launch that exits 0 without a timing record, or a scenario whose summary is marked invalid, had
-its sample invalidated (focus loss, resize) and is tried again, up to 3 attempts in all, with a message. A launch that crashes, exits nonzero or times out is a failure: it is
-reported, recorded in the CSV, and makes the script exit 1, because an unstable build must not
-look performance-neutral.
-
-Reported per case and metric: the median of the per-run averages with the min-max range, and the
-relative difference of B against A. The difference counts as noise ("neutral") when it is at most
-max(1%, 3 x the larger relative median absolute deviation); otherwise "CHANGED". The median
-absolute deviation ignores a single outlying run, so one slow run cannot hide a consistent shift.
-Raw per-run values are written to the CSV after every launch. Newer records' keys follow the original
-columns (half_frames, switches, effects_evicted, coverage_smoke = the average smoke coverage, offscreen,
-scalability = the record's object of non-default M19 options as compact JSON, present_mode = how the run presented
-(since M20; earlier CSVs lack this column, so smoke_arg moved one column right); blank when absent), then
-smoke_arg, then the --tails, --cpu and --regions metrics.
-
-launch() is shared with tools/bench/run.py: launch(command, scenario, attempts=3, timeout=600, log=None,
-invalidated=None) tries an invalidated sample up to `attempts` times in all, gives each attempt `timeout` seconds,
-writes the last attempt's stderr and stdout to `log` when one is given, and lists the invalidated attempts' reasons
-in `invalidated`.
+Launches alternate ABAB, then BABA on odd runs. An invalidated sample (focus loss, resize) is tried up to 3 times; a
+crash, nonzero exit or timeout fails the case and makes the script exit 1. A difference is noise ("neutral") when it
+is at most max(1%, 3 x the larger relative median absolute deviation), else "CHANGED". The CSV is rewritten after
+every launch.
 """
 import argparse
 import collections
@@ -101,6 +49,7 @@ MATRICES = {
 METRICS = ("gpu_draw", "gpu_compute", "cpu_median")
 SCENARIO_METRICS = ("gpu_draw", "gpu_draw_p95", "gpu_compute", "cpu_median")
 TAIL_METRICS = ("gpu_draw_p99", "gpu_draw_max", "cpu_p99", "cpu_max")
+# (metric, record key, statistic)
 CPU_METRICS = (("cpu_frame_median", "frame_ms", "median"), ("cpu_frame_p99", "frame_ms", "p99"),
                ("cpu_frame_worst_1_percent", "frame_ms", "worst_1_percent"), ("cpu_submit_median", "submit_ms", "median"),
                ("cpu_wait_median", "wait_ms", "median"), ("cpu_present_median", "present_ms", "median"))
@@ -181,14 +130,12 @@ def record_values(record, scenario):
 
 
 def output_text(output):
-    """A subprocess stream as text: None, str, or the bytes a timeout leaves behind."""
     if isinstance(output, bytes):
         return output.decode("utf-8", errors="replace")
     return output or ""
 
 
 def write_log(log, stderr, stdout):
-    """The launch's log: its stderr (Pyroclast's log lines), then its stdout (the JSON record)."""
     if log:
         stderr = output_text(stderr)
         separator = "\n" if stderr and not stderr.endswith("\n") else ""
@@ -196,10 +143,8 @@ def write_log(log, stderr, stdout):
 
 
 def launch(command, scenario, attempts=3, timeout=600, log=None, invalidated=None):
-    """Returns ("ok", values, record) or ("failed: reason", None, the last record or None). An invalidated sample is
-    tried up to `attempts` times in all (attempts - 1 retries); each attempt may take `timeout` seconds. With `log`,
-    the last attempt's stderr and stdout are written to that file; with `invalidated` (a list), each invalidated
-    attempt is appended as {attempt, returncode, invalid_reason, seconds}."""
+    """Returns ("ok", values, record) or ("failed: reason", None, the last record or None). Shared with
+    tools/bench/run.py; `invalidated` (a list) receives each invalidated attempt."""
     record = None
     for attempt in range(attempts):
         began = time.monotonic()

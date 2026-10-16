@@ -3,42 +3,12 @@
   python tools/bench/report.py out/bench/<session> [--strict]
   (tools/bench/run.py calls build(session) at the end of a session)
 
-Inputs are the session's raw files only: session.json, runs.jsonl and raw/*.csv. Outputs are rewritten whole:
-  summary.md    the environment block (docs/BENCHMARKING.md format plus presentation, display, HAGS, power plan,
-                remote session, warm-up, exe SHA-256 and commit), the benchmark table, the headline, pooled tails,
-                the variant and API comparisons, the CPU breakdown, GPU memory, attribution (R), counts, every
-                check, and the command that reproduces the session
-  summary.json  the same data, for scripts
-  results.csv   one row per case (benchmark, renderer, variant), metric and statistic: the median of the per-run
-                values, their min and max, the relative MAD, the run count, and the statistic pooled over all runs'
-                frames
-  traces/<benchmark>-<renderer>-<variant>.csv   per tick: the median, min and max across runs of gpu_frame_ms
-                and frame_ms, with active and alive
-  charts/*.svg  see tools/bench/svg.py
-Keys are sorted and floats have fixed formats, and nothing depends on the wall clock (only session.json's own
-content), so running the report twice gives identical bytes.
+Reads session.json, runs.jsonl and raw/*.csv only, and rewrites summary.md, summary.json, results.csv, traces/*.csv
+and charts/*.svg whole; nothing depends on the wall clock, so two runs give identical bytes.
 
-Verification (every result is listed in summary.md; --strict exits 1 on any failure):
-  - each timing launch succeeded and left its CSV; each record has "schema":1, is valid, has no invalid_reason,
-    no skipped frames, and names the launch's benchmark and renderer;
-  - JSON = CSV: every {S} statistic of the record is recomputed from the CSV's measured rows (phase measured),
-    within 1e-6 ms for the %.6f columns and 5.1e-5 for cpu_ms (%.4f in the CSV); also frames, warm-up frames,
-    GPU samples, counter records, the checksum (FNV-1a over {counter_tick, alive, smoke, light} of every counter
-    record in order, as counter_checksum), peak and mean alive, peak active effects, ticks, effects started,
-    dropped and evicted, work min and max, visible and offscreen mean and peak, and every GPU region;
-  - sample counts n (cpu_ms), n - 1 (frame_ms) and n - 2 (GPU samples and counter records);
-  - row invariants within print precision: frame_ms >= cpu_ms >= submit_ms >= wait_ms + present_ms and
-    gpu_frame_ms >= draw_ms + compute_ms;
-  - determinism: the deterministic columns are identical across a case's runs (with its checksums); the integer
-    columns and the checksums are identical across APIs for fixed-resolution variants (an auto variant's half
-    column is compared and reported instead);
-  - every record names the same GPU;
-  - reported, not failing: GPU memory at the end against the start, unfocused runs, offscreen counts across runs,
-    and the checksums against the published values of the workloads they share with --scenario.
-
-Metrics (per run, from the measured rows): cpu (cpu_ms), frame (frame_ms, the loop period: the CPU frame),
-submit, wait, present, record (submit - wait - present: building, recording and submitting the frame), wait_present
-(wait + present: compare this across APIs, never each part), gpu_frame, draw, compute, and region:<label> (R).
+Checks (listed in summary.md; --strict exits 1 on a failure): launches and record validity, every record statistic
+recomputed from its CSV's measured rows, sample counts, row invariants, determinism across runs and APIs, one GPU.
+GPU memory, focus, the per-API columns and the published checksums are reported only.
 """
 import argparse
 import json
@@ -49,11 +19,12 @@ from pathlib import Path
 BENCH = Path(__file__).resolve().parent
 sys.path.insert(0, str(BENCH))
 sys.path.insert(1, str(BENCH.parent))
-import counter_log
+import counter_log  # noqa: E402
 import stats  # noqa: E402
 import svg  # noqa: E402
 
 SCHEMA = 1
+# metric: (CSV column, the record's path to its {S} object, label); record and wait_present are derived per row.
 METRICS = {
     "cpu": ("cpu_ms", ("cpu_ms",), "CPU time (frame start to counters polled)"),
     "frame": ("frame_ms", ("frame_ms",), "CPU frame (loop period)"),
@@ -66,8 +37,10 @@ METRICS = {
     "draw": ("draw_ms", ("gpu_ms", "draw"), "GPU draw"),
     "compute": ("compute_ms", ("gpu_ms", "compute"), "GPU compute"),
 }
+# Kept in step with the benchmark column group in src/app/counter_log.cpp.
 BENCHMARK_COLUMNS = ("phase", "frame_ms", "submit_ms", "wait_ms", "present_ms", "gpu_frame_ms", "dispatches", "passes", "draws")
 REGION_PREFIX = "region:"
+# Printed precision (%.6f; cpu_ms is %.4f in the CSV), plus 1e-9 for binary rounding at the boundary.
 TOLERANCE = 1e-6 + 1e-9
 CPU_TOLERANCE = 5.1e-5
 MEAN_TOLERANCE = 5e-4 + 1e-9
@@ -76,7 +49,9 @@ FNV_PRIME = 0x100000001b3
 REALISM_COLUMNS = ("residual", "ghosts", "clusters", "forced", "linger_scale", "deferred", "rotor_dust", "emission", "agl_cm")
 RUN_COLUMNS = (*counter_log.BASE_COLUMNS, "half", "evicted", *REALISM_COLUMNS, "phase", "dispatches", "passes", "draws")
 API_COLUMNS = (*counter_log.BASE_COLUMNS, "evicted", *REALISM_COLUMNS, "phase", "dispatches", "passes", "draws")
+# Deterministic per API only (D3D12 Release coverage words jitter), so reported, not required.
 PER_API_COLUMNS = ("offscreen", "thinned", "faint")
+# smoke-field's checksum is the overview's, expected to hold at the ground pose.
 PUBLISHED_CHECKSUMS = {"single": "ff5c70a92771eebd", "simultaneous-100": "3b96591caa5bd973",
                        "sustained-barrage": "3896b00be006225b", "smoke-field": "6fb233585e3fb1e3"}
 SCALING = (("single", 1), ("simultaneous-10", 10), ("simultaneous-50", 50), ("simultaneous-100", 100))
@@ -119,7 +94,6 @@ def counter_checksum(checksum, words):
 
 
 def counter_rows(rows):
-    """The rows with a counter record."""
     return [row for row in rows if row.get("counter_tick")]
 
 
@@ -135,7 +109,6 @@ def measured_rows(rows):
 
 
 def region_labels(columns):
-    """The labels of the region:<label> columns, in column order."""
     return [column[len(REGION_PREFIX):] for column in columns if column.startswith(REGION_PREFIX)]
 
 
@@ -236,7 +209,7 @@ def check_record(record, columns, rows):
 
 
 def sample_count_problems(rows):
-    """The measured rows' sample counts against D6: cpu_ms n, frame_ms n - 1, GPU samples and counter records n - 2."""
+    """The measured rows' sample counts: cpu_ms n, frame_ms n - 1, GPU samples and counter records n - 2."""
     measured = measured_rows(rows)
     count = len(measured)
     expected = {"frame_ms": count - 1, "GPU samples": count - 2, "counter records": count - 2}
@@ -288,8 +261,6 @@ def first_difference(first, second):
 
 
 class Checks:
-    """Check results by name, in CHECKS order: passes, failures and notes."""
-
     def __init__(self):
         self.items = {name: {"passed": 0, "failed": [], "notes": []} for name in CHECKS}
 

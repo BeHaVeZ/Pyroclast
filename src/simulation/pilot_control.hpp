@@ -5,8 +5,10 @@
 #include <cstdint>
 #include <string_view>
 
+// Pure per-tick control laws: each step returns the next tick's knot, which the pilot (src/app/pilot.*) adds to the plan.
 namespace pyroclast
 {
+// Speeds in m/s, the acceleration in m/s^2, the turn rate in degrees a second, the boundary in metres.
 struct HelicopterSettings
 {
     double speed = 25;
@@ -16,6 +18,7 @@ struct HelicopterSettings
     double turn_rate = 90;
     double boundary = 300;
 };
+// Speeds in m/s, bank and roll rate in degrees (a second), loads in g, the boundary in metres.
 struct JetSettings
 {
     double cruise_speed = 100;
@@ -110,6 +113,7 @@ struct PilotScene
     double surface = 0;
 };
 
+// -1..1 per axis; view_heading in radians from +x towards +z (the chase camera's).
 struct HelicopterInput
 {
     double right = 0;
@@ -146,6 +150,7 @@ struct JetControl
     double tangential = 0;
     double speed_target = JetSettings{}.cruise_speed;
 };
+// Reads a push (lift pointing down) at a negative load, as jet_pose does.
 JetControl jet_control(const FlightKnot& knot);
 JetControl step(const JetControl& control, const JetInput& input, double surface, const JetSettings& settings = {});
 struct JetOrbit

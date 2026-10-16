@@ -1,6 +1,7 @@
 #include "frame_constants.hlsli"
 #include "terrain.hlsli"
 
+// Mirrors ShowcaseMark in src/app/showcase_marks.hpp.
 struct Mark
 {
     uint kind;
@@ -63,6 +64,7 @@ float3 outline_point(uint i)
     return on_terrain(mark.centre.xz + along * local.x + across * local.y);
 }
 
+// The arrow's pieces are arithmetic rather than an indexed table, which WARP's compiler has crashed on.
 PixelInput vs_main(uint vertex : SV_VertexID)
 {
     PixelInput output = (PixelInput)0;

@@ -53,6 +53,7 @@ struct Sandbox
     void trigger_group();
     void clear();
     void spawn(const Ray& ray, std::string_view source);
+    // H, J, Ctrl+H/J and Home log stable phrases that tools/lifecycle.ps1 matches.
     void send_helicopter();
     void send_jet();
     void pilot_helicopter();
@@ -62,6 +63,7 @@ struct Sandbox
     void return_pilot();
     void fly_pilot(const CameraInput& input, double elapsed);
     void release_due();
+    // Commits the step only if the GPU received the frame.
     RenderResult render_frame(GraphicsDevice& device, const Camera& view, int width, int height, double elapsed_seconds, bool capture,
         ImDrawData* overlay);
     void update_aim(bool needed);

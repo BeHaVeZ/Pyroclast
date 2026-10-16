@@ -11,6 +11,7 @@
 
 namespace pyroclast
 {
+// Mirrors FrameConstants in shaders/frame_constants.hlsli.
 struct FrameConstants
 {
     float4x4 view_projection;

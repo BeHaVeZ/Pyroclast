@@ -42,6 +42,7 @@ double emission_share(const RotorStep& step, double reference)
     return step.raw_emission / reference;
 }
 
+// Kept in step with the wake's skew in rotorcraft.cpp.
 double skew_offset(double z)
 {
     const double blend = rotor_layout::rotor_skew_blend * rotor::radius;

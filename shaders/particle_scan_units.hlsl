@@ -1,3 +1,4 @@
+// particle_scan.hlsl over the frame's draw units; constants are particle_scan.hlsl's.
 #define PYROCLAST_REALISM
 #include "realism.hlsli"
 

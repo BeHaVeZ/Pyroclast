@@ -19,6 +19,7 @@ struct ImDrawData;
 
 namespace pyroclast
 {
+// Filled by the application; the overlay never reads simulation or device internals.
 struct DiagnosticsSnapshot
 {
     struct System
@@ -32,6 +33,7 @@ struct DiagnosticsSnapshot
         std::string_view scene_format;
         float exposure = 1;
     };
+    // cpu_ms and gpu_ms are rings in milliseconds whose oldest entries are at the offsets.
     struct Frame
     {
         std::span<const float> cpu_ms;
@@ -50,6 +52,7 @@ struct DiagnosticsSnapshot
         float ticks_per_second = 0;
         std::uint64_t capped_frames = 0;
     };
+    // rotor_slots and jet_slots are not in active_effects; linger_scale is in 1/1024, emission of 1,024.
     struct Load
     {
         std::uint32_t explosions = 0;
@@ -173,6 +176,8 @@ struct DiagnosticsSnapshot
     std::uint32_t layer_mask = particle_layout::full_mask;
 };
 
+// value is the kind's argument (a preset, mask bit, bookmark 0-6 for F2-F7 and F11, count or event count with 0 the
+// selected one, interval in ticks, or a menu index); scalar is a speed in m/s, a radius in m or a budget.
 struct UiCommand
 {
     enum class Kind
@@ -220,6 +225,7 @@ struct UiCommand
     float scalar = 0;
 };
 
+// Create before the graphics device and destroy after it: the device's overlay renderer uses this ImGui context.
 class DebugUi final
 {
 public:
@@ -233,6 +239,7 @@ public:
     void toggle_visible() { visible_ = !visible_; }
     bool visible() const { return visible_; }
     bool wants_keyboard() const;
+    // Null while hidden.
     ImDrawData* build(const DiagnosticsSnapshot& snapshot, std::vector<UiCommand>& commands);
 
 private:

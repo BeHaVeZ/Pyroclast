@@ -10,6 +10,8 @@ float rotor_unit(uint value)
     return float(value & 0xffffffu) / 16777216.0;
 }
 
+// Twin of dust_census in rotorcraft.cpp: births and deaths are integer functions of ticks and emissions, the same
+// on every API and frame split.
 bool simulate_rotor(uint slot, uint local)
 {
     uint record = slot * explosion_particles + local;

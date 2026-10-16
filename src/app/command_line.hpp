@@ -60,6 +60,7 @@ struct ApplicationOptions
     std::uint32_t humidity_percent = 80;
 };
 
+// Kept in step with BENCHMARKS in tools/bench/run.py.
 struct BenchmarkWorkload
 {
     std::string_view name;

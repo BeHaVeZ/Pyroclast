@@ -12,6 +12,8 @@ namespace
 constexpr VkShaderStageFlags all_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
 }
 
+// Samplers are pushed with every draw, not immutable: on the RTX 4090 (driver 617.14) an immutable sampler
+// that was never pushed filtered as point sampling.
 bool VulkanRenderer::create_bindings()
 {
     bindings_.push = reinterpret_cast<PFN_vkCmdPushDescriptorSetKHR>(vkGetDeviceProcAddr(vk_.device, "vkCmdPushDescriptorSetKHR"));

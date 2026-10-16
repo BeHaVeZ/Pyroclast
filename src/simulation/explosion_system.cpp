@@ -125,6 +125,7 @@ bool ExplosionSystem::graduate_one_early(std::uint32_t tick)
     return true;
 }
 
+// A generation is never 0, which a zero-filled record holds, so every new effect respawns its slab.
 void ExplosionSystem::start(std::uint32_t tick, SlotPolicy policy, const RealismStart* realism)
 {
     residual_.retire(tick);

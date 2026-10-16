@@ -1,3 +1,4 @@
+// The draw's record count covers the residual pool.
 #define PYROCLAST_REALISM
 #include "particles.hlsl"
 #include "particle_realism_vertex.hlsli"

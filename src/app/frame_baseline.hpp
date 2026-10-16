@@ -17,6 +17,7 @@ inline constexpr const char* build_configuration = "Release";
 inline constexpr const char* build_configuration = "Debug";
 #endif
 
+// Each key in `view_keys` has a leading comma.
 struct SampleDescription
 {
     std::string renderer;
@@ -46,6 +47,7 @@ public:
     void disable() { enabled_ = false; }
     bool enabled() const { return enabled_; }
     void record(double milliseconds, std::optional<GpuTimings> gpu, std::optional<std::uint32_t> alive);
+    // `extra` returns `"name":value` pairs, comma-separated (empty for none).
     void set_extra(std::function<std::string()> extra) { extra_ = std::move(extra); }
 
 private:

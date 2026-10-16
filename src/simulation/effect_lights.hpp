@@ -16,6 +16,7 @@ struct PointLight
     float source_radius = 0;
 };
 
+// The brightest first, equally bright ones in slot order; returns how many it wrote.
 std::uint32_t select_lights(std::span<const EffectSlot> slots, std::span<const std::uint32_t> active, std::uint32_t tick,
     std::span<PointLight> lights, bool realism = false);
 }

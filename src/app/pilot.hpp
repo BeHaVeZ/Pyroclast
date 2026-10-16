@@ -26,6 +26,7 @@ enum class JetPiloting
     circling,
 };
 
+// Angles in degrees; the scene's bearing is positive to the right of the aircraft's heading.
 struct PilotReadout
 {
     std::string_view aircraft;
@@ -40,6 +41,8 @@ struct PilotReadout
     bool returning = false;
 };
 
+// Ticks a frame did not commit are rewritten by the next, so a committed tick never changes and the CPU twins
+// stay exact.
 class Pilot final
 {
 public:
@@ -58,6 +61,7 @@ public:
     bool returning() const { return helicopter_home_ || jet_home_; }
     void drop_jet();
     void reset();
+    // Returns whether an aircraft flying home arrived.
     bool advance(std::uint32_t tick, const CameraInput& input, float view_heading, const PilotScene& scene, Rotorcraft& rotorcraft,
         Jetcraft& jetcraft, const Environment& environment, bool props);
     std::optional<PilotReadout> readout(std::uint32_t tick) const;

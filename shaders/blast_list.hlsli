@@ -1,3 +1,4 @@
+// Needs frame_constants.hlsli with PYROCLAST_REALISM defined.
 #pragma once
 
 uint blast_count()

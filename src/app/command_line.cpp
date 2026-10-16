@@ -89,6 +89,7 @@ struct ParseState
     std::uint32_t disabled = 0;
 };
 
+// Returns an empty string when the value was taken, otherwise the error.
 using FlagHandler = std::string (*)(std::string_view value, ParseState& state);
 
 struct Flag

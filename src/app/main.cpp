@@ -48,6 +48,7 @@ int save_capture(pyroclast::GraphicsDevice& device, const std::string& path, boo
     return 0;
 }
 
+// The name is UTF-8 (SDL's argv); a path made from a std::string would read it in the ANSI code page.
 std::filesystem::path sequence_folder(const std::string& path)
 {
     return std::filesystem::path(std::u8string(path.begin(), path.end()));
@@ -570,6 +571,8 @@ int run_event_loop(SDL_Window* window, pyroclast::GraphicsDevice& device, Sandbo
     }
 }
 
+// The overlay's context is created before the device and outlives it; the sandbox is released before the device,
+// after wait_idle.
 int run_application(const pyroclast::ApplicationOptions& options)
 {
     const SdlCleanup sdl_cleanup;

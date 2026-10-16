@@ -22,6 +22,7 @@ static const uint prop_box_stride = 32;
 static const uint environment_flags_offset = environment_boxes_offset + maximum_prop_boxes * prop_box_stride;
 static const uint environment_bytes = environment_flags_offset + 16;
 static const float environment_reach = 3.0f;
+// With the furthest move per step, keeps environment_reach sufficient at both ends of a step (environment_tests.cpp).
 static const float prop_contact_limit = 1.0f;
 static const float prop_step_limit = 2.0f;
 static const uint prop_concrete = 0;

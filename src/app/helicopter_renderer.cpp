@@ -11,6 +11,7 @@ namespace pyroclast
 {
 namespace
 {
+// Kept in step with shadow_cells in shaders/helicopter_shadow.hlsl.
 constexpr int shadow_cells = 22;
 
 std::array<float4, 3> pose_rows(const HelicopterPose& pose)

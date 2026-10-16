@@ -5,6 +5,7 @@
 #include "effect_classes.hlsli"
 #include "frame_constants.hlsli"
 
+// lowbias32, twin of particle_hash in explosion_presets.cpp; repeated because explosion.hlsli has no include guard.
 uint realism_hash(uint value)
 {
     value ^= value >> 16;
@@ -14,6 +15,7 @@ uint realism_hash(uint value)
     return value ^ (value >> 16);
 }
 
+// Twin of RealismLayer in explosion_presets.hpp: 64 bytes each for dust, smoke and plume, in order.
 struct RealismLayer
 {
     uint survivor_stride;
@@ -41,6 +43,7 @@ uint load_graduation_ticks(ByteAddressBuffer classes, uint effect_class)
     return classes.Load(realism_address(effect_class));
 }
 
+// Rise {height m, updraft m/s, decay s, restoring 1/s}; load_spread {speed m/s, band half-height m, decay s}.
 float4 load_rise(ByteAddressBuffer classes, uint effect_class)
 {
     return asfloat(classes.Load4(realism_address(effect_class) + 16));
@@ -136,6 +139,7 @@ RealismLayer load_realism_layer(ByteAddressBuffer classes, uint effect_class, ui
     return layer;
 }
 
+// Twin of RealismLook in explosion_presets.hpp.
 struct RealismLook
 {
     float3 smoke_soot;
@@ -166,6 +170,7 @@ RealismLook load_realism_look(ByteAddressBuffer classes, uint effect_class)
     return look;
 }
 
+// Twin of TrailParameters in explosion_presets.hpp, in the blast-smoke layer's reserved words.
 struct TrailParameters
 {
     uint jets_min;
@@ -200,6 +205,7 @@ TrailParameters load_trail(ByteAddressBuffer classes, uint effect_class)
     return trail;
 }
 
+// Twin of ClodParameters in explosion_presets.hpp, in the debris layer's reserved words.
 struct ClodParameters
 {
     float size_exponent;
@@ -285,6 +291,7 @@ uint unit_word(uint index)
     return frame.unit_order[index / 4][index % 4];
 }
 
+// Depends only on the group, so a whole group agrees.
 Unit find_unit(uint group)
 {
     uint low = 0;
@@ -371,6 +378,7 @@ EffectResidual load_effect_residual(uint slot)
     return link;
 }
 
+// C++ twin: ResidualPool::death_tick.
 uint residual_death_tick(uint start_tick, uint graduation_tick, uint longest_ticks, uint variation, uint jitter)
 {
     uint longest = (longest_ticks * variation) >> 10;
@@ -427,6 +435,7 @@ float3 lingering_wind(float height, uint mask)
     return float3(frame.wind.x * c - frame.wind.z * s, frame.wind.y, frame.wind.x * s + frame.wind.z * c) * strength;
 }
 
+// As particles.hlsl's cloud_transmittance.
 float cloud_shadow(Layer layer, Flow flow, float3 origin, float3 position, float seconds)
 {
     if (flow.cloud_radius <= 0 || layer.shadow_density <= 0) return 1;

@@ -21,6 +21,7 @@ float3 box_corner(uint corner)
         corner & 4 ? 20 + max(drift.y, 0) : -20 + min(drift.y, 0));
 }
 
+// The edges are arithmetic rather than an indexed table, which WARP's compiler has crashed on.
 PixelInput vs_main(uint vertex : SV_VertexID, uint instance : SV_InstanceID)
 {
     PixelInput output = (PixelInput)0;

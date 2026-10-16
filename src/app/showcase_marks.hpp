@@ -10,6 +10,7 @@
 
 namespace pyroclast
 {
+// Kept in step with Mark in shaders/showcase_lines.hlsl (16 draw constants, b0).
 struct ShowcaseMark
 {
     enum Kind : std::uint32_t

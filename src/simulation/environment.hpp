@@ -11,6 +11,7 @@
 
 namespace pyroclast
 {
+// As the GPU reads it (terrain_layout.hlsli): bit b of mask_low (b < 32) or mask_high (b - 32) lists box b.
 struct GpuGridCell
 {
     std::uint32_t mask_low = 0;
@@ -47,6 +48,7 @@ struct SurfaceHit
     std::optional<std::uint32_t> prop;
 };
 
+// The CPU's queries decode the same bytes the GPU reads, so both see the same numbers.
 class Environment final
 {
 public:
@@ -71,6 +73,7 @@ public:
     PropBox packed_box(std::uint32_t index) const;
     std::uint32_t box_count() const;
     bool inside(float3 point) const;
+    // A box the ray starts in is ignored, and a prop wins a tie with the terrain.
     std::optional<SurfaceHit> raycast(const Ray& ray, float max_distance, bool props) const;
     float3 event_origin(const SurfaceHit& hit) const;
     Statistics statistics() const;
@@ -81,6 +84,7 @@ private:
     std::vector<std::byte> bytes_;
 };
 
+// As shaders/environment.hlsli computes it; nullopt outside the grid.
 struct GridIndex
 {
     std::uint32_t column = 0;

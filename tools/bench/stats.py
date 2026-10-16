@@ -1,26 +1,13 @@
-"""Frame statistics as Pyroclast computes them (src/app/frame_statistics.cpp, summarize), and across-run summaries.
+"""Frame statistics as Pyroclast computes them, and across-run summaries.
 
-  from stats import summary, across_runs, neutral
-
-Per run (one launch's samples):
-  average          the sum in sample order divided by n (an explicit loop, like std::accumulate: Python's sum()
-                   of floats is compensated from 3.12 and would differ in the last bits)
-  median           the middle value, or the mean of the middle two for an even n
-  p95, p99         nearest rank: sorted[(n * p + 99) // 100 - 1]
-  worst_1_percent  the mean of the slowest k = (n + 99) // 100 samples, summed in ascending order
-  max
-
-Across runs: the median of the per-run values, their min and max and the relative median absolute deviation
-(tools/ab.py summarize). Two medians differ by noise ("neutral") when the relative difference is at most
-max(1%, 3 x the larger relative MAD), ab.py's rule.
-
-The vectors in tools/bench/test_bench.py are those of tests/frame_statistics_tests.cpp; keep the two in step.
+Kept in step with summarize in src/app/frame_statistics.cpp; test_bench.py shares tests/frame_statistics_tests.cpp's
+vectors. Averages sum in sample order without compensation, as std::accumulate does.
 """
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import ab
+import ab  # noqa: E402
 
 KEYS = ("average", "median", "p95", "p99", "worst_1_percent", "max")
 NEUTRAL_FLOOR = 0.01

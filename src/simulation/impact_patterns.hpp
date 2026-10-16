@@ -31,11 +31,13 @@ std::optional<AimedEvent> aimed_event(const Environment& environment, const Ray&
 std::optional<ExplosionEvent> drop_event(const Environment& environment, float x, float z, std::uint32_t seed, ExplosionPreset preset,
     bool props);
 
+// Point 0 is the aim itself and points come nearest first.
 inline const float cluster_spacing = group_spacing / std::sqrt(3.14159265f);
 float2 cluster_offset(std::uint32_t key, std::uint32_t index);
 float cluster_radius(std::uint32_t count);
 float2 bombardment_offset(std::uint32_t key, std::uint32_t k, float radius);
 
+// Placed by index, so the events depend only on the ticks reached, never on how ticks fell into frames.
 struct ImpactSequence
 {
     enum class Kind
@@ -58,6 +60,7 @@ struct ImpactSequence
 };
 float2 impact_position(const ImpactSequence& sequence, std::uint32_t k);
 bool finished(const ImpactSequence& sequence);
+// An impact off the range takes no seed.
 std::uint32_t release_due(ImpactSequence& sequence, std::uint32_t tick, const Environment& environment, bool props,
     std::uint32_t& next_seed, ExplosionSystem& effects);
 }

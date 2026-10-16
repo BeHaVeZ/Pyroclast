@@ -1,5 +1,7 @@
 #pragma once
 
+// Twin of jet_census in jet.cpp: births and deaths are integer functions of ticks and emissions, the same on every
+// API and frame split.
 bool simulate_jet(uint slot, uint local)
 {
     uint record = slot * explosion_particles + local;

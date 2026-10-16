@@ -7,6 +7,7 @@ namespace pyroclast
 {
 namespace
 {
+// Corners 0-3 at the low end of x, 4-7 at the high end; within each, bit 0 is z and bit 1 is y.
 using Corners = std::array<float3, 8>;
 
 constexpr std::array<std::array<int, 4>, 6> faces{{{0, 1, 3, 2}, {4, 6, 7, 5}, {0, 4, 5, 1}, {2, 3, 7, 6}, {0, 2, 6, 4}, {1, 5, 7, 3}}};

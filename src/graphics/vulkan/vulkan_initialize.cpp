@@ -70,6 +70,7 @@ bool VulkanRenderer::initialize(SDL_Window* window, const GraphicsDeviceOptions&
     return validation_ok();
 }
 
+// GPU-assisted validation replaces synchronization validation: both together are prohibitively slow.
 bool VulkanRenderer::create_instance([[maybe_unused]] bool gpu_validation)
 {
     std::uint32_t count = 0;
@@ -177,6 +178,8 @@ bool VulkanRenderer::create_instance([[maybe_unused]] bool gpu_validation)
     return validation_ok();
 }
 
+// Adapters must offer D3D12's compute limits (1,024 threads, 32 KB shared memory), which the shared HLSL may use,
+// and a uniform range that holds the frame constants (Vulkan guarantees only 16 KB).
 bool VulkanRenderer::create_device(std::string_view requested_adapter)
 {
     if (is_warp_request(requested_adapter))

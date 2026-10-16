@@ -7,6 +7,7 @@
 
 namespace pyroclast
 {
+// Radians from +x towards +z.
 float view_heading(const Camera& view);
 
 class ChaseCamera final

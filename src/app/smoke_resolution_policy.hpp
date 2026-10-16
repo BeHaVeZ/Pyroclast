@@ -8,6 +8,7 @@
 
 namespace pyroclast
 {
+// The state changes only when a frame is submitted (decide, then commit).
 class SmokeResolutionPolicy final
 {
 public:
@@ -19,6 +20,7 @@ public:
     static double limit(const SmokeBudget& budget);
     static double load(const ParticleCounters& counters, const SmokeBudget& budget, double screen_pixels);
 
+    // Returns true for half resolution.
     bool decide(const std::optional<ParticleCounters>& newest, const SmokeBudget& budget, double screen_pixels) const;
     void commit(bool half);
     void follow(bool half);

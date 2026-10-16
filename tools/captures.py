@@ -8,32 +8,16 @@
   python tools/captures.py cross-api <dir> [--max-level 2] [--max-outliers 9] [--min-within-one 0.999] [--blur R]
   python tools/captures.py policy-check <reference-dir> <auto-dir>
 
---scenarios captures scripted runs instead of fixed states: each scenario at each tick (--capture-tick, the
-frame that draws that tick; 1 or more, default 6,45,180,360), over the renderers, smoke resolutions, views and
-presets, named <renderer>-<smoke>-scenario-<name>-<tick>[-<view>][-<preset>]. --explosions does not apply.
-A preset other than small-he adds --preset and its name, as for fixed states.
+--scenarios captures scripted runs at --ticks (the frame that draws each tick; default 6,45,180,360), named
+<renderer>-<smoke>-scenario-<name>-<tick>[-<view>][-<preset>]. --args appends flags without changing the file names;
+write it with "=" (--args=--disable=props).
 
---args appends flags to every launch without changing the file names, so a capture set taken with a
-feature switched off (--args=--disable=props) can be compared with an older baseline of the same names.
+compare needs the same captures in both directories (--subset: the first may hold only some). cross-api needs every
+capture for both renderers; its 9 allowed outliers cover opaque debris edges that cover a pixel centre on one API
+only. --blur R compares box-blurred images (density at that scale). policy-check requires each --smoke auto capture
+to equal the reference's full or half capture of the same case.
 
-compare requires both directories to hold the same captures unless --subset allows the first to
-hold only some of the second's. cross-api requires every capture to exist for both renderers.
-
---blur R passes --blur=R to ImageDiff: both images are box-blurred with radius R pixels before the
-comparison, so the tolerances apply to density at that scale rather than to single pixels.
-
-policy-check checks captures taken with --smoke auto (named <renderer>-auto-...): each must equal exactly the
-reference's capture of the same case at full or at half resolution (<renderer>-full-... or <renderer>-half-...),
-since the automatic smoke resolution only chooses between the two. It reports which one each matched.
-
---max-outliers pixels may exceed --max-level. Cross-API it defaults to 9 (0.001% of 1280 x 720): an
-opaque edge, such as a small debris fragment's, can cover a pixel centre on one API and not the other
-(their vertex and viewport arithmetic differ in the last bits), and that one pixel differs by however
-much the fragment differs from what is behind it. Translucent particles have no such edges.
-
-Captures are written by Pyroclast itself (--capture) before Present, so they are authoritative
-GPU output; desktop screenshots are not used. In Debug the native validation summary must read
-"0 warnings, 0 errors" or the capture counts as failed.
+In Debug the validation summary must read "0 warnings, 0 errors" or the capture fails.
 """
 import argparse
 import itertools

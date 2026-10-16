@@ -94,6 +94,7 @@ float2 rotor_frame_velocity(RotorFlow flow, float s, float z, float y_ground)
     return float2(r > 1e-3 ? -gradient / r : 0, vertical);
 }
 
+// Kept in step with rotor_air in src/simulation/rotorcraft.cpp: the induced flow only (no wind, no hub motion).
 float3 rotor_air(RotorFlow flow, float3 position, float terrain_height)
 {
     if (!(flow.inflow > 0)) return 0;

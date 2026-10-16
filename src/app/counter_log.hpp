@@ -14,11 +14,14 @@
 
 namespace pyroclast
 {
+// FNV-1a (64-bit) over each counter record's tick, alive, smoke and light words (little-endian), in order.
+// Kept in step with tools/bench/report.py.
 inline constexpr std::uint64_t checksum_basis = 0xcbf29ce484222325ull;
 std::uint64_t counter_checksum(std::uint64_t checksum, const ParticleCounters& counters);
 
 enum class FramePhase : std::uint8_t { warmup, measured };
 
+// Columns kept in step with tools/bench/report.py and tools/counter_log.py.
 class CounterLog final
 {
 public:
@@ -28,6 +31,7 @@ public:
         realism_(realism), rotor_(realism && rotor)
     {
     }
+    // linger_scale in 1/1024, emission 0-1,024.
     struct Frame
     {
         std::uint32_t tick = 0;
@@ -54,7 +58,9 @@ public:
 
     void add_frame(const Frame& frame);
     void set_cpu_ms(double milliseconds);
+    // Samples must arrive in submission order, one per submitted frame.
     void add_timing(const GpuTimings& timings);
+    // Records arrive in submission order for the frames that requested one; a record's tick must be its frame's.
     void add_counters(const ParticleCounters& counters);
     std::size_t mismatches() const { return mismatches_; }
     std::size_t size() const { return rows_.size(); }

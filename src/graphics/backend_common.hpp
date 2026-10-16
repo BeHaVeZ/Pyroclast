@@ -6,6 +6,7 @@
 
 namespace pyroclast
 {
+// Per slot: compute begin and end, draw begin and end, then a begin/end pair per region.
 inline constexpr std::uint32_t timestamp_queries_per_slot = 4 + 2 * max_gpu_regions;
 inline constexpr std::uint32_t no_region = ~0u;
 

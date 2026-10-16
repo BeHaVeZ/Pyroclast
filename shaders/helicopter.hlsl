@@ -1,5 +1,6 @@
 #include "props.hlsl"
 
+// Twin of HelicopterConstants in helicopter_renderer.hpp; state.x is the dither level, 0 (none drawn) to 16 (all).
 struct HelicopterConstants
 {
     float4 rows[3];
@@ -25,6 +26,8 @@ PixelInput vs_helicopter(uint vertex : SV_VertexID)
     return output;
 }
 
+// ps_main runs before the discard (its derivatives). The Bayer threshold is computed from its bits: WARP's shader
+// compiler crashed on an indexed table.
 float4 ps_helicopter(PixelInput input) : SV_Target
 {
     float4 color = ps_main(input);

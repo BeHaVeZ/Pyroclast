@@ -27,6 +27,7 @@ bool JetRenderer::initialize(GraphicsDevice& device, TargetFormat scene_format)
 
 namespace
 {
+// Kept in step with shadow_cells in shaders/jet_shadow.hlsl and the vertex counts of jet.hlsl and jet_trails.hlsl.
 constexpr int shadow_cells = 22;
 constexpr std::uint32_t flame_vertices = (12 - 1) * 12 * 6;
 constexpr std::uint32_t vapor_vertices = (12 - 1) * 28 * 6;
