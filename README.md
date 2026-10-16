@@ -5,8 +5,12 @@
 ![An artillery barrage's smoke pall drifting downwind, seen from 260 m](media/screenshots/realism-far-3600.png)
 
 *The lingering barrage (240 artillery impacts, four a second) at tick 3,600 (60 s), from the far view: a minute of
-smoke risen into one pall, lit on top and dark beneath, carried downwind and fading into the haze. D3D12 in-app
-capture, the realism model.*
+smoke risen into one pall, lit on top and dark beneath, carried downwind and fading into the haze.*
+
+| | |
+|---|---|
+| ![One heavy charge, at half speed](media/clips/heavy-blast.webp)<br>One heavy charge, its first 4 s at half speed: the flash and its condensation dome, the fireball, then the ejecta's jets trailing soot out of the dust skirt. | ![The lingering barrage's first minute, 12 times faster](media/clips/barrage-pall.webp)<br>The lingering barrage's first minute at 12x: 240 artillery impacts, four a second, rising and merging into one pall that drifts downwind. |
+| ![The helicopter descending into the pall](media/clips/helicopter-brownout.webp)<br>`heli-hover` at 2x: the helicopter comes down through the pall at 3 m/s; its downwash presses the smoke down and spreads a brownout sheet of dust across the ground. | ![A jet flying through the pall](media/clips/jet-tunnel.webp)<br>`jet-pass`: the jet sweeps in at 160 m/s and flies through the pall 30 m up (half speed), then (2x) its wake's vortex pair tears a tunnel through the smoke. |
 
 **Status:** milestones M11-M28 complete. Windows x64, Direct3D 12 and Vulkan. The default is the realism model
 (lingering smoke without pops, smoke physics, visible blast waves, since M26 a helicopter whose rotor wash moves the
@@ -104,39 +108,35 @@ per launch; details under [Performance](#performance)); points 2 and 3 from the 
 
 ## Gallery
 
-All images are in-app captures of the default 1280x720 window, copied on the GPU before presentation; the one
-difference image is `ImageDiff`'s. Captions
-give the state, the renderer and build, and any non-default flag.
-
 The realism model (the default since M25):
 
 | | |
 |---|---|
-| ![The lingering barrage from the overview](media/screenshots/realism-overview-1800.png)<br>The lingering barrage at tick 1,800 (30 s), overview: older columns rise and drift behind the newest impact. D3D12, Debug. | ![A heavy charge's condensation dome and dust skirt](media/screenshots/realism-heavy-8.png)<br>One heavy charge at tick 8, humidity 80%: the brief condensation (Wilson) dome around the fireball, the dust skirt kicked up where the front passed, and the refraction ring bending the ground's lines far out. D3D12, Debug. |
-| ![The dust skirt of a heavy charge](media/screenshots/realism-heavy-60.png)<br>The same charge at tick 60 (1 s): the soot-dark young cloud with its ejecta above the skirt's dust, thrown outwards along the ground. D3D12, Debug. | ![The blast wave's refraction, amplified](media/screenshots/realism-waves-difference-6.png)<br>An artillery charge at tick 6: the refraction ring's effect on the image, the difference against `--disable=waves` amplified 40 times (the ground ring and the air shell's arc). D3D12, Debug. |
+| ![The lingering barrage from the overview](media/screenshots/realism-overview-1800.png)<br>The lingering barrage at tick 1,800 (30 s), overview: older columns rise and drift behind the newest impact. | ![A heavy charge's condensation dome and dust skirt](media/screenshots/realism-heavy-8.png)<br>One heavy charge at tick 8, humidity 80%: the brief condensation (Wilson) dome around the fireball, the dust skirt kicked up where the front passed, and the refraction ring bending the ground's lines far out. |
+| ![The dust skirt of a heavy charge](media/screenshots/realism-heavy-60.png)<br>The same charge at tick 60 (1 s): the soot-dark young cloud with its ejecta above the skirt's dust, thrown outwards along the ground. | ![The blast wave's refraction, amplified](media/screenshots/realism-waves-difference-6.png)<br>An artillery charge at tick 6: the refraction ring's effect on the image, the difference against `--disable=waves` amplified 40 times (the ground ring and the air shell's arc). |
 
 The helicopter (M26), in the `heli-hover` script over the lingering barrage:
 
 | | |
 |---|---|
-| ![The helicopter descending through the pall](media/screenshots/heli-descent-3700.png)<br>Tick 3,700 (62 s): after 12 s hovering 70 m over the pall, the helicopter comes down through it at 3 m/s. The pall is pressed down and spread, its base turned into a sheet of brownout dust. D3D12, Debug. | ![The same frame without the rotor](media/screenshots/heli-no-rotor-3700.png)<br>The same frame with `--disable=rotor` (no air and no dust; the helicopter still flies): the pall keeps the barrage's shape and the ground stays clear. D3D12, Debug. |
-| ![The low hover in its brownout](media/screenshots/heli-low-hover-4800.png)<br>Tick 4,800: the low hover, the hub 8 m up, inside its own brownout, behind the range's crates and barrier. D3D12, Debug. | ![The climb-out](media/screenshots/heli-departure-5000.png)<br>Tick 5,000: climbing out east, the dust still rolling where it hovered. D3D12, Debug. |
+| ![The helicopter descending through the pall](media/screenshots/heli-descent-3700.png)<br>Tick 3,700 (62 s): after 12 s hovering 70 m over the pall, the helicopter comes down through it at 3 m/s. The pall is pressed down and spread, its base turned into a sheet of brownout dust. | ![The same frame without the rotor](media/screenshots/heli-no-rotor-3700.png)<br>The same frame with `--disable=rotor` (no air and no dust; the helicopter still flies): the pall keeps the barrage's shape and the ground stays clear. |
+| ![The low hover in its brownout](media/screenshots/heli-low-hover-4800.png)<br>Tick 4,800: the low hover, the hub 8 m up, inside its own brownout, behind the range's crates and barrier. | ![The climb-out](media/screenshots/heli-departure-5000.png)<br>Tick 5,000: climbing out east, the dust still rolling where it hovered. |
 
 The jet (M28), in the `jet-vapor` and `jet-pass` scripts over the lingering barrage:
 
 | | |
 |---|---|
-| ![The jet at Mach 0.85 with its vapor cone](media/screenshots/jet-vapor-cone-2372.png)<br>`jet-vapor`, tick 2,372: the jet at 290 m/s (Mach 0.85), 40 m up in 95% humid air, wrapped in its vapor cone. No smoke trails from its engine: a modern engine leaves none you can see. D3D12, Debug. | ![The pull-up with afterburner and wingtip trails](media/screenshots/jet-pull-up-2440.png)<br>Tick 2,440: climbing out of the pall in a 5.5 g pull, the induced drag taking the engine into reheat; the vortex cores' cooling draws condensation trails from the wingtips. D3D12, Debug. |
-| ![A tunnel through the pall](media/screenshots/jet-tunnel-2640.png)<br>`jet-pass`, tick 2,640, looking down the jet's track 4 s after it flew through the pall at 30 m and 160 m/s: its wake has torn a tunnel through the smoke, with sky at its end. D3D12, Debug. | ![The low pass parts the dust](media/screenshots/jet-low-pass-4200.png)<br>Tick 4,200, 10 s after the second pass at 15 m: its vortex pair reached the ground, spread, and split the barrage's dust sheet along the track, raising dust of its own. D3D12, Debug. |
+| ![The jet at Mach 0.85 with its vapor cone](media/screenshots/jet-vapor-cone-2372.png)<br>`jet-vapor`, tick 2,372: the jet at 290 m/s (Mach 0.85), 40 m up in 95% humid air, wrapped in its vapor cone. No smoke trails from its engine: a modern engine leaves none you can see. | ![The pull-up with afterburner and wingtip trails](media/screenshots/jet-pull-up-2440.png)<br>Tick 2,440: climbing out of the pall in a 5.5 g pull, the induced drag taking the engine into reheat; the vortex cores' cooling draws condensation trails from the wingtips. |
+| ![A tunnel through the pall](media/screenshots/jet-tunnel-2640.png)<br>`jet-pass`, tick 2,640, looking down the jet's track 4 s after it flew through the pall at 30 m and 160 m/s: its wake has torn a tunnel through the smoke, with sky at its end. | ![The low pass parts the dust](media/screenshots/jet-low-pass-4200.png)<br>Tick 4,200, 10 s after the second pass at 15 m: its vortex pair reached the ground, spread, and split the barrage's dust sheet along the track, raising dust of its own. |
 
 The earlier model (`--realism=off`), as M21 captured it:
 
 | | |
 |---|---|
-| ![Fireball stage of one heavy explosion](media/screenshots/heavy-ground-45.png)<br>One heavy explosion at tick 45 (0.75 s), from eye level: the fireball stage. D3D12, Debug. | ![The range scenario among the yard's props](media/screenshots/range-yard-180.png)<br>The `range` scenario (seven explosions of six presets among the north yard's props) at tick 180, from the yard view. D3D12, Debug. |
-| ![Artillery barrage from the overview](media/screenshots/barrage-600.png)<br>The `barrage` scenario (80 artillery-he impacts walking across the range) at tick 600 (10 s), overview. D3D12, Debug. | ![100 simultaneous explosions from above](media/screenshots/grid-100-aerial-180.png)<br>100 small-he explosions started together, tick 180, aerial view. D3D12, Debug. |
-| ![Smoke field, every option off](media/screenshots/smoke-field-180-default.png)<br>The smoke-field workload (100 heavy explosions, from the ground) at tick 180, every option off. D3D12, Debug. | ![Smoke field with the recommended set](media/screenshots/smoke-field-180-recommended.png)<br>The same frame with `--smoke-resolution=auto --half-light --smoke-lod=16`: the image cost of the recommended set. D3D12, Debug. |
-| ![The engineering overlay](media/screenshots/overlay-grid-100-180.png)<br>The overlay (`--ui=on --coverage`) over 100 small-he explosions at tick 180. D3D12, Release. A single live reading: no number in this README is taken from it. | ![Effect lines and collision boxes](media/screenshots/effect-lines-range-45.png)<br>`--effect-lines` on the `range` scenario at tick 45, range view: each effect's origin, normal and reach, and the props' collision boxes. D3D12, Debug. |
+| ![Fireball stage of one heavy explosion](media/screenshots/heavy-ground-45.png)<br>One heavy explosion at tick 45 (0.75 s), from eye level: the fireball stage. | ![The range scenario among the yard's props](media/screenshots/range-yard-180.png)<br>The `range` scenario (seven explosions of six presets among the north yard's props) at tick 180, from the yard view. |
+| ![Artillery barrage from the overview](media/screenshots/barrage-600.png)<br>The `barrage` scenario (80 artillery-he impacts walking across the range) at tick 600 (10 s), overview. | ![100 simultaneous explosions from above](media/screenshots/grid-100-aerial-180.png)<br>100 small-he explosions started together, tick 180, aerial view. |
+| ![Smoke field, every option off](media/screenshots/smoke-field-180-default.png)<br>The smoke-field workload (100 heavy explosions, from the ground) at tick 180, every option off. | ![Smoke field with the recommended set](media/screenshots/smoke-field-180-recommended.png)<br>The same frame with `--smoke-resolution=auto --half-light --smoke-lod=16`: the image cost of the recommended set. |
+| ![The engineering overlay](media/screenshots/overlay-grid-100-180.png)<br>The overlay (`--ui=on --coverage`) over 100 small-he explosions at tick 180. A single live reading: no number in this README is taken from it. | ![Effect lines and collision boxes](media/screenshots/effect-lines-range-45.png)<br>`--effect-lines` on the `range` scenario at tick 45, range view: each effect's origin, normal and reach, and the props' collision boxes. |
 
 ## Features
 
@@ -1095,6 +1095,9 @@ python tools/counter_log.py diff (Get-ChildItem out/logs/*.csv).FullName
 powershell -File tools/lifecycle.ps1 -Configuration Debug -Renderer vulkan -SmokeResolution half
 # A scripted run's frames as numbered PNGs (for video), here ticks 1-360
 .\out\build\windows-x64\Release\Pyroclast.exe --scenario=range --view=range --capture-to=360 --capture-sequence=out\video\range-360
+# Those frames as a contact sheet (to choose ticks and a crop) and as an animated WebP or GIF (Pillow)
+python tools/clips.py sheet out\video\range-360 out\video\range-sheet.png --count 16
+python tools/clips.py encode out\video\range-360 out\video\range.webp --step 2 --width 960
 ```
 
 - `ImageDiff` (built with the project) compares two captures and can write an amplified difference image
