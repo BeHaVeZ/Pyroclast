@@ -12,7 +12,7 @@ smoke risen into one pall, lit on top and dark beneath, carried downwind and fad
 | ![One heavy charge, at half speed](media/clips/heavy-blast.webp)<br>One heavy charge, its first 4 s at half speed: the flash and its condensation dome, the fireball, then the ejecta's jets trailing soot out of the dust skirt. | ![The lingering barrage's first minute, 12 times faster](media/clips/barrage-pall.webp)<br>The lingering barrage's first minute at 12x: 240 artillery impacts, four a second, rising and merging into one pall that drifts downwind. |
 | ![The helicopter descending into the pall](media/clips/helicopter-brownout.webp)<br>`heli-hover` at 2x: the helicopter comes down through the pall at 3 m/s; its downwash presses the smoke down and spreads a brownout sheet of dust across the ground. | ![A jet flying through the pall](media/clips/jet-tunnel.webp)<br>`jet-pass`: the jet sweeps in at 160 m/s and flies through the pall 30 m up (half speed), then (2x) its wake's vortex pair tears a tunnel through the smoke. |
 
-**Status:** milestones M11-M28 complete. Windows x64, Direct3D 12 and Vulkan. The default is the realism model
+**Status:** milestones M11-M29 complete. Windows x64, Direct3D 12 and Vulkan. The default is the realism model
 (lingering smoke without pops, smoke physics, visible blast waves, since M26 a helicopter whose rotor wash moves the
 smoke and raises dust, and since M28 a jet whose wake's vortices tear tunnels through it); `--realism=off` runs the
 earlier model, which the seven M20 benchmarks keep.
@@ -20,8 +20,39 @@ earlier model, which the seven M20 benchmarks keep.
 **Technology:** C++20, CMake 4.2, SDL 3.4.18, Direct3D 12, Vulkan 1.3, HLSL compiled by DXC to DXIL and SPIR-V,
 Dear ImGui 1.92.9b, GPU compute.
 
+## Try it
+
+1. Download **Pyroclast-v1.0.0-win64.zip** from the [latest release](https://github.com/BeHaVeZ/Pyroclast/releases/latest)
+   and extract it anywhere. Nothing to install: the Visual C++ runtime is included.
+2. Double-click `Pyroclast.exe` (Direct3D 12) or `Pyroclast (Vulkan).bat`. If Windows SmartScreen warns about an
+   unrecognised app, choose **More info**, then **Run anyway** (the build is not code-signed).
+3. Click on the ground to set off an explosion.
+
+You need Windows 10 or 11 (64-bit) and a GPU with Direct3D 12, or Vulkan 1.3 for the Vulkan renderer; any recent
+NVIDIA, AMD or Intel driver has both. The smoke is tuned on a desktop GPU: integrated graphics run it, but slowly.
+
+**Things to try**
+
+| Keys | What happens |
+|---|---|
+| Left click, **1-7**, **C** | Fire where you click; pick the explosive (small impact up to a heavy charge); fire 1, 10, 50 or 100 at once |
+| **B**, **V** | A barrage walking across the view; a continuous bombardment |
+| **H**, **J** | A helicopter whose downwash pushes the smoke and raises dust; a jet whose wake tears through the smoke |
+| **Ctrl+H**, **Ctrl+J** | Fly the helicopter or the jet yourself: **W A S D**, **Q E**, **Shift**; **Esc** lets go, **Home** flies back |
+| **W A S D**, **Q E**, right mouse button | Move and look around; **G** walks on the ground, **F2-F7** and **F11** jump to saved views |
+| **T**, **P**, **R**, **F1** | Slow motion, pause, clear everything, hide the overlay |
+
+The full list is under [Controls](#controls). The zip's other shortcuts play scripted scenes (an artillery barrage
+and the smoke it leaves, a helicopter landing in its own dust, a jet flying through the smoke) and run a 1920x1080
+benchmark that prints its results as one line of JSON.
+
+**Feedback.** Found a problem, or want to share a benchmark result? Open an
+[issue](https://github.com/BeHaVeZ/Pyroclast/issues) with your GPU, driver and Windows version, what you ran, and the
+last lines of the console window.
+
 ## Contents
 
+[Try it](#try-it) ·
 [What and why](#what-and-why) ·
 [Results at a glance](#results-at-a-glance) ·
 [Gallery](#gallery) ·
